@@ -11,14 +11,13 @@
  *    결과보고서)과 localStorage 임시저장 로직은 v1과 동일하다.
  */
 const $=s=>document.querySelector(s),root=$('#app'),KEY='daiso_safety_v8';
-const fresh=()=>({screen:'start',store:null,basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'오전'},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},facility:{issues:[],guideSeen:false,step:1,status:''},tbm:{issues:[],guideSeen:false,step:1,status:''},workers:[{answers:{},qi:0}],worker:0,others:[],tasks:[]});
+const fresh=()=>({screen:'start',store:null,basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'오전'},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:''},workers:[{answers:{},qi:0}],worker:0,others:[],tasks:[]});
 let S=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}})();
 function normalizeState(){
   const f=fresh();
   if(!S||typeof S!=='object')S=f;
   S.basic={...f.basic,...(S.basic||{})};
   S.wa=S.wa||{};
-  S.facility=S.facility||{};
   S.tbm=S.tbm||{};
   S.workers=Array.isArray(S.workers)&&S.workers.length?S.workers:f.workers;
   S.worker=Number.isInteger(S.worker)?S.worker:0;
@@ -43,14 +42,22 @@ function normalizeState(){
     }
   });
   S.ladder.guideSeen=!!S.ladder.guideSeen;S.ladder.step=Number(S.ladder.step||1);S.ladder.status=S.ladder.status||'';
-  if(!S.facility||Array.isArray(S.facility))S.facility={issues:[],guideSeen:false};
-  S.facility.issues=Array.isArray(S.facility.issues)?S.facility.issues:[];
-  S.facility.issues.forEach(x=>{if(!x.id)x.id=uid()});
-  S.facility.guideSeen=!!S.facility.guideSeen;S.facility.step=Number(S.facility.step||1);S.facility.status=S.facility.status||'';
-  if(!S.tbm||Array.isArray(S.tbm))S.tbm={issues:[],guideSeen:false};
+  /* 공통·시설 / 소방 / TBM은 체크리스트형이라 STEP 구분이 없다.
+     예전(v8 이전) 데이터에 시설·소방이 하나로 합쳐져 있던 경우, 공통·시설 쪽으로 옮겨둔다. */
+  const legacyFacility=(S.facility&&Array.isArray(S.facility.issues))?S.facility.issues:null;
+  if(!S.common||Array.isArray(S.common))S.common={issues:legacyFacility||[]};
+  S.common.issues=Array.isArray(S.common.issues)?S.common.issues:[];
+  S.common.issues.forEach(x=>{if(!x.id)x.id=uid()});
+  S.common.status=S.common.status||'';
+  if(!S.fire||Array.isArray(S.fire))S.fire={issues:[]};
+  S.fire.issues=Array.isArray(S.fire.issues)?S.fire.issues:[];
+  S.fire.issues.forEach(x=>{if(!x.id)x.id=uid()});
+  S.fire.status=S.fire.status||'';
+  delete S.facility;
+  if(!S.tbm||Array.isArray(S.tbm))S.tbm={issues:[]};
   S.tbm.issues=Array.isArray(S.tbm.issues)?S.tbm.issues:[];
   S.tbm.issues.forEach(x=>{if(!x.id)x.id=uid()});
-  S.tbm.guideSeen=!!S.tbm.guideSeen;S.tbm.step=Number(S.tbm.step||1);S.tbm.status=S.tbm.status||'';
+  S.tbm.status=S.tbm.status||'';
   S.screen=S.screen||'start';
   S.wi=Number.isInteger(S.wi)?S.wi:0;
   S.workNA=S.workNA||{};
@@ -146,7 +153,7 @@ function removePhotoAt(kind,arg,i){
   if(kind==='issue'){
     const parts=arg.split('|');const k=parts[0],idx=Number(parts[1]);
     S[k].issues[idx].files.splice(i,1);save();
-    k==='ladder'?ladder():check(k);return
+    k==='ladder'?ladder():checklist(k);return
   }
   if(kind==='other'){S.others[Number(arg)].files.splice(i,1);save();other();return}
 }
@@ -160,9 +167,9 @@ async function attachPhotos(fileList){
 }
 
 function progressInfo(){
-  const order=['start','basic','work','ladder','facility','tbm','voice','other','tasks','result'];
+  const order=['start','basic','work','ladder','common','fire','tbm','voice','other','tasks','result'];
   let idx=order.indexOf(S.screen);if(idx<0)idx=0;
-  const total=9, shown=Math.min(total,Math.max(0,idx));
+  const total=order.length-1, shown=Math.min(total,Math.max(0,idx));
   return {n:shown,total,pct:Math.round(shown/total*100)}
 }
 /* 마지막으로 그린 화면의 식별자. 같은 화면을 다시 그리는 경우(예: 사다리 유형 선택,
@@ -174,8 +181,6 @@ function currentViewKey(){
   var parts=[S.screen];
   if(S.screen==='work')parts.push(S.wi);
   if(S.screen==='ladder')parts.push(S.ladder&&S.ladder.step);
-  if(S.screen==='facility')parts.push(S.facility&&S.facility.step);
-  if(S.screen==='tbm')parts.push(S.tbm&&S.tbm.step);
   if(S.screen==='voice'){
     parts.push(S.worker);
     var w=S.workers&&S.workers[S.worker];
@@ -315,15 +320,16 @@ function basic(){
   frame(`<div class="card"><h2>${esc(m.name)} 기본정보</h2>${accidentHtml}${taskHtml}<div class="grid">${field('점검일 *','date',b.date,'date')}${field('점검자','inspectorView',b.inspector,'text','readonly')}${field('본부','hq',b.hq,'text','readonly')}${field('부서','dept',b.dept,'text','readonly')}${field('팀','team',b.team,'text','readonly')}</div><div class="field"><label>입고시간대</label><select id="delivery"><option ${b.delivery==='오전'?'selected':''}>오전</option><option ${b.delivery==='오후(야간)'?'selected':''}>오후(야간)</option></select></div><div class="grid"><button class="secondary" onclick="start()">← 매장선택</button><button class="primary" onclick="begin()">작업점검 시작 →</button></div></div>`,`매장 기본정보를<br>확인하세요.`,`사고이력과 기존 미조치 과제를 선택 매장 기준으로 표시합니다.`)
 }
 function begin(){['date','delivery'].forEach(k=>S.basic[k]=$('#'+k).value);if(!S.basic.date)return toast('점검일을 확인하세요');ensureDefaults();S.screen='work';work()}
-const ALL_SECTIONS=['work','ladder','facility','tbm','voice','other','tasks','result'];
+/* '시설·소방' 한 탭이던 것을 '공통·시설' / '소방' 두 탭으로 나눴다. */
+const ALL_SECTIONS=['work','ladder','common','fire','tbm','voice','other','tasks','result'];
 /* 과거 지적사항/사고이력이 없는 매장은 '개선과제'(조치확인) 탭 자체를 노출하지 않는다. */
 function activeSections(){
   return ALL_SECTIONS.filter(function(k){return k!=='tasks'||hasPastTasks()});
 }
 function tabs(a){
-  const nm={work:'작업점검',ladder:'사다리',facility:'시설·소방',tbm:'TBM',voice:'의견청취',other:'기타사항',tasks:'조치확인',result:'결과'};
+  const nm={work:'작업점검',ladder:'사다리',common:'공통·시설',fire:'소방',tbm:'TBM',voice:'의견청취',other:'기타사항',tasks:'조치확인',result:'결과'};
   return `<div class="tabs-wrap"><div class="tabs">${activeSections().map(k=>`<button class="tab ${a===k?'active':''}" onclick="go('${k}')">${nm[k]}</button>`).join('')}</div></div>`;
-}function go(k){if(k==='work')work();else if(k==='ladder')ladder();else if(k==='facility'||k==='tbm')check(k);else if(k==='voice')voice();else if(k==='other')other();else if(k==='tasks'){hasPastTasks()?tasks():other()}else finalSubmit()}
+}function go(k){if(k==='work')work();else if(k==='ladder')ladder();else if(k==='common'||k==='fire'||k==='tbm')checklist(k);else if(k==='voice')voice();else if(k==='other')other();else if(k==='tasks'){hasPastTasks()?tasks():other()}else finalSubmit()}
 function goodIndex(q){
   const goods=Array.isArray(q[4])?q[4]:[];
   if(goods.length)return goods[0];
@@ -363,11 +369,8 @@ function showLadderTypeGuide(){
   document.body.appendChild(m);
 }
 function closeLadderTypeGuide(){const m=document.getElementById('guideModal');if(m)m.remove()}
-function showGuide(kind){
-  const title=kind==='ladder'?'사다리 점검 가이드':kind==='facility'?'시설·소방 점검 가이드':'TBM 점검 가이드';
-  const items=kind==='ladder'?D.ladder.map(x=>x[1]):D[kind];
-  guideModal(title,items,kind);
-}
+/* 사다리/공통·시설/소방/TBM 모두 체크항목이 짧아 별도 안내 팝업이 필요 없다. */
+function showGuide(kind){if(S[kind])S[kind].guideSeen=true;save()}
 function workTabs(){return `<div class="tabs-wrap"><div class="tabs">${D.works.map((w,i)=>{
   /* '완료' 여부는 실제로 '다음' 버튼을 눌러 확인한 workChecked 기준으로 판단한다. */
   /* (S.wa는 ensureDefaults가 진입 시 미리 채워두므로 완료 판단 기준으로 쓰면 안 됨) */
@@ -417,42 +420,62 @@ function invalid(sel,msg){const e=$(sel);if(e){e.classList.add('shake');e.scroll
 function nav(i,n,prev,next){return `<nav class="nav"><button class="secondary" onclick="${prev}">← 이전</button><div class="progress">${i+1}/${n}<div class="bar"><i style="width:${(i+1)/n*100}%"></i></div></div><button class="primary" onclick="${next}">다음 →</button></nav>`}
 
 
-function check(k){
+/* 공통·시설 / 소방 / TBM 화면. 이상유무를 먼저 고르고 다음 화면에서 미흡사항을
+   등록하던 2단계 방식을 없애고, D[kind] 목록을 체크박스로 쭉 보여준 뒤
+   체크한 항목만 그 자리에서 사진을 붙이는 방식으로 통일했다 (사다리와 같은 방식). */
+const NEXT_AFTER={common:'fire',fire:'tbm',tbm:'voice'};
+const PREV_BEFORE={common:'ladder',fire:'common',tbm:'fire'};
+const CHECKLIST_TITLE={common:'공통·시설',fire:'소방',tbm:'TBM'};
+function checklist(k){
   normalizeState();S.screen=k;
-  const st=S[k],title=k==='facility'?'시설·소방':'TBM',next=k==='facility'?`check('tbm')`:'voice()',prev=k==='facility'?`ladder()`:`check('facility')`;
-  let body='';
-  if(st.step===1){
-    body=`<div class="card step-card"><div class="step-head"><span>STEP 1</span><b>${title} 이상유무</b></div>
-      <div class="summary"><h2>${title} 점검</h2><button class="guide-btn" onclick="showGuide('${k}')">📋 점검 가이드</button></div>
-      <p class="muted">가이드 항목을 현장에서 확인한 뒤 이상유무를 선택하세요.</p>
-      <div class="status-choice">
-        <button class="status-good ${st.status==='good'?'selected':''}" onclick="S.${k}.status='good';save();check('${k}')"><b>✓ 이상 없음</b><small>전체 항목을 양호로 처리합니다.</small></button>
-        <button class="status-bad ${st.status==='bad'?'selected':''}" onclick="S.${k}.status='bad';save();check('${k}')"><b>! 이상 있음</b><small>미흡사항을 다음 단계에서 등록합니다.</small></button>
-      </div>
-      <div class="grid"><button class="secondary" onclick="${prev}">← 이전</button><button class="primary" onclick="nextSimple('${k}')">다음 →</button></div></div>`;
+  const st=S[k],title=CHECKLIST_TITLE[k];
+  const bad=(st.issues||[]).length;
+
+  const rows=D[k].map(function(name){
+    const found=st.issues.find(function(x){return x.item===name});
+    const idx=found?st.issues.indexOf(found):-1;
+    const on=!!found;
+    let row='<div class="lad-chk'+(on?' on':'')+'">';
+    row+='<label class="lad-chk-main">';
+    row+='<input type="checkbox"'+(on?' checked':'')+' onchange="toggleChecklistItem(\u0027'+k+'\u0027,\u0027'+name+'\u0027,this.checked)">';
+    row+='<span><b>'+esc(name)+'</b></span></label>';
+    if(on){
+      row+='<div class="lad-chk-right">';
+      row+=renderPhotoList(found.files,'issue',k+'|'+idx);
+      row+='<label class="lad-cam" title="사진 추가">📷';
+      row+='<input class="photo-input" type="file" accept="image/*" multiple onchange="attachIssuePhotos(\u0027'+k+'\u0027,'+idx+',this)"></label>';
+      row+='<button class="lad-x" onclick="removeChecklistItem(\u0027'+k+'\u0027,\u0027'+name+'\u0027)" aria-label="이상항목 해제">✕</button>';
+      row+='</div>';
+    }
+    row+='</div>';
+    return row;
+  }).join('');
+
+  const body=`<div class="card step-card"><div class="step-head"><span>${title}</span><b>이상 있는 항목만 체크</b></div>
+    <div class="summary"><h2>${title} 점검</h2><span class="pill ${bad?'bad':''}">${bad}건</span></div>
+    <div class="lad-chklist checklist-1col">${rows}</div>
+    <div class="grid" style="margin-top:14px"><button class="secondary" onclick="go('${PREV_BEFORE[k]}')">← 이전</button><button class="primary" onclick="finishChecklist('${k}')">${k==='tbm'?'의견청취':CHECKLIST_TITLE[NEXT_AFTER[k]]} →</button></div></div>`;
+
+  frame(`${tabs(k)}${body}`,`${title}<br>점검`,'문제 있는 항목만 체크하면 됩니다.');
+}
+function toggleChecklistItem(k,item,on){
+  S[k].issues=Array.isArray(S[k].issues)?S[k].issues:[];
+  if(on){
+    if(!S[k].issues.some(function(x){return x.item===item})){
+      S[k].issues.push({id:uid(),item:item,note:'',files:[]});
+    }
   }else{
-    body=`<div class="card step-card"><div class="step-head"><span>STEP 2</span><b>${title} 미흡사항 등록</b></div>
-      <div class="summary"><h2>발견된 미흡사항</h2><span class="pill bad">${st.issues.length}건</span></div>
-      ${st.issues.map((x,i)=>issueCard(k,x,i)).join('')}
-      <button class="secondary wide" onclick="addIssue('${k}')">＋ 미흡사항 추가</button>
-      <div class="grid" style="margin-top:10px"><button class="secondary" onclick="S.${k}.step=1;save();check('${k}')">← 이상유무</button><button class="primary" onclick="finishSimple('${k}')">${k==='facility'?'TBM 점검':'의견청취'} →</button></div></div>`;
+    S[k].issues=S[k].issues.filter(function(x){return x.item!==item});
   }
-  frame(`${tabs(k)}${body}`,`${title}<br>STEP 점검`,st.step===1?'이상유무만 먼저 확인합니다.':'이상이 있는 항목만 기록합니다.');
-  if(!st.guideSeen)setTimeout(()=>showGuide(k),80);
+  save();checklist(k);
 }
-function nextSimple(k){
-  const st=S[k];if(!st.status)return toast('이상유무를 선택하세요.');
-  if(st.status==='good'){
-    st.issues=[];st.step=1;st.checkedAt=new Date().toISOString();st.checkedBy=S.basic?.inspector||'';
-    save();k==='facility'?check('tbm'):voice()
-  }
-  else{st.step=2;if(!st.issues.length)st.issues.push({id:uid(),item:'',note:'',files:[]});save();check(k)}
-}
-function finishSimple(k){
-  if(!S[k].issues.length)return toast('미흡사항을 1건 이상 등록하세요.');
-  const invalidIssue=S[k].issues.find(x=>!x.item);
-  if(invalidIssue)return toast('미흡 항목을 선택하세요.');
-  S[k].status='bad';S[k].step=1;S[k].checkedAt=new Date().toISOString();S[k].checkedBy=S.basic?.inspector||'';save();k==='facility'?check('tbm'):voice()
+function removeChecklistItem(k,item){toggleChecklistItem(k,item,false)}
+function finishChecklist(k){
+  const st=S[k];
+  st.status=st.issues.length?'bad':'good';
+  st.checkedAt=new Date().toISOString();st.checkedBy=S.basic?.inspector||'';
+  save();
+  if(k==='tbm')voice();else go(NEXT_AFTER[k]);
 }
 
 /* 사다리 유형별 참고 이미지 (서버 getLadderTypeImages()로 1회 로드 후 캐시) */
@@ -532,57 +555,68 @@ function ladderInventoryCard(t){
   return h;
 }
 
-/* 미흡으로 표시한 유형의 이상사항 입력 영역 (카드 안에 펼쳐짐).
-   유형별로 여러 건을 등록할 수 있다. */
+/* 미흡으로 표시한 유형의 이상항목 선택 영역 (그 유형 줄 안에 펼쳐진다).
+   전부 객관식이다. 이상항목을 체크박스로 고르고, 체크한 줄 오른쪽에
+   작은 정사각형 사진칸(📷)과 해제용 X만 둔다.
+   긴 주관식 설명칸과 큰 사진 버튼은 현장에서 번거로워 없앴다. */
 function ladderIssueInline(t,label){
-  var items=(S.ladder.issues||[]).filter(function(x){return x.typeKey===t});
+  var issues=Array.isArray(S.ladder.issues)?S.ladder.issues:[];
+  var picked=issues.filter(function(x){return x.typeKey===t});
   var h='<div class="lad-issues">';
-  h+='<div class="lad-issues-head">'+esc(label)+' 이상사항 <span class="pill bad">'+items.length+'건</span></div>';
+  h+='<div class="lad-issues-head">'+esc(label)+' 이상항목 <span class="pill bad">'+picked.length+'건</span></div>';
+  /* 항목명이 짧으니 1열로 쭉 나열할 필요가 없다. 2열 그리드로 배치한다. */
+  h+='<div class="lad-chklist">';
 
-  items.forEach(function(x){
-    var idx=S.ladder.issues.indexOf(x);
-    h+='<div class="lad-issue">';
-    /* 이상 항목 선택 */
-    h+='<div class="field"><label>이상 항목</label><select onchange="setLadderIssueField('+idx+',\u0027item\u0027,this.value)">';
-    h+='<option value="">항목 선택</option>';
-    D.ladder.forEach(function(v){
-      h+='<option'+(x.item===v[0]?' selected':'')+'>'+esc(v[0])+'</option>';
-    });
-    h+='<option'+(x.item==='기타'?' selected':'')+'>기타</option>';
-    h+='</select></div>';
-    /* 추가 설명 */
-    h+='<div class="field"><label>추가 설명 <small>(선택)</small></label>';
-    h+='<textarea placeholder="사진만으로 설명이 어려운 경우 입력" onchange="setLadderIssueField('+idx+',\u0027note\u0027,this.value)">'+esc(x.note||'')+'</textarea></div>';
-    /* 사진 */
-    h+='<div class="field"><label>사진</label>';
-    h+='<label class="photo-picker"><span class="camera-emoji">📷</span>';
-    h+='<span><b>사진 촬영·추가</b><small>이상사항 사진을 첨부하세요</small></span>';
-    h+='<input class="photo-input" type="file" accept="image/*" multiple onchange="attachIssuePhotos(\u0027ladder\u0027,'+idx+',this)"></label>';
-    h+=renderPhotoList(x.files,'issue','ladder|'+idx);
-    h+='</div>';
-    if(items.length>1){
-      h+='<button class="danger wide" onclick="removeLadderIssue('+idx+')">이 항목 삭제</button>';
+  /* data.js의 D.ladder는 [외관상태, 나사상태, 기타사항] 3개뿐이다. */
+  D.ladder.forEach(function(row){
+    var name=row[0],hint=row[1]||'';
+    /* 이 유형 + 이 항목으로 이미 등록된 건이 있는지 찾는다 (사진을 붙일 위치가 필요) */
+    var found=null,idx=-1;
+    for(var i=0;i<issues.length;i++){
+      if(issues[i].typeKey===t&&issues[i].item===name){found=issues[i];idx=i;break}
+    }
+    var on=!!found;
+    h+='<div class="lad-chk'+(on?' on':'')+'">';
+    h+='<label class="lad-chk-main">';
+    h+='<input type="checkbox"'+(on?' checked':'')+' onchange="toggleLadderItem(\u0027'+t+'\u0027,\u0027'+name+'\u0027,this.checked)">';
+    h+='<span><b>'+esc(name)+'</b>'+(hint?'<small>'+esc(hint)+'</small>':'')+'</span></label>';
+    if(on){
+      h+='<div class="lad-chk-right">';
+      h+=renderPhotoList(found.files,'issue','ladder|'+idx);
+      h+='<label class="lad-cam" title="사진 추가">📷';
+      h+='<input class="photo-input" type="file" accept="image/*" multiple onchange="attachIssuePhotos(\u0027ladder\u0027,'+idx+',this)"></label>';
+      h+='<button class="lad-x" onclick="removeLadderItem(\u0027'+t+'\u0027,\u0027'+name+'\u0027)" aria-label="이상항목 해제">✕</button>';
+      h+='</div>';
+      /* '기타사항'만 목록에 없는 내용을 짧게 적을 수 있게 한 줄 입력칸을 둔다 */
+      if(name==='기타사항'){
+        h+='<div class="lad-etc"><input placeholder="어떤 이상인지 짧게 입력" value="'+esc(found.note||'')+'" onchange="setLadderIssueNote('+idx+',this.value)"></div>';
+      }
     }
     h+='</div>';
   });
 
-  h+='<button class="secondary wide" onclick="addLadderIssue(\u0027'+t+'\u0027)">＋ 이상사항 추가</button>';
-  h+='</div>';
+  h+='</div></div>';
   return h;
 }
-function setLadderIssueField(idx,field,value){
+/* 체크하면 그 항목을 이상사항으로 등록하고, 체크를 풀면 사진까지 함께 지운다. */
+function toggleLadderItem(t,item,on){
+  S.ladder.issues=Array.isArray(S.ladder.issues)?S.ladder.issues:[];
+  if(on){
+    var exists=S.ladder.issues.some(function(x){return x.typeKey===t&&x.item===item});
+    if(!exists){
+      var label=(t==='기타'&&S.ladder.otherType)?S.ladder.otherType:t;
+      S.ladder.issues.push({id:uid(),typeKey:t,type:label,item:item,note:'',files:[]});
+    }
+  }else{
+    S.ladder.issues=S.ladder.issues.filter(function(x){return !(x.typeKey===t&&x.item===item)});
+  }
+  save();ladder();
+}
+function removeLadderItem(t,item){toggleLadderItem(t,item,false)}
+function setLadderIssueNote(idx,value){
   if(!S.ladder.issues[idx])return;
-  S.ladder.issues[idx][field]=value;
+  S.ladder.issues[idx].note=value;
   save();
-}
-function addLadderIssue(t){
-  var label=(t==='기타'&&S.ladder.otherType)?S.ladder.otherType:t;
-  S.ladder.issues.push({id:uid(),typeKey:t,type:label,item:'',note:'',files:[]});
-  save();ladder();
-}
-function removeLadderIssue(idx){
-  S.ladder.issues.splice(idx,1);
-  save();ladder();
 }
 
 function ladder(){
@@ -594,7 +628,6 @@ function ladder(){
 
   const body=`<div class="card step-card"><div class="step-head"><span>사다리</span><b>보유현황 · 상태 · 이상사항</b></div>
     <div class="summary"><h2>보유 사다리</h2><button class="guide-btn" onclick="showLadderTypeGuide()">📷 유형 사진</button></div>
-    <p class="muted">유형별 보유 수량을 +/− 로 입력하고, 보유한 유형은 양호·미흡을 선택하세요. <b>미흡</b>을 누르면 그 자리에서 바로 이상사항을 기록할 수 있습니다. 입력하지 않은 유형은 미보유(0대)로 처리됩니다.</p>
     <div class="lad-grid">${D.ladderTypes.map(ladderInventoryCard).join('')}</div>
     ${st.counts&&st.counts['기타']>0?`<div class="field"><label>기타 사다리 유형명</label><input value="${esc(st.otherType)}" onchange="S.ladder.otherType=this.value;save()"></div>`:''}
     <div class="notice"><b>총 보유수량 <span id="ladderTotal">${total}</span>대</b>${badTypes.length?` · 미흡 ${badTypes.length}종`:''}</div>
@@ -611,7 +644,7 @@ function noLadder(){
   S.ladder.types=[];S.ladder.counts={};S.ladder.typeStatus={};S.ladder.issues=[];
   S.ladder.status='na';S.ladder.step=1;
   S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';
-  save();check('facility')
+  save();checklist('common')
 }
 /* 사다리 화면을 마치고 시설·소방으로 넘어간다.
    한 화면에서 수량 / 양호·미흡 / 이상사항까지 모두 입력하므로 여기서 전부 검증한다. */
@@ -626,12 +659,11 @@ function ladderInventoryNext(){
 
   const badTypes=owned.filter(function(t){return st.typeStatus[t]==='bad'});
 
-  /* 미흡 유형은 이상 항목을 반드시 골라야 한다. */
+  /* 미흡 유형은 이상항목을 1개 이상 체크해야 한다. */
   for(var i=0;i<badTypes.length;i++){
     var t=badTypes[i];
     var mine=st.issues.filter(function(x){return x.typeKey===t});
-    if(!mine.length)return toast(t+' 이상사항을 1건 이상 등록하세요.');
-    if(mine.find(function(x){return !x.item}))return toast(t+' 이상 항목을 선택하세요.');
+    if(!mine.length)return toast(t+' 이상항목을 1개 이상 체크하세요.');
   }
 
   /* 미흡이 아닌 유형에 남아있는 이상사항은 정리 */
@@ -643,7 +675,7 @@ function ladderInventoryNext(){
   st.step=1;
   st.checkedAt=new Date().toISOString();
   st.checkedBy=S.basic?.inspector||'';
-  save();check('facility');
+  save();checklist('common');
 }
 /* +/- 버튼으로 수량을 조절한다. 0 -> 1이 되면 상태 선택 UI가 나타나야 하고,
    1 -> 0이 되면 사라져야 하므로 그 경계에서만 화면을 다시 그린다. */
@@ -668,19 +700,13 @@ function stepLadderCount(t,delta){
   updateLadderTotal();
 }
 /* 양호/미흡 선택.
-   '미흡'을 고르면 그 유형의 이상사항 입력칸을 1건 자동으로 만들어 바로 적을 수 있게 하고,
-   '양호'로 되돌리면 그 유형에 적어둔 이상사항을 지운다. */
+   '미흡'을 고르면 그 줄 아래에 이상항목 체크박스 목록이 펼쳐진다.
+   '양호'로 되돌리면 그 유형에 체크해둔 이상항목을 모두 지운다. */
 function setLadderTypeStatus(t,status){
   S.ladder.typeStatus=S.ladder.typeStatus||{};
   S.ladder.typeStatus[t]=status;
   S.ladder.issues=Array.isArray(S.ladder.issues)?S.ladder.issues:[];
-  var mine=S.ladder.issues.filter(function(x){return x.typeKey===t});
-  if(status==='bad'){
-    if(!mine.length){
-      var label=(t==='기타'&&S.ladder.otherType)?S.ladder.otherType:t;
-      S.ladder.issues.push({id:uid(),typeKey:t,type:label,item:'',note:'',files:[]});
-    }
-  }else{
+  if(status!=='bad'){
     S.ladder.issues=S.ladder.issues.filter(function(x){return x.typeKey!==t});
   }
   save();ladder();
@@ -693,24 +719,13 @@ function updateLadderTotal(){
   },0);
   el.textContent=total;
 }
-function issueCard(kind,x,i){
-  const data=kind==='ladder'?D.ladder.map(v=>v[0]):D[kind];
-  const types=kind==='ladder'?(S.ladder.types.length?S.ladder.types:D.ladderTypes):[];
-  return `<div class="q issue-card">
-    ${kind==='ladder'?`<div class="field"><label>사다리 유형</label><select onchange="S.ladder.issues[${i}].type=this.value;save()"><option value="">유형 선택</option>${types.map(t=>{const label=t==='기타'&&S.ladder.otherType?S.ladder.otherType:t;return `<option value="${esc(label)}" ${x.type===label?'selected':''}>${esc(label)}</option>`}).join('')}</select></div>`:''}
-    <div class="field"><label>이상 항목</label><select onchange="S.${kind}.issues[${i}].item=this.value;save()"><option value="">항목 선택</option>${data.map(v=>`<option ${x.item===v?'selected':''}>${v}</option>`).join('')}<option ${x.item==='기타'?'selected':''}>기타</option></select></div>
-    <div class="field"><label>추가 설명 <small>(선택)</small></label><textarea placeholder="사진만으로 설명이 어려운 경우 입력" onchange="S.${kind}.issues[${i}].note=this.value;save()">${esc(x.note||'')}</textarea></div>
-    <div class="field"><label>사진</label><label class="photo-picker"><span class="camera-emoji">📷</span><span><b>사진 촬영·추가</b><small>이상사항 사진을 첨부하세요</small></span><input class="photo-input" type="file" accept="image/*" multiple onchange="attachIssuePhotos('${kind}',${i},this)"></label>${renderPhotoList(x.files,'issue',kind+'|'+i)}</div>
-    <button class="danger wide" onclick="S.${kind}.issues.splice(${i},1);save();${kind==='ladder'?'ladder()':`check('${kind}')`}">이 항목 삭제</button>
-  </div>`
-}
-function addIssue(kind){S[kind].issues.push({id:uid(),type:'',item:'',note:'',files:[]});save();kind==='ladder'?ladder():check(kind)}
+
 async function attachIssuePhotos(kind,i,input){
   const n=input.files.length;toast('사진 압축 중...');
   const added=await attachPhotos(input.files);
   S[kind].issues[i].files=[...(S[kind].issues[i].files||[]),...added];save();
   toast(`${n}개 사진 선택됨`);
-  kind==='ladder'?ladder():check(kind);
+  kind==='ladder'?ladder():checklist(kind);
 }
 function voiceQuestions(){const x=[...D.voice];(S.store.accidents||[]).forEach(a=>x.push([`사고사례 "${a}"에 대해 안내받았습니까?`,['안내받음','일부만 알고 있음','안내받지 못함']]));(S.store.tasks||[]).forEach(a=>x.push([`기존 개선과제 "${a}"가 개선되었다고 느낍니까?`,['개선됨','일부 개선','개선되지 않음']]));return x}
 
@@ -738,7 +753,7 @@ function appendWorkerDeleteButton(){
   };
   target.appendChild(btn);
 }
-function pickVoice(oi){const w=S.workers[S.worker];w.answers[w.qi]={oi};voice()}function voicePrev(){const w=S.workers[S.worker];if(w.qi){w.qi--;voice()}else check('tbm')}function voiceNext(){const w=S.workers[S.worker],n=voiceQuestions().length;if(!w.answers[w.qi])return toast('답변을 선택하세요');if(w.qi<n-1){w.qi++;voice()}else workerDone()}
+function pickVoice(oi){const w=S.workers[S.worker];w.answers[w.qi]={oi};voice()}function voicePrev(){const w=S.workers[S.worker];if(w.qi){w.qi--;voice()}else checklist('tbm')}function voiceNext(){const w=S.workers[S.worker],n=voiceQuestions().length;if(!w.answers[w.qi])return toast('답변을 선택하세요');if(w.qi<n-1){w.qi++;voice()}else workerDone()}
 function workerDone(){frame(`${tabs('voice')}<div class="card"><h2>근로자 ${S.worker+1} 의견청취 완료</h2><p class="muted">응답은 익명으로 저장되며 최종 결과에는 대표의견과 기타의견으로 요약됩니다.</p><button class="primary wide" onclick="addWorker()">＋ 근로자 추가</button><button class="secondary wide" style="margin-top:8px" onclick="other()">의견청취 종료 →</button>${S.workers.length>1?`<button class="danger wide" style="margin-top:8px" onclick="removeWorker()">현재 근로자 삭제</button>`:''}</div>`,`의견청취 완료`,`인원 제한 없이 추가할 수 있습니다.`)}function addWorker(){S.workers.push({answers:{},qi:0});S.worker=S.workers.length-1;voice()}
 function removeWorker(){
   if(S.workers.length<2)return toast('최소 1명은 필요합니다.');
@@ -750,7 +765,7 @@ function prevVoice(){
   const w=S.workers[S.worker];
   if(w&&w.qi>0){w.qi--;save();voice();return}
   if(S.worker>0){S.worker--;const pw=S.workers[S.worker];pw.qi=Math.max(0,voiceQuestions().length-1);save();voice();return}
-  check('tbm')
+  checklist('tbm')
 }
 function other(){S.screen='other';frame(`${tabs('other')}<div class="card"><h2>점검자 기타사항</h2><p class="muted">정해진 문항 외 특이사항을 여러 건 기록할 수 있습니다.</p>${S.others.map((x,i)=>`<div class="q"><textarea placeholder="특이사항 내용" onchange="S.others[${i}].text=this.value;save()">${esc(x.text)}</textarea><div class="field"><label>사진</label><label class="photo-picker"><span class="camera-emoji">📷</span><span><b>사진 촬영·추가</b><small>카메라 또는 앨범에서 선택</small></span><input class="photo-input" type="file" accept="image/*" multiple onchange="attachOtherPhotos(${i},this)"></label></div>${renderPhotoList(x.files,'other',i)}<label class="muted"><input style="width:auto" type="checkbox" ${x.task?'checked':''} onchange="S.others[${i}].task=this.checked;save()"> 개선과제 후보에 포함</label><button class="danger wide" onclick="S.others.splice(${i},1);other()">삭제</button></div>`).join('')}<button class="secondary wide" onclick="S.others.push({id:uid(),text:'',files:[],task:false});other()">＋ 기타사항 추가</button><div class="grid" style="margin-top:8px"><button class="secondary" onclick="voice()">← 이전</button>${hasPastTasks()?`<button class="primary" onclick="tasks()">조치확인 →</button>`:`<button class="primary" onclick="finalSubmit()">최종 제출 →</button>`}</div></div>`,`기타사항`,`정해진 문항 외 내용과 사진을 기록합니다.`)}
 async function attachOtherPhotos(i,input){
@@ -844,7 +859,8 @@ function completionState(){
     if(!S.workChecked?.[wi])missing.push({kind:'work',wi,label:`작업점검 · ${w[0]}`});
   });
   if(!['good','bad','na'].includes(S.ladder.status))missing.push({kind:'ladder',label:'사다리 점검'});
-  if(!['good','bad'].includes(S.facility.status))missing.push({kind:'facility',label:'시설·소방 점검'});
+  if(!['good','bad'].includes(S.common.status))missing.push({kind:'common',label:'공통·시설 점검'});
+  if(!['good','bad'].includes(S.fire.status))missing.push({kind:'fire',label:'소방 점검'});
   if(!['good','bad'].includes(S.tbm.status))missing.push({kind:'tbm',label:'TBM 점검'});
   const qs=voiceQuestions();
   const workersOk=(S.workers||[]).length>0 && S.workers.every(w=>qs.every((_,i)=>w.answers&&w.answers[i]));
@@ -855,8 +871,9 @@ function jumpToMissing(m){
   if(!m)return;
   if(m.kind==='work'){S.wi=m.wi;work();return}
   if(m.kind==='ladder'){ladder();return}
-  if(m.kind==='facility'){check('facility');return}
-  if(m.kind==='tbm'){check('tbm');return}
+  if(m.kind==='common'){checklist('common');return}
+  if(m.kind==='fire'){checklist('fire');return}
+  if(m.kind==='tbm'){checklist('tbm');return}
   if(m.kind==='voice'){voice();return}
 }
 /* PHOTO_STORE(브라우저 메모리)에서 실제 사진 데이터를 꺼내온다. */
@@ -875,8 +892,11 @@ function buildSubmitPayload(){
   (S.ladder.issues||[]).filter(x=>x.files&&x.files.length).forEach(x=>{
     issues.push({category:'사다리',itemName:`${x.type||''} ${x.item||'이상사항'}`.trim(),note:x.note||'',hazard:'떨어짐',photos:resolvePhotos(x.files)});
   });
-  (S.facility.issues||[]).filter(x=>x.files&&x.files.length).forEach(x=>{
-    issues.push({category:'시설소방',itemName:x.item||'미흡사항',note:x.note||'',hazard:'시설·소방',photos:resolvePhotos(x.files)});
+  (S.common.issues||[]).filter(x=>x.files&&x.files.length).forEach(x=>{
+    issues.push({category:'공통·시설',itemName:x.item||'미흡사항',note:x.note||'',hazard:'시설',photos:resolvePhotos(x.files)});
+  });
+  (S.fire.issues||[]).filter(x=>x.files&&x.files.length).forEach(x=>{
+    issues.push({category:'소방',itemName:x.item||'미흡사항',note:x.note||'',hazard:'소방',photos:resolvePhotos(x.files)});
   });
   (S.tbm.issues||[]).filter(x=>x.files&&x.files.length).forEach(x=>{
     issues.push({category:'TBM',itemName:x.item||'미흡사항',note:x.note||'',hazard:'안전관리',photos:resolvePhotos(x.files)});
@@ -889,7 +909,7 @@ function buildSubmitPayload(){
   return {
     store:S.store.name, division:S.basic.hq||'', dept:S.basic.dept||'', team:S.basic.team||'',
     inspector:S.basic.inspector||'', date:S.basic.date||new Date().toISOString().slice(0,10),
-    workRisk:c.work, ladderCount:c.lm, facilityCount:c.fm, tbmCount:c.tm,
+    workRisk:c.work, ladderCount:c.lm, facilityCount:c.cm+c.fim, tbmCount:c.tm,
     tasks:S.tasks.filter(x=>x.include), resultNote:S.resultNote||'', issues
   };
 }
@@ -916,7 +936,7 @@ function submitToServer(){
     report(); // 저장은 실패했어도 로컬 결과화면은 보여준다 (재시도는 최종 제출을 다시 누르면 됨)
   });
 }
-function calc(){const work=D.works.map((w,i)=>{if(S.workNA?.[i])return{name:w[0],risk:0,total:0,status:'na'};const a=Object.values(S.wa[i]||{}),r=a.filter(x=>x.risk).length;return{name:w[0],risk:r,total:a.length,status:'checked'}});const haz={};Object.entries(S.wa).forEach(([wi,ans])=>{if(S.workNA?.[wi])return;Object.values(ans).filter(x=>x.risk).forEach(x=>(x.hazards||[]).forEach(h=>haz[h]=(haz[h]||0)+1))});const fm=(S.facility.issues||[]).length,tm=(S.tbm.issues||[]).length,lm=(S.ladder.issues||[]).length;return{work,haz:Object.entries(haz).sort((a,b)=>b[1]-a[1]),fm,tm,lm}}
+function calc(){const work=D.works.map((w,i)=>{if(S.workNA?.[i])return{name:w[0],risk:0,total:0,status:'na'};const a=Object.values(S.wa[i]||{}),r=a.filter(x=>x.risk).length;return{name:w[0],risk:r,total:a.length,status:'checked'}});const haz={};Object.entries(S.wa).forEach(([wi,ans])=>{if(S.workNA?.[wi])return;Object.values(ans).filter(x=>x.risk).forEach(x=>(x.hazards||[]).forEach(h=>haz[h]=(haz[h]||0)+1))});const cm=(S.common.issues||[]).length,fim=(S.fire.issues||[]).length,tm=(S.tbm.issues||[]).length,lm=(S.ladder.issues||[]).length;return{work,haz:Object.entries(haz).sort((a,b)=>b[1]-a[1]),cm,fim,tm,lm}}
 /* 이번 점검에서 새로 발견한 지적사항 목록 (결과보고서에서만 보여준다) */
 function buildFoundIssuesHtml(){
   var rows=[],i;
@@ -932,8 +952,11 @@ function buildFoundIssuesHtml(){
   (S.ladder.issues||[]).forEach(function(x){
     rows.push({cat:'사다리',text:((x.type||'')+' '+(x.item||'이상사항')).trim(),hazard:'떨어짐'});
   });
-  (S.facility.issues||[]).forEach(function(x){
-    rows.push({cat:'시설·소방',text:x.item||'미흡사항',hazard:'시설·소방'});
+  (S.common.issues||[]).forEach(function(x){
+    rows.push({cat:'공통·시설',text:x.item||'미흡사항',hazard:'시설'});
+  });
+  (S.fire.issues||[]).forEach(function(x){
+    rows.push({cat:'소방',text:x.item||'미흡사항',hazard:'소방'});
   });
   (S.tbm.issues||[]).forEach(function(x){
     rows.push({cat:'TBM',text:x.item||'미흡사항',hazard:'안전관리'});
@@ -953,7 +976,7 @@ function report(){S.screen='result';const c=calc(),active=S.tasks.filter(x=>x.in
   const links=S.resultLinks;
   const linksHtml=links?`<div class="notice"><b>저장 완료</b><br>${links.pdfUrl?`<a href="${esc(links.pdfUrl)}" target="_blank">📄 결과 PDF 열기</a><br>`:''}${links.folderUrl?`<a href="${esc(links.folderUrl)}" target="_blank">📁 점검 폴더 열기</a>`:''}</div>`:'';
   const foundHtml=buildFoundIssuesHtml();
-  frame(`${tabs('result')}<div class="card"><h2>${esc(S.store.name)} 안전보건 현장진단 결과</h2>${submittedText?`<p class="muted">${submittedText}</p>`:''}${linksHtml}<div class="notice"><b>공식 점수·등급은 아직 산출하지 않습니다.</b><br>현재는 확인된 위험신호와 미흡사항 건수를 중심으로 보여줍니다.</div><div class="metric"><div><b>${responses}</b>의견 참여</div><div><b>${c.fm}</b>시설 미흡</div><div><b>${c.lm}</b>사다리 이상</div><div><b>${c.tm}</b>TBM 미흡</div><div><b>${active.length}</b>개선과제</div></div></div><div class="card"><h2>작업유형 위험신호</h2>${c.work.map(x=>`<div class="riskrow"><header><span>${x.name}</span><span>${x.status==='na'?'해당 없음':`위험신호 ${x.risk}건`}</span></header></div>`).join('')}</div><div class="card"><h2>재해유형별 위험신호</h2>${c.haz.length?c.haz.map(([h,n])=>`<div class="riskrow"><header><span>${h}</span><span>${n}건</span></header></div>`).join(''):'<p class="muted">위험신호 없음</p>'}</div><div class="card"><h2>종합진단 초안</h2><textarea readonly>${esc(`${S.store.name}은(는) ${top.filter(x=>x.risk).map(x=>x.name).join(', ')||'전 작업'} 영역을 중심으로 확인되었습니다. 시설·소방 미흡 ${c.fm}건, TBM 미흡 ${c.tm}건, 사다리 이상 ${c.lm}건이며 개선과제 ${active.length}건을 검토해야 합니다.`)}</textarea><div class="field" style="margin-top:10px"><label>점검자 추가 의견 <small>(선택)</small></label><textarea placeholder="위 자동 진단에 덧붙일 내용을 입력하세요" onchange="S.resultNote=this.value;save()">${esc(S.resultNote)}</textarea></div>${foundHtml}<h2 style="margin-top:16px">과거 지적사항 조치 확인</h2>${active.map(x=>`<div class="q"><b>${esc(x.title)}</b><div class="muted">${esc(x.source||'')} · ${esc(x.owner||'')} · ${esc(x.status||'')}</div></div>`).join('')||'<p class="muted">과거 지적사항 없음</p>'}<button class="secondary wide" onclick="go('tasks')">← 이전</button><button class="secondary wide" style="margin-top:8px" onclick="window.print()">보고서 인쇄</button><button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button></div>`,`결과보고서`,`공식 점수·상중하 등급은 가중치 확정 후 적용합니다.`)}
+  frame(`${tabs('result')}<div class="card"><h2>${esc(S.store.name)} 안전보건 현장진단 결과</h2>${submittedText?`<p class="muted">${submittedText}</p>`:''}${linksHtml}<div class="notice"><b>공식 점수·등급은 아직 산출하지 않습니다.</b><br>현재는 확인된 위험신호와 미흡사항 건수를 중심으로 보여줍니다.</div><div class="metric"><div><b>${responses}</b>의견 참여</div><div><b>${c.cm}</b>시설 미흡</div><div><b>${c.fim}</b>소방 미흡</div><div><b>${c.lm}</b>사다리 이상</div><div><b>${c.tm}</b>TBM 미흡</div><div><b>${active.length}</b>개선과제</div></div></div><div class="card"><h2>작업유형 위험신호</h2>${c.work.map(x=>`<div class="riskrow"><header><span>${x.name}</span><span>${x.status==='na'?'해당 없음':`위험신호 ${x.risk}건`}</span></header></div>`).join('')}</div><div class="card"><h2>재해유형별 위험신호</h2>${c.haz.length?c.haz.map(([h,n])=>`<div class="riskrow"><header><span>${h}</span><span>${n}건</span></header></div>`).join(''):'<p class="muted">위험신호 없음</p>'}</div><div class="card"><h2>종합진단 초안</h2><textarea readonly>${esc(`${S.store.name}은(는) ${top.filter(x=>x.risk).map(x=>x.name).join(', ')||'전 작업'} 영역을 중심으로 확인되었습니다. 시설·소방 미흡 ${c.fm}건, TBM 미흡 ${c.tm}건, 사다리 이상 ${c.lm}건이며 개선과제 ${active.length}건을 검토해야 합니다.`)}</textarea><div class="field" style="margin-top:10px"><label>점검자 추가 의견 <small>(선택)</small></label><textarea placeholder="위 자동 진단에 덧붙일 내용을 입력하세요" onchange="S.resultNote=this.value;save()">${esc(S.resultNote)}</textarea></div>${foundHtml}<h2 style="margin-top:16px">과거 지적사항 조치 확인</h2>${active.map(x=>`<div class="q"><b>${esc(x.title)}</b><div class="muted">${esc(x.source||'')} · ${esc(x.owner||'')} · ${esc(x.status||'')}</div></div>`).join('')||'<p class="muted">과거 지적사항 없음</p>'}<button class="secondary wide" onclick="go('tasks')">← 이전</button><button class="secondary wide" style="margin-top:8px" onclick="window.print()">보고서 인쇄</button><button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button></div>`,`결과보고서`,`공식 점수·상중하 등급은 가중치 확정 후 적용합니다.`)}
 function resetAll(){if(confirm('저장된 점검 내용을 지우고 새로 시작할까요?')){localStorage.removeItem(KEY);S=fresh();normalizeState();STORE_LIST=null;PHOTO_STORE.clear();start()}}
 
 /* ============ 대시보드 ============ */
@@ -1076,7 +1099,7 @@ function loadDashStoreHistory(name){
     if(el)el.innerHTML='<div class="notice">이력을 불러오지 못했습니다: '+esc(err&&err.message?err.message:String(err))+'</div>';
   });
 }
-function render(x){({start,basic,work,ladder,facility:()=>check('facility'),tbm:()=>check('tbm'),voice,other,tasks,result:report}[x]||start)()}
+function render(x){({start,basic,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,tasks,result:report}[x]||start)()}
 try{
   render(S.screen);
 }catch(err){
