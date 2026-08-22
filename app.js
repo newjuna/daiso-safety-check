@@ -154,7 +154,41 @@ function progressInfo(){
   const total=9, shown=Math.min(total,Math.max(0,idx));
   return {n:shown,total,pct:Math.round(shown/total*100)}
 }
-function frame(body,title='안전보건 현장진단',sub='모바일 현장점검'){const pg=progressInfo();root.innerHTML=`<div class="app"><header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div></div><h1>${title}</h1><p>${sub}</p><div class="hero-progress"><div class="hero-progress-top"><span>전체 진행 ${pg.n}/${pg.total}</span><span>${pg.pct}%</span></div><div class="hero-progress-track"><i style="width:${pg.pct}%"></i></div></div></header><main class="content">${body}</main></div>`;scrollTo(0,0);save()}
+/* 마지막으로 그린 화면의 식별자. 같은 화면을 다시 그리는 경우(예: 사다리 유형 선택,
+   수량 입력, 사진 추가)에는 스크롤을 맨 위로 올리지 않고 보던 위치를 유지한다.
+   화면 자체가 바뀔 때만(작업점검 -> 사다리 등) 맨 위로 올린다. */
+var LAST_VIEW_KEY='';
+function currentViewKey(){
+  /* 같은 화면 안에서도 단계(STEP)나 작업유형이 바뀌면 새 화면으로 취급한다. */
+  var parts=[S.screen];
+  if(S.screen==='work')parts.push(S.wi);
+  if(S.screen==='ladder')parts.push(S.ladder&&S.ladder.step);
+  if(S.screen==='facility')parts.push(S.facility&&S.facility.step);
+  if(S.screen==='tbm')parts.push(S.tbm&&S.tbm.step);
+  if(S.screen==='voice'){
+    parts.push(S.worker);
+    var w=S.workers&&S.workers[S.worker];
+    parts.push(w&&w.qi);
+  }
+  return parts.join('|');
+}
+function frame(body,title='안전보건 현장진단',sub='모바일 현장점검'){
+  const pg=progressInfo();
+  const viewKey=currentViewKey();
+  const sameView=(viewKey===LAST_VIEW_KEY);
+  const keepY=sameView?window.scrollY:0;
+
+  root.innerHTML=`<div class="app"><header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div></div><h1>${title}</h1><p>${sub}</p><div class="hero-progress"><div class="hero-progress-top"><span>전체 진행 ${pg.n}/${pg.total}</span><span>${pg.pct}%</span></div><div class="hero-progress-track"><i style="width:${pg.pct}%"></i></div></div></header><main class="content">${body}</main></div>`;
+
+  LAST_VIEW_KEY=viewKey;
+  if(sameView){
+    /* 다시 그린 직후에 위치를 복원해야 브라우저가 스크롤을 리셋하지 않는다. */
+    requestAnimationFrame(function(){window.scrollTo(0,keepY)});
+  }else{
+    window.scrollTo(0,0);
+  }
+  save();
+}
 function field(label,id,value='',type='text',extra=''){return `<div class="field"><label>${label}</label><input id="${id}" type="${type}" value="${esc(value)}" ${extra}></div>`}
 
 /* ============ 매장 선택 (서버에서 실시간 조회) ============ */
@@ -355,7 +389,8 @@ function workGuide(){
 function toggleWorkNA(wi){
   S.workNA[wi]=!S.workNA[wi];save();work()
 }
-function pickWork(qi,oi){const y=window.scrollY,q=D.works[S.wi][1][qi];S.wa[S.wi]=S.wa[S.wi]||{};const old=S.wa[S.wi][qi]||{},riskSet=Array.isArray(q[3])?q[3]:[];S.wa[S.wi][qi]={...old,oi,risk:riskSet.includes(oi),hazards:q[2]};save();work();requestAnimationFrame(()=>scrollTo({top:y,behavior:'instant'}))}
+/* 스크롤 위치 유지는 frame()이 알아서 처리하므로 여기서 따로 복원하지 않는다. */
+function pickWork(qi,oi){const q=D.works[S.wi][1][qi];S.wa[S.wi]=S.wa[S.wi]||{};const old=S.wa[S.wi][qi]||{},riskSet=Array.isArray(q[3])?q[3]:[];S.wa[S.wi][qi]={...old,oi,risk:riskSet.includes(oi),hazards:q[2]};save();work()}
 function detail(kind,id,v){return `<div class="detail"><div class="field"><label>위험·미흡 내용</label><textarea onchange="setDetail('${kind}','${id}','note',this.value)">${esc(v.note)}</textarea></div><div class="field"><label>사진 첨부</label><label class="photo-picker"><span class="camera-emoji">📷</span><span><b>사진 촬영·추가</b><small>카메라 또는 앨범에서 선택</small></span><input class="photo-input" type="file" accept="image/*" multiple onchange="pickFiles('${kind}','${id}',this)"></label></div>${renderPhotoList(v.files,'work',id)}</div>`}
 function setDetail(k,id,p,val){const o=getObj(k,id);o[p]=val;save()}
 async function pickFiles(k,id,input){
@@ -463,8 +498,8 @@ function ladder(){
       <p class="muted">보유한 사다리 유형과 수량만 입력하세요.</p>
       <div class="field"><label>보유 사다리 유형 <button class="guide-btn" style="margin-left:6px" onclick="showLadderTypeGuide()">📷 사진으로 확인</button></label><div class="ladder-type-grid">${D.ladderTypes.map(t=>ladderTypeCard(t,st.types.includes(t))).join('')}</div></div>
       ${st.types.includes('기타')?`<div class="field"><label>기타 사다리 유형명</label><input value="${esc(st.otherType)}" onchange="S.ladder.otherType=this.value;save()"></div>`:''}
-      ${st.types.length?`<div class="grid">${st.types.map(t=>`<div class="field"><label>${t==='기타'?(st.otherType||'기타'):t} 수량</label><input type="number" min="0" value="${esc(st.counts[t]??1)}" onchange="S.ladder.counts['${t}']=Math.max(0,Number(this.value||0));save();ladder()"></div>`).join('')}</div>`:''}
-      <div class="notice"><b>총 보유수량 ${total}대</b></div>
+      ${st.types.length?`<div class="grid">${st.types.map(t=>`<div class="field"><label>${t==='기타'?(st.otherType||'기타'):t} 수량</label><input type="number" min="0" value="${esc(st.counts[t]??1)}" oninput="setLadderCount('${t}',this.value)"></div>`).join('')}</div>`:''}
+      <div class="notice"><b>총 보유수량 <span id="ladderTotal">${total}</span>대</b></div>
       <div class="grid" style="margin-top:10px">
         <button class="secondary" onclick="work()">← 작업유형으로</button>
         <button class="primary" onclick="ladderInventoryNext()">다음 →</button>
@@ -513,6 +548,19 @@ function finishLadder(){
   S.ladder.status='bad';S.ladder.step=1;S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';save();check('facility')
 }
 function toggleLadderType(t){const a=S.ladder.types.indexOf(t);if(a>=0)S.ladder.types.splice(a,1);else{S.ladder.types.push(t);if(S.ladder.counts[t]==null)S.ladder.counts[t]=1}save();ladder()}
+/* 수량 입력은 화면 전체를 다시 그리지 않고 '총 보유수량' 숫자만 갱신한다.
+   (다시 그리면 입력 중이던 칸에서 커서가 빠져나가 불편함) */
+function setLadderCount(t,value){
+  S.ladder.counts[t]=Math.max(0,Number(value||0));
+  save();
+  var el=document.getElementById('ladderTotal');
+  if(el){
+    var total=(S.ladder.types||[]).reduce(function(n,k){
+      return n+Math.max(0,Number(S.ladder.counts[k]||0));
+    },0);
+    el.textContent=total;
+  }
+}
 function issueCard(kind,x,i){
   const data=kind==='ladder'?D.ladder.map(v=>v[0]):D[kind];
   const types=kind==='ladder'?(S.ladder.types.length?S.ladder.types:D.ladderTypes):[];
