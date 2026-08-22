@@ -28,6 +28,8 @@ function normalizeState(){
   S.ladder=S.ladder||{};
   S.ladder.types=Array.isArray(S.ladder.types)?S.ladder.types:[];
   S.ladder.counts=S.ladder.counts||{};
+  /* 유형별 양호/미흡 상태 (예: {'유형1':'good','A형':'bad'}) */
+  S.ladder.typeStatus=S.ladder.typeStatus||{};
   S.ladder.otherType=S.ladder.otherType||'';
   S.ladder.issues=Array.isArray(S.ladder.issues)?S.ladder.issues:[];
   S.ladder.issues.forEach(x=>{if(!x.id)x.id=uid()});
@@ -454,25 +456,6 @@ function loadLadderTypeImages(){
     if(S.screen==='ladder')ladder();
   }).catch(function(){ /* 이미지 없이도 점검은 계속 진행 가능하므로 조용히 무시 */ });
 }
-function ladderTypeCard(t,selected){
-  var img=(D.ladderTypeImages||{})[t];
-  /* 사진 부분을 누르면 확대해서 보고, 라벨/카드 영역을 누르면 유형을 선택한다.
-     (작은 썸네일만으로는 유형 구분이 어려운 경우가 있어 확대보기를 붙였다) */
-  var thumb;
-  if(img){
-    var zoomClick="zoomImage('"+t+"');event.stopPropagation();return false;";
-    thumb='<img src="'+img+'" alt="'+esc(t)+'" onclick="'+zoomClick+'">';
-  }else{
-    thumb='<span class="ladder-type-noimg">📷</span>';
-  }
-  /* onclick 문자열은 큰따옴표로 감싸서 만들고, 그 안에서 함수 인자 구분은 작은따옴표를 쓴다. */
-  /* (백슬래시로 따옴표를 이스케이프하는 방식은 피한다 - 이전에 파서 문제를 일으킨 적이 있음) */
-  var onclick="toggleLadderType('"+t+"')";
-  return '<button class="ladder-type-card'+(selected?' sel':'')+'" onclick="'+onclick+'">'
-    +'<span class="ladder-type-thumb">'+thumb+'</span>'
-    +'<span class="ladder-type-label">'+esc(t)+' <small style="font-weight:700;color:#9aa0aa">(사진 탭하면 확대)</small></span>'
-    +'</button>';
-}
 /* 사다리 유형 사진을 전체화면으로 크게 보여준다. */
 function zoomImage(typeName){
   var url=(D.ladderTypeImages||{})[typeName];
@@ -487,79 +470,149 @@ function zoomImage(typeName){
   document.body.appendChild(box);
 }
 function closeZoom(){var b=document.getElementById('imgZoom');if(b)b.remove()}
+/* 사다리 유형 5종을 항상 모두 보여주는 카드.
+   사진 + 수량(+/- 버튼) + 수량이 1개 이상일 때만 양호/미흡 선택이 나타난다.
+   수량을 입력하지 않은 유형은 자동으로 0개(= 미보유)로 처리된다. */
+function ladderInventoryCard(t){
+  var st=S.ladder;
+  var count=Math.max(0,Number((st.counts||{})[t]||0));
+  var has=count>0;
+  var img=(D.ladderTypeImages||{})[t];
+  var label=(t==='기타'&&st.otherType)?st.otherType:t;
+  var status=(st.typeStatus||{})[t]||'';
+
+  var thumb;
+  if(img){
+    thumb='<img src="'+img+'" alt="'+esc(label)+'" onclick="zoomImage(\u0027'+t+'\u0027)">';
+  }else{
+    thumb='<span class="ladder-type-noimg">📷</span>';
+  }
+
+  var h='<div class="lad-card'+(has?' has':'')+'">';
+  h+='<div class="lad-thumb">'+thumb+'</div>';
+  h+='<div class="lad-name">'+esc(label)+'</div>';
+
+  /* 수량 조절 */
+  h+='<div class="lad-count">';
+  h+='<button class="lad-btn" onclick="stepLadderCount(\u0027'+t+'\u0027,-1)">−</button>';
+  h+='<span class="lad-num" id="ladCount-'+esc(t)+'">'+count+'</span>';
+  h+='<button class="lad-btn" onclick="stepLadderCount(\u0027'+t+'\u0027,1)">+</button>';
+  h+='</div>';
+
+  /* 보유한 유형만 상태 선택 노출 */
+  if(has){
+    h+='<div class="lad-status">';
+    h+='<button class="lad-ok'+(status==='good'?' sel':'')+'" onclick="setLadderTypeStatus(\u0027'+t+'\u0027,\u0027good\u0027)">양호</button>';
+    h+='<button class="lad-ng'+(status==='bad'?' sel':'')+'" onclick="setLadderTypeStatus(\u0027'+t+'\u0027,\u0027bad\u0027)">미흡</button>';
+    h+='</div>';
+  }else{
+    h+='<div class="lad-status-empty">미보유</div>';
+  }
+  h+='</div>';
+  return h;
+}
+
 function ladder(){
   normalizeState();S.screen='ladder';const st=S.ladder;
   loadLadderTypeImages();
-  const total=(st.types||[]).reduce((n,t)=>n+Math.max(0,Number(st.counts[t]||0)),0);
+  const total=D.ladderTypes.reduce(function(n,t){return n+Math.max(0,Number((st.counts||{})[t]||0))},0);
+  const badTypes=D.ladderTypes.filter(function(t){return (st.typeStatus||{})[t]==='bad'});
   let body='';
+
   if(st.step===1){
-    body=`<div class="card step-card"><div class="step-head"><span>STEP 1</span><b>사다리 보유현황</b></div>
-      <div class="summary"><h2>보유 사다리</h2><button class="guide-btn" onclick="showGuide('ladder')">📋 점검 가이드</button></div>
-      <p class="muted">보유한 사다리 유형과 수량만 입력하세요.</p>
-      <div class="field"><label>보유 사다리 유형 <button class="guide-btn" style="margin-left:6px" onclick="showLadderTypeGuide()">📷 사진으로 확인</button></label><div class="ladder-type-grid">${D.ladderTypes.map(t=>ladderTypeCard(t,st.types.includes(t))).join('')}</div></div>
-      ${st.types.includes('기타')?`<div class="field"><label>기타 사다리 유형명</label><input value="${esc(st.otherType)}" onchange="S.ladder.otherType=this.value;save()"></div>`:''}
-      ${st.types.length?`<div class="grid">${st.types.map(t=>`<div class="field"><label>${t==='기타'?(st.otherType||'기타'):t} 수량</label><input type="number" min="0" value="${esc(st.counts[t]??1)}" oninput="setLadderCount('${t}',this.value)"></div>`).join('')}</div>`:''}
-      <div class="notice"><b>총 보유수량 <span id="ladderTotal">${total}</span>대</b></div>
+    body=`<div class="card step-card"><div class="step-head"><span>STEP 1</span><b>사다리 보유현황 및 상태</b></div>
+      <div class="summary"><h2>보유 사다리</h2><button class="guide-btn" onclick="showLadderTypeGuide()">📷 유형 사진</button></div>
+      <p class="muted">유형별 보유 수량을 +/− 로 입력하고, 보유한 유형은 양호·미흡을 선택하세요. 입력하지 않은 유형은 미보유(0대)로 처리됩니다.</p>
+      <div class="lad-grid">${D.ladderTypes.map(ladderInventoryCard).join('')}</div>
+      ${st.counts&&st.counts['기타']>0?`<div class="field"><label>기타 사다리 유형명</label><input value="${esc(st.otherType)}" onchange="S.ladder.otherType=this.value;save()"></div>`:''}
+      <div class="notice"><b>총 보유수량 <span id="ladderTotal">${total}</span>대</b>${badTypes.length?` · 미흡 ${badTypes.length}종`:''}</div>
       <div class="grid" style="margin-top:10px">
         <button class="secondary" onclick="work()">← 작업유형으로</button>
         <button class="primary" onclick="ladderInventoryNext()">다음 →</button>
       </div>
       <button class="secondary wide" style="margin-top:8px" onclick="noLadder()">보유 사다리 없음</button></div>`;
-  }else if(st.step===2){
-    body=`<div class="card step-card"><div class="step-head"><span>STEP 2</span><b>사다리 이상유무</b></div>
-      <div class="summary"><h2>사다리 상태 확인</h2><button class="guide-btn" onclick="showGuide('ladder')">📋 점검 가이드</button></div>
-      <p class="muted">보유 사다리를 확인한 뒤 이상유무만 선택하세요.</p>
-      <div class="status-choice">
-        <button class="status-good ${st.status==='good'?'selected':''}" onclick="S.ladder.status='good';save();ladder()"><b>✓ 이상 없음</b><small>사다리 점검 전체를 양호로 처리합니다.</small></button>
-        <button class="status-bad ${st.status==='bad'?'selected':''}" onclick="S.ladder.status='bad';save();ladder()"><b>! 이상 있음</b><small>발견한 이상사항만 등록합니다.</small></button>
-      </div>
-      <div class="grid"><button class="secondary" onclick="S.ladder.step=1;save();ladder()">← 보유현황</button><button class="primary" onclick="ladderStatusNext()">다음 →</button></div></div>`;
   }else{
-    body=`<div class="card step-card"><div class="step-head"><span>STEP 3</span><b>사다리 이상사항 등록</b></div>
+    body=`<div class="card step-card"><div class="step-head"><span>STEP 2</span><b>사다리 이상사항 등록</b></div>
       <div class="summary"><h2>발견된 이상사항</h2><span class="pill bad">${st.issues.length}건</span></div>
+      <p class="muted">미흡으로 표시한 유형(${badTypes.map(esc).join(', ')})의 구체적인 이상 내용을 등록하세요.</p>
       ${st.issues.map((x,i)=>issueCard('ladder',x,i)).join('')}
       <button class="secondary wide" onclick="addIssue('ladder')">＋ 이상사항 추가</button>
-      <div class="grid" style="margin-top:10px"><button class="secondary" onclick="S.ladder.step=2;save();ladder()">← 이상유무</button><button class="primary" onclick="finishLadder()">시설·소방 →</button></div></div>`;
+      <div class="grid" style="margin-top:10px"><button class="secondary" onclick="S.ladder.step=1;save();ladder()">← 보유현황</button><button class="primary" onclick="finishLadder()">시설·소방 →</button></div></div>`;
   }
-  frame(`${tabs('ladder')}${body}`,`사다리 현황<br>STEP 점검`,st.step===1?'보유현황':st.step===2?'이상유무':'이상사항만 기록');
+  frame(`${tabs('ladder')}${body}`,`사다리 현황<br>점검`,st.step===1?'보유수량과 양호·미흡을 한 화면에서 입력':'미흡 유형의 이상사항만 기록');
   if(!st.guideSeen)setTimeout(()=>showGuide('ladder'),80);
 }
 function noLadder(){
-  S.ladder.types=[];S.ladder.counts={};S.ladder.issues=[];S.ladder.status='na';S.ladder.step=1;
+  S.ladder.types=[];S.ladder.counts={};S.ladder.typeStatus={};S.ladder.issues=[];
+  S.ladder.status='na';S.ladder.step=1;
   S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';
   save();check('facility')
 }
 function ladderInventoryNext(){
-  const total=(S.ladder.types||[]).reduce((n,t)=>n+Math.max(0,Number(S.ladder.counts[t]||0)),0);
-  if(!S.ladder.types.length||total<1)return toast('사다리 유형과 보유수량을 입력하세요.');
-  S.ladder.step=2;save();ladder()
-}
-function ladderStatusNext(){
-  if(!S.ladder.status)return toast('이상유무를 선택하세요.');
-  if(S.ladder.status==='good'){
-    S.ladder.issues=[];S.ladder.step=1;S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';
-    save();check('facility')
+  const st=S.ladder;
+  const owned=D.ladderTypes.filter(function(t){return Math.max(0,Number((st.counts||{})[t]||0))>0});
+  if(!owned.length)return toast('보유 수량을 입력하거나 "보유 사다리 없음"을 선택하세요.');
+
+  /* 보유한 유형은 모두 양호/미흡을 선택해야 넘어갈 수 있다. */
+  const unset=owned.filter(function(t){return !(st.typeStatus||{})[t]});
+  if(unset.length)return toast(unset[0]+' 상태(양호·미흡)를 선택하세요.');
+
+  /* 화면에 보이는 수량/상태를 types 배열에도 반영 (기존 저장구조 및 개선과제 생성과 호환) */
+  st.types=owned;
+  const badTypes=owned.filter(function(t){return st.typeStatus[t]==='bad'});
+  st.status=badTypes.length?'bad':'good';
+  st.checkedAt=new Date().toISOString();
+  st.checkedBy=S.basic?.inspector||'';
+
+  if(!badTypes.length){
+    /* 전부 양호면 이상사항 등록을 건너뛴다. */
+    st.issues=[];st.step=1;save();check('facility');return;
   }
-  else{S.ladder.step=3;if(!S.ladder.issues.length)S.ladder.issues.push({id:uid(),type:'',item:'',note:'',files:[]});save();ladder()}
+  /* 미흡 유형이 있으면 그 유형으로 이상사항 카드를 미리 만들어 둔다. */
+  st.step=2;
+  if(!st.issues.length){
+    st.issues=badTypes.map(function(t){
+      return {id:uid(),type:(t==='기타'&&st.otherType)?st.otherType:t,item:'',note:'',files:[]};
+    });
+  }
+  save();ladder();
 }
 function finishLadder(){
   if(!S.ladder.issues.length)return toast('이상사항을 1건 이상 등록하세요.');
   if(S.ladder.issues.find(x=>!x.type||!x.item))return toast('사다리 유형과 이상 항목을 선택하세요.');
   S.ladder.status='bad';S.ladder.step=1;S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';save();check('facility')
 }
-function toggleLadderType(t){const a=S.ladder.types.indexOf(t);if(a>=0)S.ladder.types.splice(a,1);else{S.ladder.types.push(t);if(S.ladder.counts[t]==null)S.ladder.counts[t]=1}save();ladder()}
-/* 수량 입력은 화면 전체를 다시 그리지 않고 '총 보유수량' 숫자만 갱신한다.
-   (다시 그리면 입력 중이던 칸에서 커서가 빠져나가 불편함) */
-function setLadderCount(t,value){
-  S.ladder.counts[t]=Math.max(0,Number(value||0));
-  save();
-  var el=document.getElementById('ladderTotal');
-  if(el){
-    var total=(S.ladder.types||[]).reduce(function(n,k){
-      return n+Math.max(0,Number(S.ladder.counts[k]||0));
-    },0);
-    el.textContent=total;
+/* +/- 버튼으로 수량을 조절한다. 0 -> 1이 되면 상태 선택 UI가 나타나야 하고,
+   1 -> 0이 되면 사라져야 하므로 그 경계에서만 화면을 다시 그린다. */
+function stepLadderCount(t,delta){
+  S.ladder.counts=S.ladder.counts||{};
+  var before=Math.max(0,Number(S.ladder.counts[t]||0));
+  var after=Math.max(0,before+delta);
+  S.ladder.counts[t]=after;
+  if(after===0){
+    /* 미보유가 되면 그 유형의 상태 선택도 초기화 */
+    if(S.ladder.typeStatus)delete S.ladder.typeStatus[t];
   }
+  save();
+  var crossedZero=(before===0&&after>0)||(before>0&&after===0);
+  if(crossedZero){ladder();return}
+  /* 그 외에는 숫자와 총합만 갱신 (화면이 튀지 않게) */
+  var el=document.getElementById('ladCount-'+t);
+  if(el)el.textContent=after;
+  updateLadderTotal();
+}
+function setLadderTypeStatus(t,status){
+  S.ladder.typeStatus=S.ladder.typeStatus||{};
+  S.ladder.typeStatus[t]=status;
+  save();ladder();
+}
+function updateLadderTotal(){
+  var el=document.getElementById('ladderTotal');
+  if(!el)return;
+  var total=D.ladderTypes.reduce(function(n,k){
+    return n+Math.max(0,Number((S.ladder.counts||{})[k]||0));
+  },0);
+  el.textContent=total;
 }
 function issueCard(kind,x,i){
   const data=kind==='ladder'?D.ladder.map(v=>v[0]):D[kind];
