@@ -421,15 +421,37 @@ function loadLadderTypeImages(){
 }
 function ladderTypeCard(t,selected){
   var img=(D.ladderTypeImages||{})[t];
-  var thumb=img?('<img src="'+img+'" alt="'+esc(t)+'">'):'<span class="ladder-type-noimg">📷</span>';
+  /* 사진 부분을 누르면 확대해서 보고, 라벨/카드 영역을 누르면 유형을 선택한다.
+     (작은 썸네일만으로는 유형 구분이 어려운 경우가 있어 확대보기를 붙였다) */
+  var thumb;
+  if(img){
+    var zoomClick="zoomImage('"+t+"');event.stopPropagation();return false;";
+    thumb='<img src="'+img+'" alt="'+esc(t)+'" onclick="'+zoomClick+'">';
+  }else{
+    thumb='<span class="ladder-type-noimg">📷</span>';
+  }
   /* onclick 문자열은 큰따옴표로 감싸서 만들고, 그 안에서 함수 인자 구분은 작은따옴표를 쓴다. */
   /* (백슬래시로 따옴표를 이스케이프하는 방식은 피한다 - 이전에 파서 문제를 일으킨 적이 있음) */
   var onclick="toggleLadderType('"+t+"')";
   return '<button class="ladder-type-card'+(selected?' sel':'')+'" onclick="'+onclick+'">'
     +'<span class="ladder-type-thumb">'+thumb+'</span>'
-    +'<span class="ladder-type-label">'+esc(t)+'</span>'
+    +'<span class="ladder-type-label">'+esc(t)+' <small style="font-weight:700;color:#9aa0aa">(사진 탭하면 확대)</small></span>'
     +'</button>';
 }
+/* 사다리 유형 사진을 전체화면으로 크게 보여준다. */
+function zoomImage(typeName){
+  var url=(D.ladderTypeImages||{})[typeName];
+  if(!url)return;
+  var old=document.getElementById('imgZoom');if(old)old.remove();
+  var box=document.createElement('div');
+  box.id='imgZoom';box.className='img-zoom';
+  box.innerHTML='<button class="zoom-close" onclick="closeZoom()">✕</button>'
+    +'<img src="'+url+'" alt="'+esc(typeName)+'">'
+    +'<div class="zoom-label">'+esc(typeName)+'</div>';
+  box.onclick=function(e){if(e.target===box)closeZoom()};
+  document.body.appendChild(box);
+}
+function closeZoom(){var b=document.getElementById('imgZoom');if(b)b.remove()}
 function ladder(){
   normalizeState();S.screen='ladder';const st=S.ladder;
   loadLadderTypeImages();

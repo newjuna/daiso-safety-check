@@ -132,8 +132,10 @@ button{cursor:pointer}
 .ladder-type-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .ladder-type-card{border:1.5px solid var(--line);border-radius:15px;background:#fff;padding:8px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
 .ladder-type-card.sel{border-color:var(--p);background:#fff0f4;box-shadow:0 0 0 3px #e72c5415}
-.ladder-type-thumb{width:100%;height:78px;border-radius:11px;overflow:hidden;background:#f4f5f8;display:flex;align-items:center;justify-content:center}
-.ladder-type-thumb img{width:100%;height:100%;object-fit:cover}
+/* 사다리는 세로로 긴 사진이 많아 높이를 넉넉히 주고, cover(잘라내기) 대신
+   contain(전체 보이기)을 써서 사진이 잘리지 않게 한다. */
+.ladder-type-thumb{width:100%;height:130px;border-radius:11px;overflow:hidden;background:#f4f5f8;display:flex;align-items:center;justify-content:center}
+.ladder-type-thumb img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
 .ladder-type-noimg{font-size:22px;color:var(--muted)}
 .ladder-type-label{font-size:12px;font-weight:900}
 .ladder-type-card.sel .ladder-type-label{color:var(--p)}
@@ -142,6 +144,11 @@ button{cursor:pointer}
 .ladder-guide-list{display:grid;gap:12px;margin:14px 0 18px}
 .ladder-guide-item img{width:100%;border-radius:14px;display:block;background:#f4f5f8}
 .ladder-guide-label{font-size:12px;font-weight:900;margin-bottom:6px}
+/* 카드의 작은 사진을 눌렀을 때 크게 보는 오버레이 */
+.img-zoom{position:fixed;inset:0;background:#0f1218e6;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px}
+.img-zoom img{max-width:100%;max-height:82vh;border-radius:14px;display:block}
+.img-zoom .zoom-close{position:absolute;top:16px;right:16px;width:40px;height:40px;min-height:0;border-radius:50%;background:#ffffff26;color:#fff;font-size:20px;border:0;display:flex;align-items:center;justify-content:center}
+.img-zoom .zoom-label{position:absolute;bottom:24px;left:0;right:0;text-align:center;color:#fff;font-size:13px;font-weight:900}
 
 /* v2 대시보드 - 부서 취약점 순위 리스트 */
 .rank-row{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
