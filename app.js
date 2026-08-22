@@ -32,7 +32,16 @@ function normalizeState(){
   S.ladder.typeStatus=S.ladder.typeStatus||{};
   S.ladder.otherType=S.ladder.otherType||'';
   S.ladder.issues=Array.isArray(S.ladder.issues)?S.ladder.issues:[];
-  S.ladder.issues.forEach(x=>{if(!x.id)x.id=uid()});
+  /* typeKey는 유형별 인라인 입력을 위해 나중에 추가된 항목이다.
+     예전에 저장된 데이터에는 없으므로 type(표시명)으로 되짚어 채운다. */
+  S.ladder.issues.forEach(x=>{
+    if(!x.id)x.id=uid();
+    if(!x.typeKey){
+      if(x.type&&D.ladderTypes.indexOf(x.type)>=0)x.typeKey=x.type;
+      else if(x.type&&S.ladder.otherType&&x.type===S.ladder.otherType)x.typeKey='기타';
+      else x.typeKey='';
+    }
+  });
   S.ladder.guideSeen=!!S.ladder.guideSeen;S.ladder.step=Number(S.ladder.step||1);S.ladder.status=S.ladder.status||'';
   if(!S.facility||Array.isArray(S.facility))S.facility={issues:[],guideSeen:false};
   S.facility.issues=Array.isArray(S.facility.issues)?S.facility.issues:[];
@@ -491,8 +500,8 @@ function ladderInventoryCard(t){
     thumb='<span class="ladder-type-noimg">📷</span>';
   }
 
-  /* 미흡인 카드는 입력 공간이 필요하므로 한 줄 전체를 차지한다. */
-  var h='<div class="lad-card'+(has?' has':'')+(isBad?' bad expand':'')+'">';
+  /* 한 유형 = 한 줄. 미흡이면 이 줄 안에서 바로 이상사항을 적는다. */
+  var h='<div class="lad-card'+(has?' has':'')+(isBad?' bad':'')+'">';
   h+='<div class="lad-top">';
   h+='<div class="lad-thumb">'+thumb+'</div>';
   h+='<div class="lad-info">';
@@ -578,32 +587,24 @@ function removeLadderIssue(idx){
 
 function ladder(){
   normalizeState();S.screen='ladder';const st=S.ladder;
+  st.step=1;
   loadLadderTypeImages();
   const total=D.ladderTypes.reduce(function(n,t){return n+Math.max(0,Number((st.counts||{})[t]||0))},0);
   const badTypes=D.ladderTypes.filter(function(t){return (st.typeStatus||{})[t]==='bad'});
-  let body='';
 
-  if(st.step===1){
-    body=`<div class="card step-card"><div class="step-head"><span>STEP 1</span><b>사다리 보유현황 및 상태</b></div>
-      <div class="summary"><h2>보유 사다리</h2><button class="guide-btn" onclick="showLadderTypeGuide()">📷 유형 사진</button></div>
-      <p class="muted">유형별 보유 수량을 +/− 로 입력하고, 보유한 유형은 양호·미흡을 선택하세요. 입력하지 않은 유형은 미보유(0대)로 처리됩니다.</p>
-      <div class="lad-grid">${D.ladderTypes.map(ladderInventoryCard).join('')}</div>
-      ${st.counts&&st.counts['기타']>0?`<div class="field"><label>기타 사다리 유형명</label><input value="${esc(st.otherType)}" onchange="S.ladder.otherType=this.value;save()"></div>`:''}
-      <div class="notice"><b>총 보유수량 <span id="ladderTotal">${total}</span>대</b>${badTypes.length?` · 미흡 ${badTypes.length}종`:''}</div>
-      <div class="grid" style="margin-top:10px">
-        <button class="secondary" onclick="work()">← 작업유형으로</button>
-        <button class="primary" onclick="ladderInventoryNext()">다음 →</button>
-      </div>
-      <button class="secondary wide" style="margin-top:8px" onclick="noLadder()">보유 사다리 없음</button></div>`;
-  }else{
-    body=`<div class="card step-card"><div class="step-head"><span>STEP 2</span><b>사다리 이상사항 등록</b></div>
-      <div class="summary"><h2>발견된 이상사항</h2><span class="pill bad">${st.issues.length}건</span></div>
-      <p class="muted">미흡으로 표시한 유형(${badTypes.map(esc).join(', ')})의 구체적인 이상 내용을 등록하세요.</p>
-      ${st.issues.map((x,i)=>issueCard('ladder',x,i)).join('')}
-      <button class="secondary wide" onclick="addIssue('ladder')">＋ 이상사항 추가</button>
-      <div class="grid" style="margin-top:10px"><button class="secondary" onclick="S.ladder.step=1;save();ladder()">← 보유현황</button><button class="primary" onclick="finishLadder()">시설·소방 →</button></div></div>`;
-  }
-  frame(`${tabs('ladder')}${body}`,`사다리 현황<br>점검`,st.step===1?'보유수량과 양호·미흡을 한 화면에서 입력':'미흡 유형의 이상사항만 기록');
+  const body=`<div class="card step-card"><div class="step-head"><span>사다리</span><b>보유현황 · 상태 · 이상사항</b></div>
+    <div class="summary"><h2>보유 사다리</h2><button class="guide-btn" onclick="showLadderTypeGuide()">📷 유형 사진</button></div>
+    <p class="muted">유형별 보유 수량을 +/− 로 입력하고, 보유한 유형은 양호·미흡을 선택하세요. <b>미흡</b>을 누르면 그 자리에서 바로 이상사항을 기록할 수 있습니다. 입력하지 않은 유형은 미보유(0대)로 처리됩니다.</p>
+    <div class="lad-grid">${D.ladderTypes.map(ladderInventoryCard).join('')}</div>
+    ${st.counts&&st.counts['기타']>0?`<div class="field"><label>기타 사다리 유형명</label><input value="${esc(st.otherType)}" onchange="S.ladder.otherType=this.value;save()"></div>`:''}
+    <div class="notice"><b>총 보유수량 <span id="ladderTotal">${total}</span>대</b>${badTypes.length?` · 미흡 ${badTypes.length}종`:''}</div>
+    <div class="grid" style="margin-top:10px">
+      <button class="secondary" onclick="work()">← 작업유형으로</button>
+      <button class="primary" onclick="ladderInventoryNext()">시설·소방 →</button>
+    </div>
+    <button class="secondary wide" style="margin-top:8px" onclick="noLadder()">보유 사다리 없음</button></div>`;
+
+  frame(`${tabs('ladder')}${body}`,`사다리 현황<br>점검`,'수량 · 양호/미흡 · 이상사항을 한 화면에서 입력');
   if(!st.guideSeen)setTimeout(()=>showGuide('ladder'),80);
 }
 function noLadder(){
@@ -612,6 +613,8 @@ function noLadder(){
   S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';
   save();check('facility')
 }
+/* 사다리 화면을 마치고 시설·소방으로 넘어간다.
+   한 화면에서 수량 / 양호·미흡 / 이상사항까지 모두 입력하므로 여기서 전부 검증한다. */
 function ladderInventoryNext(){
   const st=S.ladder;
   const owned=D.ladderTypes.filter(function(t){return Math.max(0,Number((st.counts||{})[t]||0))>0});
@@ -621,30 +624,26 @@ function ladderInventoryNext(){
   const unset=owned.filter(function(t){return !(st.typeStatus||{})[t]});
   if(unset.length)return toast(unset[0]+' 상태(양호·미흡)를 선택하세요.');
 
+  const badTypes=owned.filter(function(t){return st.typeStatus[t]==='bad'});
+
+  /* 미흡 유형은 이상 항목을 반드시 골라야 한다. */
+  for(var i=0;i<badTypes.length;i++){
+    var t=badTypes[i];
+    var mine=st.issues.filter(function(x){return x.typeKey===t});
+    if(!mine.length)return toast(t+' 이상사항을 1건 이상 등록하세요.');
+    if(mine.find(function(x){return !x.item}))return toast(t+' 이상 항목을 선택하세요.');
+  }
+
+  /* 미흡이 아닌 유형에 남아있는 이상사항은 정리 */
+  st.issues=st.issues.filter(function(x){return badTypes.indexOf(x.typeKey)>=0});
+
   /* 화면에 보이는 수량/상태를 types 배열에도 반영 (기존 저장구조 및 개선과제 생성과 호환) */
   st.types=owned;
-  const badTypes=owned.filter(function(t){return st.typeStatus[t]==='bad'});
   st.status=badTypes.length?'bad':'good';
+  st.step=1;
   st.checkedAt=new Date().toISOString();
   st.checkedBy=S.basic?.inspector||'';
-
-  if(!badTypes.length){
-    /* 전부 양호면 이상사항 등록을 건너뛴다. */
-    st.issues=[];st.step=1;save();check('facility');return;
-  }
-  /* 미흡 유형이 있으면 그 유형으로 이상사항 카드를 미리 만들어 둔다. */
-  st.step=2;
-  if(!st.issues.length){
-    st.issues=badTypes.map(function(t){
-      return {id:uid(),type:(t==='기타'&&st.otherType)?st.otherType:t,item:'',note:'',files:[]};
-    });
-  }
-  save();ladder();
-}
-function finishLadder(){
-  if(!S.ladder.issues.length)return toast('이상사항을 1건 이상 등록하세요.');
-  if(S.ladder.issues.find(x=>!x.type||!x.item))return toast('사다리 유형과 이상 항목을 선택하세요.');
-  S.ladder.status='bad';S.ladder.step=1;S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';save();check('facility')
+  save();check('facility');
 }
 /* +/- 버튼으로 수량을 조절한다. 0 -> 1이 되면 상태 선택 UI가 나타나야 하고,
    1 -> 0이 되면 사라져야 하므로 그 경계에서만 화면을 다시 그린다. */
@@ -654,8 +653,11 @@ function stepLadderCount(t,delta){
   var after=Math.max(0,before+delta);
   S.ladder.counts[t]=after;
   if(after===0){
-    /* 미보유가 되면 그 유형의 상태 선택도 초기화 */
+    /* 미보유가 되면 그 유형의 상태 선택과 이상사항도 초기화 */
     if(S.ladder.typeStatus)delete S.ladder.typeStatus[t];
+    if(Array.isArray(S.ladder.issues)){
+      S.ladder.issues=S.ladder.issues.filter(function(x){return x.typeKey!==t});
+    }
   }
   save();
   var crossedZero=(before===0&&after>0)||(before>0&&after===0);
@@ -665,9 +667,22 @@ function stepLadderCount(t,delta){
   if(el)el.textContent=after;
   updateLadderTotal();
 }
+/* 양호/미흡 선택.
+   '미흡'을 고르면 그 유형의 이상사항 입력칸을 1건 자동으로 만들어 바로 적을 수 있게 하고,
+   '양호'로 되돌리면 그 유형에 적어둔 이상사항을 지운다. */
 function setLadderTypeStatus(t,status){
   S.ladder.typeStatus=S.ladder.typeStatus||{};
   S.ladder.typeStatus[t]=status;
+  S.ladder.issues=Array.isArray(S.ladder.issues)?S.ladder.issues:[];
+  var mine=S.ladder.issues.filter(function(x){return x.typeKey===t});
+  if(status==='bad'){
+    if(!mine.length){
+      var label=(t==='기타'&&S.ladder.otherType)?S.ladder.otherType:t;
+      S.ladder.issues.push({id:uid(),typeKey:t,type:label,item:'',note:'',files:[]});
+    }
+  }else{
+    S.ladder.issues=S.ladder.issues.filter(function(x){return x.typeKey!==t});
+  }
   save();ladder();
 }
 function updateLadderTotal(){

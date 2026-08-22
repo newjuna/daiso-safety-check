@@ -1,7 +1,10 @@
 :root{--p:#e72c54;--p2:#ff6a82;--bg:#f4f5f8;--ink:#20232a;--muted:#6f7480;--line:#e7e8ed;--ok:#16845b;--warn:#d97706;--bad:#c62847}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,'Malgun Gothic',sans-serif;overflow-x:hidden}
+/* 현장에서 한 손으로 폰을 들고 쓰는 화면이다.
+   기준 글씨를 15px로 잡고, 누르는 것들은 최소 48px 높이를 확보한다.
+   (11~12px 글씨 + 34px 버튼은 장갑 끼거나 서서 쓸 때 너무 작았음) */
+body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,'Malgun Gothic',sans-serif;overflow-x:hidden;-webkit-text-size-adjust:100%}
 .app{max-width:800px;margin:auto;min-height:100vh}
 
 /* 히어로 - 결과값 예시 목업 톤에 맞춰 브랜드 배지 + 미묘한 원형 장식 추가.
@@ -12,26 +15,27 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,Bl
 .hero-top{position:relative;z-index:2;display:flex;align-items:center;gap:10px}
 .hero-logo{width:30px;height:30px;border-radius:10px;background:#fff;color:var(--p);font-weight:1000;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
 .eyebrow{font-size:10px;font-weight:900;letter-spacing:.08em;opacity:.88}
-.hero h1{position:relative;z-index:2;font-size:21px;line-height:1.25;margin:11px 0 4px}
-.hero p{position:relative;z-index:2;margin:0;font-size:12px;opacity:.92}
+.hero h1{position:relative;z-index:2;font-size:22px;line-height:1.25;margin:11px 0 5px}
+.hero p{position:relative;z-index:2;margin:0;font-size:13px;opacity:.94}
 .hero-progress{position:relative;z-index:2;margin-top:12px}
-.hero-progress-top{display:flex;justify-content:space-between;font-size:10px;font-weight:800;opacity:.92;margin-bottom:5px}
+.hero-progress-top{display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;opacity:.94;margin-bottom:5px}
 .hero-progress-track{height:5px;background:rgba(255,255,255,.28);border-radius:99px;overflow:hidden}
 .hero-progress-track i{display:block;height:100%;background:#fff;border-radius:99px;transition:width .25s}
 
 .content{margin-top:0;padding:14px 11px 105px;position:relative;z-index:3}
 .card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:16px;margin-bottom:12px;box-shadow:0 10px 28px #272a331a}
-.card h2{font-size:19px;margin:0 0 12px;letter-spacing:-.2px}
+.card h2{font-size:20px;margin:0 0 12px;letter-spacing:-.2px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.field{margin:9px 0}
-.field>label:not(.photo-picker){display:block;font-size:12px;font-weight:800;margin:0 0 6px}
+.field{margin:12px 0}
+.field>label:not(.photo-picker){display:block;font-size:14px;font-weight:800;margin:0 0 7px}
 .req{color:var(--p)}
 input,select,textarea,button{font:inherit}
-input,select,textarea{width:100%;border:1px solid var(--line);border-radius:13px;padding:12px;background:#fbfbfc;color:var(--ink)}
+/* 입력칸 글씨는 16px로 둔다. 아이폰은 16px보다 작으면 칸을 누르는 순간 화면을 확대해버린다. */
+input,select,textarea{width:100%;font-size:16px;border:1px solid var(--line);border-radius:13px;padding:14px;background:#fbfbfc;color:var(--ink)}
 input[readonly]{background:#f1f2f5;color:var(--muted)}
-textarea{min-height:82px;resize:vertical}
+textarea{min-height:92px;resize:vertical;line-height:1.5}
 button{cursor:pointer}
-.primary,.secondary,.danger{min-height:50px;border:0;border-radius:14px;font-weight:900;padding:10px 14px;transition:transform .12s}
+.primary,.secondary,.danger{min-height:54px;font-size:15px;border:0;border-radius:14px;font-weight:900;padding:10px 14px;transition:transform .12s}
 .primary{background:var(--p);color:white;box-shadow:0 8px 20px #e72c5433}
 .primary:active,.secondary:active,.danger:active{transform:scale(.98)}
 .secondary{background:#eff0f3;color:var(--ink)}
@@ -41,27 +45,27 @@ button{cursor:pointer}
 /* 탭바 - 스크롤 없이 한 화면에 다 보이도록 줄바꿈 허용 (좌우 스크롤 대신 여러 줄로 펼침) */
 .tabs-wrap{margin:0 0 9px}
 .tabs{display:flex;flex-wrap:wrap;gap:6px}
-.tab{flex:none;border:1.5px solid var(--line);border-radius:999px;background:#fff;padding:8px 12px;font-size:11.5px;font-weight:900;white-space:nowrap;color:var(--muted)}
+.tab{flex:none;border:1.5px solid var(--line);border-radius:999px;background:#fff;padding:10px 14px;font-size:13px;font-weight:900;white-space:nowrap;color:var(--muted)}
 /* 완료(양호) = 옅은 초록, 완료(위험발견) = 옅은 빨강, 미완료 = 기본 회색 텍스트 */
 .tab.done{background:#f0fbf5;border-color:#c8ead8;color:var(--ok)}
 .tab.done.risk{background:#fff0f3;border-color:#ffc7d1;color:var(--bad)}
 .tab.active{background:var(--p);border-color:var(--p);color:white}
 
 .summary{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.pill{font-size:11px;font-weight:900;padding:6px 9px;border-radius:99px;background:#f1f2f5;color:var(--muted)}
+.pill{font-size:12.5px;font-weight:900;padding:6px 10px;border-radius:99px;background:#f1f2f5;color:var(--muted);white-space:nowrap}
 .pill.bad{background:#fff0f3;color:var(--bad)}
-.q{border:1px solid var(--line);border-radius:18px;padding:14px;margin:10px 0;background:#fff}
-.q h3{font-size:14px;line-height:1.5;margin:0 0 10px}
+.q{border:1px solid var(--line);border-radius:18px;padding:15px;margin:11px 0;background:#fff}
+.q h3{font-size:15.5px;line-height:1.5;margin:0 0 11px}
 .answers{display:grid;gap:8px}
-.ans{width:100%;min-height:48px;text-align:left;border:1px solid var(--line);border-radius:13px;background:#fafafd;padding:11px}
+.ans{width:100%;min-height:52px;font-size:14.5px;text-align:left;border:1px solid var(--line);border-radius:13px;background:#fafafd;padding:12px 13px}
 .ans.sel{border-color:var(--p);background:#fff0f4;color:var(--p);font-weight:900;animation:pop .18s}
 .answer2{grid-template-columns:1fr 1fr}
 .good.sel{border-color:#a9dfc8;background:#edf9f4;color:var(--ok)}
 .bad.sel{border-color:#ffbbc8;background:#fff0f3;color:var(--bad)}
 .detail{margin-top:10px;padding:11px;border-radius:13px;background:#fff7f8;border:1px dashed #ffb0c0}
 .detail .field:first-child{margin-top:0}
-.muted{font-size:12px;line-height:1.55;color:var(--muted)}
-.notice{padding:11px;border-radius:13px;background:#fff8e9;color:#8a5800;font-size:12px;line-height:1.5;margin:9px 0}
+.muted{font-size:13.5px;line-height:1.6;color:var(--muted)}
+.notice{padding:13px;border-radius:13px;background:#fff8e9;color:#8a5800;font-size:13.5px;line-height:1.5;margin:11px 0}
 .nav{position:fixed;z-index:5;bottom:0;left:50%;transform:translateX(-50%);width:min(800px,100%);background:#ffffffed;backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:9px max(11px,env(safe-area-inset-left)) calc(9px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
 .progress{text-align:center;font-size:11px;font-weight:900;color:var(--muted)}
 .bar{height:5px;background:#e9eaf0;border-radius:5px;overflow:hidden;margin-top:4px}
@@ -88,11 +92,11 @@ button{cursor:pointer}
 @media(max-width:560px){.grid{grid-template-columns:1fr}.hero h1{font-size:22px}.card{padding:14px}.metric{grid-template-columns:1fr 1fr 1fr}.nav .primary,.nav .secondary{padding:8px;min-height:46px}}
 
 /* v3 사진 버튼 */
-.photo-picker{display:flex;align-items:center;justify-content:center;text-align:left;gap:12px;width:100%;min-height:64px;padding:12px 14px;border:1.5px dashed #ff9fb4;border-radius:16px;background:#fff8fa;color:var(--ink);cursor:pointer;transition:.18s;box-sizing:border-box}
+.photo-picker{display:flex;align-items:center;justify-content:center;text-align:left;gap:12px;width:100%;min-height:72px;padding:13px 15px;border:1.5px dashed #ff9fb4;border-radius:16px;background:#fff8fa;color:var(--ink);cursor:pointer;transition:.18s;box-sizing:border-box}
 .photo-picker>*{flex:0 0 auto}
 .photo-picker:active{transform:scale(.99);background:#fff1f5}
 .photo-picker .camera-emoji{display:flex;align-items:center;justify-content:center;flex:0 0 42px;width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,var(--p),var(--p2));font-size:22px;box-shadow:0 6px 16px #e72c5430}
-.photo-picker span:last-of-type{display:flex;flex-direction:column;gap:3px}.photo-picker b{font-size:13px}.photo-picker small{font-size:10px;color:var(--muted);font-weight:700}
+.photo-picker span:last-of-type{display:flex;flex-direction:column;gap:3px}.photo-picker b{font-size:14.5px}.photo-picker small{font-size:11.5px;color:var(--muted);font-weight:700}
 .photo-input{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}
 
 /* v4 간편점검 가이드 */
@@ -108,7 +112,7 @@ button{cursor:pointer}
 @media(min-width:700px){.modal-backdrop{align-items:center}.guide-modal{border-radius:24px}}
 
 /* v5 STEP 간편점검 */
-.step-head{display:flex;align-items:center;gap:9px;margin:-4px 0 15px}.step-head span{background:#303746;color:#fff;border-radius:9px;padding:6px 8px;font-size:9px;font-weight:1000;letter-spacing:.6px}.step-head b{font-size:12px;color:#555d6d}
+.step-head{display:flex;align-items:center;gap:9px;margin:-4px 0 15px;flex-wrap:wrap}.step-head span{background:#303746;color:#fff;border-radius:9px;padding:6px 9px;font-size:10.5px;font-weight:1000;letter-spacing:.6px;white-space:nowrap}.step-head b{font-size:13px;color:#555d6d}
 .status-choice{display:grid;gap:10px;margin:15px 0 18px}.status-choice button{width:100%;min-height:78px;text-align:left;border:1.5px solid var(--line);border-radius:17px;background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:5px;transition:.15s}.status-choice b{font-size:15px}.status-choice small{font-size:10px;color:var(--muted);font-weight:700}.status-choice .status-good.selected{border-color:#2ca36c;background:#f0fbf5;box-shadow:0 0 0 3px #2ca36c16}.status-choice .status-good.selected b{color:#168653}.status-choice .status-bad.selected{border-color:var(--p);background:#fff3f6;box-shadow:0 0 0 3px #e72c5415}.status-choice .status-bad.selected b{color:var(--p)}
 
 /* v6 usability (global-progress는 히어로 안의 .hero-progress로 대체됨) */
@@ -128,26 +132,51 @@ button{cursor:pointer}
 .photo-thumb-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px}
 .photo-remove{position:absolute;top:2px;right:2px;width:18px;height:18px;min-height:0;border-radius:50%;background:#20232acc;color:#fff;font-size:11px;line-height:1;padding:0;border:0;display:flex;align-items:center;justify-content:center}
 
-/* 사다리 보유현황 카드 (사진 + 수량 +/- + 양호/미흡)
-   5종을 항상 모두 보여주고, 수량이 0이면 '미보유'로 표시한다. */
-.lad-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px}
-.lad-card{border:1.5px solid var(--line);border-radius:15px;background:#fbfbfc;padding:9px;display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center}
+/* 사다리 보유현황 (사진 + 수량 +/- + 양호/미흡)
+   가로 3~5칸으로 쪼개면 글자 들어갈 폭이 남지 않아 전부 줄바꿈되고 읽기 힘들다.
+   그래서 "한 유형 = 한 줄"로 간다. 왼쪽에 사진(눌러서 확대), 오른쪽에 유형명 +
+   수량 조절 + 양호/미흡. 화면 폭을 전부 쓰므로 글씨와 버튼을 크게 둘 수 있다.
+   '미흡'을 누르면 그 줄 아래로 이상사항 입력칸이 그대로 펼쳐진다. */
+.lad-grid{display:flex;flex-direction:column;gap:11px}
+.lad-card{border:1.5px solid var(--line);border-radius:18px;background:#fbfbfc;padding:12px;display:flex;flex-direction:column;gap:12px}
 .lad-card.has{border-color:#ffc7d1;background:#fff}
-.lad-thumb{width:100%;height:112px;border-radius:11px;overflow:hidden;background:#f4f5f8;display:flex;align-items:center;justify-content:center}
+.lad-card.bad{border-color:var(--p);background:#fff7f9;box-shadow:0 0 0 3px #e72c5414}
+
+/* 사진(왼쪽) + 정보(오른쪽) 가로 배치 */
+.lad-top{display:flex;flex-direction:row;align-items:center;gap:13px}
+.lad-thumb{width:104px;height:104px;flex:none;border-radius:14px;overflow:hidden;background:#f4f5f8;display:flex;align-items:center;justify-content:center}
 .lad-thumb img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;cursor:zoom-in}
-.ladder-type-noimg{font-size:22px;color:var(--muted)}
-.lad-name{font-size:12px;font-weight:900;line-height:1.3}
+.ladder-type-noimg{font-size:30px;color:var(--muted)}
+
+/* 유형명은 한 줄을 다 쓰고, 그 아래에 수량과 양호/미흡을 나란히 놓는다.
+   폭이 부족하면 양호/미흡이 자동으로 다음 줄로 내려간다. */
+.lad-info{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.lad-name{width:100%;font-size:16px;font-weight:900;line-height:1.3}
 /* 수량 조절 */
-.lad-count{display:flex;align-items:center;gap:8px}
-.lad-btn{width:34px;height:34px;min-height:0;padding:0;border:1.5px solid var(--line);background:#fff;border-radius:10px;font-size:17px;font-weight:900;color:#3b4350;display:flex;align-items:center;justify-content:center;line-height:1}
+.lad-count{display:flex;align-items:center;gap:10px;flex:none}
+.lad-btn{width:46px;height:46px;min-height:0;padding:0;border:1.5px solid var(--line);background:#fff;border-radius:13px;font-size:22px;font-weight:900;color:#3b4350;display:flex;align-items:center;justify-content:center;line-height:1}
 .lad-btn:active{background:#f0f2f5}
-.lad-num{min-width:26px;font-size:16px;font-weight:1000}
+.lad-num{min-width:34px;font-size:21px;font-weight:1000;text-align:center}
 /* 양호 / 미흡 */
-.lad-status{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%}
-.lad-status button{min-height:38px;padding:0;border:1.5px solid var(--line);background:#fff;border-radius:10px;font-size:12px;font-weight:900;color:var(--muted)}
-.lad-ok.sel{border-color:#2ca36c;background:#f0fbf5;color:#168653}
-.lad-ng.sel{border-color:var(--p);background:#fff0f4;color:var(--p)}
-.lad-status-empty{font-size:11px;font-weight:800;color:#a7adb8;padding:9px 0}
+.lad-status{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;min-width:160px}
+.lad-status button{min-height:48px;padding:0 6px;border:1.5px solid var(--line);background:#fff;border-radius:13px;font-size:15px;font-weight:900;color:var(--muted)}
+.lad-ok.sel{border-color:#2ca36c;background:#f0fbf5;color:#168653;box-shadow:0 0 0 2px #2ca36c22}
+.lad-ng.sel{border-color:var(--p);background:#fff0f4;color:var(--p);box-shadow:0 0 0 2px #e72c5422}
+.lad-status-empty{flex:1;min-width:120px;font-size:13.5px;font-weight:800;color:#a7adb8}
+
+/* 미흡 카드 안에서 바로 적는 이상사항 입력 영역 */
+.lad-issues{border-top:1.5px dashed #ffb0c0;padding-top:13px;display:flex;flex-direction:column;gap:11px}
+.lad-issues-head{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:900;color:var(--p)}
+.lad-issue{border:1px solid var(--line);border-radius:16px;background:#fff;padding:14px}
+.lad-issue .field:first-child{margin-top:0}
+.lad-issue .danger{min-height:48px;margin-top:8px}
+
+/* 좁은 폰에서는 사진을 조금 줄여 오른쪽 폭을 확보 */
+@media(max-width:400px){
+  .lad-thumb{width:84px;height:84px}
+  .lad-name{font-size:15px}
+  .lad-card{padding:10px}
+}
 
 /* 사다리 유형 참고사진 모달 (STEP1 "📷 사진으로 확인") */
 .ladder-guide-list{display:grid;gap:12px;margin:14px 0 18px}
