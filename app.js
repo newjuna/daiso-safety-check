@@ -472,6 +472,8 @@ function zoomImage(typeName){
 function closeZoom(){var b=document.getElementById('imgZoom');if(b)b.remove()}
 /* 사다리 유형 5종을 항상 모두 보여주는 카드.
    사진 + 수량(+/- 버튼) + 수량이 1개 이상일 때만 양호/미흡 선택이 나타난다.
+   '미흡'을 누르면 그 카드가 한 줄 전체로 넓어지면서 바로 아래에
+   이상항목/설명/사진 입력칸이 펼쳐진다 (작업점검 화면과 같은 방식).
    수량을 입력하지 않은 유형은 자동으로 0개(= 미보유)로 처리된다. */
 function ladderInventoryCard(t){
   var st=S.ladder;
@@ -480,6 +482,7 @@ function ladderInventoryCard(t){
   var img=(D.ladderTypeImages||{})[t];
   var label=(t==='기타'&&st.otherType)?st.otherType:t;
   var status=(st.typeStatus||{})[t]||'';
+  var isBad=(status==='bad');
 
   var thumb;
   if(img){
@@ -488,8 +491,11 @@ function ladderInventoryCard(t){
     thumb='<span class="ladder-type-noimg">📷</span>';
   }
 
-  var h='<div class="lad-card'+(has?' has':'')+'">';
+  /* 미흡인 카드는 입력 공간이 필요하므로 한 줄 전체를 차지한다. */
+  var h='<div class="lad-card'+(has?' has':'')+(isBad?' bad expand':'')+'">';
+  h+='<div class="lad-top">';
   h+='<div class="lad-thumb">'+thumb+'</div>';
+  h+='<div class="lad-info">';
   h+='<div class="lad-name">'+esc(label)+'</div>';
 
   /* 수량 조절 */
@@ -503,13 +509,71 @@ function ladderInventoryCard(t){
   if(has){
     h+='<div class="lad-status">';
     h+='<button class="lad-ok'+(status==='good'?' sel':'')+'" onclick="setLadderTypeStatus(\u0027'+t+'\u0027,\u0027good\u0027)">양호</button>';
-    h+='<button class="lad-ng'+(status==='bad'?' sel':'')+'" onclick="setLadderTypeStatus(\u0027'+t+'\u0027,\u0027bad\u0027)">미흡</button>';
+    h+='<button class="lad-ng'+(isBad?' sel':'')+'" onclick="setLadderTypeStatus(\u0027'+t+'\u0027,\u0027bad\u0027)">미흡</button>';
     h+='</div>';
   }else{
     h+='<div class="lad-status-empty">미보유</div>';
   }
+  h+='</div></div>'; /* .lad-info, .lad-top 닫기 */
+
+  /* 미흡이면 이 카드 안에서 바로 이상사항을 기록한다. */
+  if(isBad)h+=ladderIssueInline(t,label);
+
   h+='</div>';
   return h;
+}
+
+/* 미흡으로 표시한 유형의 이상사항 입력 영역 (카드 안에 펼쳐짐).
+   유형별로 여러 건을 등록할 수 있다. */
+function ladderIssueInline(t,label){
+  var items=(S.ladder.issues||[]).filter(function(x){return x.typeKey===t});
+  var h='<div class="lad-issues">';
+  h+='<div class="lad-issues-head">'+esc(label)+' 이상사항 <span class="pill bad">'+items.length+'건</span></div>';
+
+  items.forEach(function(x){
+    var idx=S.ladder.issues.indexOf(x);
+    h+='<div class="lad-issue">';
+    /* 이상 항목 선택 */
+    h+='<div class="field"><label>이상 항목</label><select onchange="setLadderIssueField('+idx+',\u0027item\u0027,this.value)">';
+    h+='<option value="">항목 선택</option>';
+    D.ladder.forEach(function(v){
+      h+='<option'+(x.item===v[0]?' selected':'')+'>'+esc(v[0])+'</option>';
+    });
+    h+='<option'+(x.item==='기타'?' selected':'')+'>기타</option>';
+    h+='</select></div>';
+    /* 추가 설명 */
+    h+='<div class="field"><label>추가 설명 <small>(선택)</small></label>';
+    h+='<textarea placeholder="사진만으로 설명이 어려운 경우 입력" onchange="setLadderIssueField('+idx+',\u0027note\u0027,this.value)">'+esc(x.note||'')+'</textarea></div>';
+    /* 사진 */
+    h+='<div class="field"><label>사진</label>';
+    h+='<label class="photo-picker"><span class="camera-emoji">📷</span>';
+    h+='<span><b>사진 촬영·추가</b><small>이상사항 사진을 첨부하세요</small></span>';
+    h+='<input class="photo-input" type="file" accept="image/*" multiple onchange="attachIssuePhotos(\u0027ladder\u0027,'+idx+',this)"></label>';
+    h+=renderPhotoList(x.files,'issue','ladder|'+idx);
+    h+='</div>';
+    if(items.length>1){
+      h+='<button class="danger wide" onclick="removeLadderIssue('+idx+')">이 항목 삭제</button>';
+    }
+    h+='</div>';
+  });
+
+  h+='<button class="secondary wide" onclick="addLadderIssue(\u0027'+t+'\u0027)">＋ 이상사항 추가</button>';
+  h+='</div>';
+  return h;
+}
+function setLadderIssueField(idx,field,value){
+  if(!S.ladder.issues[idx])return;
+  S.ladder.issues[idx][field]=value;
+  save();
+}
+function addLadderIssue(t){
+  var label=(t==='기타'&&S.ladder.otherType)?S.ladder.otherType:t;
+  S.ladder.issues.push({id:uid(),typeKey:t,type:label,item:'',note:'',files:[]});
+  save();ladder();
+}
+function removeLadderIssue(idx){
+  S.ladder.issues.splice(idx,1);
+  save();ladder();
 }
 
 function ladder(){
