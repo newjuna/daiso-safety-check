@@ -1315,6 +1315,61 @@ function buildSubmitPayload(){
     resultNote:S.resultNote||'', issues
   };
 }
+/* 가로형 공유보고서에 넘길 실제 점검 데이터.
+   점수 기준이 확정되기 전까지는 임의 점수 대신 건수와 상태만 전달한다. */
+function getLandscapeReportSnapshot(){
+  const findings=[];
+  D.works.forEach((w,wi)=>{
+    Object.entries(S.wa[wi]||{}).forEach(([qi,x])=>{
+      if(!x||!x.risk)return;
+      const q=w[1][qi]||['미흡사항',[]],answer=(q[1]||[])[x.oi]||q[0];
+      findings.push({category:'작업점검',area:w[0],title:answer,question:q[0],hazards:x.hazards||[],photos:resolvePhotos(x.files)});
+    });
+  });
+  const addIssues=(list,category,hazard)=>{
+    (list||[]).forEach(x=>findings.push({category,area:category,title:x.item||x.text||'미흡사항',note:x.note||'',hazards:[hazard],photos:resolvePhotos(x.files)}));
+  };
+  addIssues(S.ladder.issues,'사다리','떨어짐');
+  addIssues(S.common.issues,'공통·시설','시설');
+  addIssues(S.fire.issues,'소방','화재');
+  addIssues(S.tbm.issues,'TBM','안전관리');
+  addIssues(S.others,'기타사항','기타');
+  const hazards={};findings.forEach(f=>(f.hazards||[]).forEach(h=>hazards[h]=(hazards[h]||0)+1));
+  const work=D.works.map((w,wi)=>{
+    const own=findings.filter(f=>f.category==='작업점검'&&f.area===w[0]);
+    return {name:w[0],status:S.workNA?.[wi]?'na':'checked',risk:own.length,hazards:[...new Set(own.flatMap(f=>f.hazards||[]))]};
+  });
+  const accidents=(S.accidents||[]).map(x=>({
+    date:x.date||'',type:x.type||'',content:x.content||'',source:x.source||'',approved:x.approved||'',
+    hazardText:x.hazardText||'',status:x.status||'',currentState:x.currentState||'',riskLevel:x.riskLevel||'',
+    photos:resolvePhotos(x.afterFiles)
+  }));
+  const workerOpinions=[];
+  const qs=voiceQuestions();
+  (S.workers||[]).forEach((worker,workerIndex)=>Object.entries(worker.answers||{}).forEach(([qi,a])=>{
+    const q=qs[qi],oi=Number(a.oi);
+    if(!q||!Number.isFinite(oi)||oi===0)return;
+    workerOpinions.push({worker:workerIndex+1,question:q[0],answer:(q[1]||[])[oi]||a.text||''});
+  }));
+  return {
+    generatedAt:new Date().toISOString(),inspectionId:S.inspectionId||'',submittedAt:S.submittedAt||'',
+    store:{name:S.store?.name||'매장명 미입력',date:S.basic.date||'',inspector:S.basic.inspector||'',hq:S.basic.hq||'',dept:S.basic.dept||'',team:S.basic.team||''},
+    work,findings,hazards:Object.entries(hazards).sort((a,b)=>b[1]-a[1]),accidents,workerOpinions,
+    sections:{common:(S.common.issues||[]).length,fire:(S.fire.issues||[]).length,tbm:(S.tbm.issues||[]).length,ladder:(S.ladder.issues||[]).length},
+    ladder:{counts:{...(S.ladder.counts||{})},typeStatus:{...(S.ladder.typeStatus||{})}},
+    tasks:(S.tasks||[]).filter(x=>x.include),resultNote:S.resultNote||''
+  };
+}
+window.getLandscapeReportSnapshot=getLandscapeReportSnapshot;
+function openLandscapeReport(){
+  const snapshot=getLandscapeReportSnapshot();
+  /* 새 창 접근이 제한된 경우에도 텍스트 결과는 복원할 수 있게 사진을 제외한 사본을 저장한다. */
+  try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
+  window.__LANDSCAPE_REPORT__=snapshot;
+  const file=hasAccidents()?'result-preview-accident.html?live=1':'result-preview-no-accident.html?live=1';
+  const win=window.open(file,'_blank');
+  if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
+}
 /* 최종 제출.
    누락된 점검이 있으면 팝업(confirm) 대신 화면으로 목록을 보여주고,
    누르면 그 항목으로 바로 이동한다. */
@@ -1423,6 +1478,7 @@ function report(){
     if(links.folderUrl)headCard+='<a class="secondary wide result-link" href="'+esc(links.folderUrl)+'" target="_blank">📁 사진 폴더 열기</a>';
     if(!links.pdfUrl&&!links.folderUrl)headCard+='<div class="notice">테스트 모드로 진행해 저장 링크가 없습니다.</div>';
   }
+  headCard+='<button class="secondary wide" style="margin-top:8px" onclick="openLandscapeReport()">가로형 결과보고서 보기</button>';
   headCard+='</div>';
 
   const summaryCard=`<div class="card"><h2>점검 요약</h2><div class="notice"><b>공식 점수·등급은 아직 산출하지 않습니다.</b><br>현재는 확인된 위험신호와 미흡사항 건수를 중심으로 보여줍니다.</div><div class="metric"><div><b>${responses}</b>의견 참여</div><div><b>${c.cm}</b>시설 미흡</div><div><b>${c.fim}</b>소방 미흡</div><div><b>${c.lm}</b>사다리 이상</div><div><b>${c.tm}</b>TBM 미흡</div><div><b>${active.length}</b>개선과제</div></div></div>`;
