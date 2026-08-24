@@ -132,7 +132,9 @@ function gsRun(fnName){
     /* text/plain으로 보내면 브라우저가 사전확인(preflight) 요청을 생략해
        Apps Script와의 통신이 단순해진다. 서버에서 JSON으로 파싱한다. */
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:body
+    body:body,
+    cache:'no-store',
+    redirect:'follow'
   }).then(function(res){
     if(!res.ok)throw new Error('서버 응답 오류 ('+res.status+')');
     return res.json();
@@ -274,17 +276,34 @@ function menuUnderTest(name){closeMainMenu();toast(name+' 기능은 현재 테�
 function field(label,id,value='',type='text',extra=''){return `<div class="field"><label>${label}</label><input id="${id}" type="${type}" value="${esc(value)}" ${extra}></div>`}
 
 /* ============ 매장 선택 (서버에서 실시간 조회) ============ */
-let STORE_LIST=null; // getStoreList() 결과 캐시: [{division,dept,team,store}, ...]
+let STORE_LIST=null,STORE_LOADING=false; // 매장 목록 메모리 캐시
+const STORE_CACHE_KEY='daiso_store_list_compact_v1';
+
+function normalizeStoreRows(list){return (list||[]).map(function(row){if(Array.isArray(row))return {division:row[0]||'',dept:row[1]||'',team:row[2]||'',store:row[3]||''};return row})}
+function readStoreCache(){try{var x=JSON.parse(localStorage.getItem(STORE_CACHE_KEY)||'null');return x&&Array.isArray(x.rows)&&x.rows.length?normalizeStoreRows(x.rows):null}catch(e){return null}}
+function writeStoreCache(list){try{localStorage.setItem(STORE_CACHE_KEY,JSON.stringify({savedAt:Date.now(),rows:(list||[]).map(function(r){return [r.division,r.dept,r.team,r.store]} )}))}catch(e){}}
 
 function start(){
   S.screen='start';
   if(STORE_LIST){renderStart();return}
-  frame(`<div class="card"><h2>점검할 매장을 선택하세요</h2><div class="loading-notice">매장 목록을 불러오는 중입니다...</div></div>`,`안전보건 현장진단을<br>시작합니다.`,`매장 선택 후 필요한 정보만 불러옵니다.`);
-  gsRun('getStoreList').then(list=>{
-    STORE_LIST=list||[];
+  var cached=readStoreCache();
+  if(cached){STORE_LIST=cached;renderStart();return}
+  STORE_LOADING=true;
+  renderStart();
+  var storeRequest=gsRun('getStoreListCompact').catch(function(err){
+    /* GitHub 화면이 Apps Script보다 먼저 배포된 짧은 구간에는 기존 API로 호환한다. */
+    var msg=err&&err.message?err.message:String(err);
+    if(/허용되지 않은 요청|함수를 찾을 수 없습니다/.test(msg))return gsRun('getStoreList');
+    throw err;
+  });
+  storeRequest.then(list=>{
+    STORE_LIST=normalizeStoreRows(list);
+    STORE_LOADING=false;
     if(!STORE_LIST.length){storeLoadFailed('시트에서 매장을 한 건도 읽지 못했습니다. 스프레드시트에 \u0027매장\u0027 탭이 있고 2행부터 영업본부/부서명/팀명/매장명이 채워져 있는지 확인하세요.');return}
+    writeStoreCache(STORE_LIST);
     renderStart();
   }).catch(err=>{
+    STORE_LOADING=false;
     storeLoadFailed(err&&err.message?err.message:String(err));
   });
 }
@@ -295,9 +314,10 @@ function storeLoadFailed(message){
   h+='<div class="notice">'+esc(message)+'</div>';
   h+='<p class="muted">아래 순서로 확인해 보세요.<br>'
     +'1. <b>config.js</b>의 API_URL이 Apps Script 웹앱 주소(.../exec)로 채워져 있는지<br>'
-    +'2. Apps Script에서 [배포] → [배포 관리]의 액세스 권한이 <b>링크가 있는 모든 사용자</b>인지<br>'
-    +'3. 코드를 수정했다면 [새 배포]가 아니라 기존 배포를 <b>수정(연필 아이콘) → 버전: 새 버전</b>으로 갱신했는지<br>'
-    +'4. 스프레드시트에 <b>매장</b> 탭이 있고 데이터가 2행부터 들어있는지</p>';
+    +'2. 모바일에서 Apps Script의 <b>/exec 주소를 직접 열었을 때 정상 API 안내가 나오는지</b><br>'
+    +'3. Apps Script에서 [배포] → [배포 관리]의 액세스 권한이 <b>링크가 있는 모든 사용자</b>인지<br>'
+    +'4. 코드를 수정했다면 기존 배포를 <b>수정(연필 아이콘) → 버전: 새 버전</b>으로 갱신했는지<br>'
+    +'5. 스프레드시트에 <b>매장</b> 탭이 있고 데이터가 2행부터 들어있는지</p>';
   h+='<button class="primary wide" onclick="STORE_LIST=null;start()">다시 시도</button>';
   h+='<button class="secondary wide" style="margin-top:8px" onclick="enableTestMode()">서버 없이 테스트 모드로 진행</button>';
   h+='<p class="muted" style="margin-top:8px">테스트 모드는 샘플 매장으로 화면 흐름만 확인하는 기능입니다. 구글시트·드라이브에는 아무것도 저장되지 않습니다.</p>';
@@ -364,8 +384,9 @@ function renderStart(){
   h+='</div>';
 
   h+='<div class="start-info-panel"><div class="field"><label>점검일자 <span class="req">*</span></label><input type="date" value="'+esc(SEL.date)+'" onchange="onInspectionDateChange(this.value)"></div>';
+  if(STORE_LOADING)h+='<div class="loading-notice">매장 정보를 준비하고 있습니다. 점검자와 날짜를 먼저 선택할 수 있습니다.</div>';
   h+='<div class="org-select-grid">';
-  h+=selectBox('부문','division',orgOptions('division'),SEL.division,true,!SEL.inspector);
+  h+=selectBox('부문','division',orgOptions('division'),SEL.division,true,!SEL.inspector||STORE_LOADING);
   h+=selectBox('부서','dept',orgOptions('dept'),SEL.dept,true,!SEL.division);
   h+=selectBox('팀','team',orgOptions('team'),SEL.team,true,!SEL.dept);
   h+='</div>';
