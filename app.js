@@ -12,7 +12,7 @@
  */
 const $=s=>document.querySelector(s),root=$('#app'),KEY='daiso_safety_v9';
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const fresh=()=>({screen:'start',store:null,basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'',inboundHelpers:''},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:''},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
+const fresh=()=>({screen:'start',store:null,basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:''},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:''},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
 let S=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}})();
 function normalizeState(){
   const f=fresh();
@@ -70,6 +70,8 @@ function normalizeState(){
   S.tbm.naItems=S.tbm.naItems||{};
   S.tbm.issues.forEach(x=>{if(!x.id)x.id=uid()});
   S.tbm.status=S.tbm.status||'';
+  /* TBM 확인방법: 직접참관(기본) / 인터뷰만. 서류확인은 운용하지 않는다. */
+  S.tbm.confirmMethod=S.tbm.confirmMethod==='인터뷰만'?'인터뷰만':'직접참관';
   S.screen=S.screen||'start';
   S.wi=Number.isInteger(S.wi)?S.wi:0;
   /* v32에서 첫 문항의 답변 순서만 뒤집었다. 저장 중인 점검의 의미가 바뀌지 않게 인덱스를 함께 변환한다. */
@@ -406,7 +408,7 @@ function selectStore(){
   if(!SEL.store)return uiError('매장까지 모두 선택하세요');
   if(!SEL.date)return uiError('점검일을 선택하세요');
   var n=SEL.store;
-  var meta={name:n,hq:SEL.division,dept:SEL.dept,team:SEL.team,people:'',size:'',floors:'',delivery:'',inboundHelpers:'',inspector:SEL.inspector,date:SEL.date};
+  var meta={name:n,hq:SEL.division,dept:SEL.dept,team:SEL.team,people:'',size:'',floors:'',delivery:'',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:'',inspector:SEL.inspector,date:SEL.date};
   S=fresh();
   S.store={...meta,accidentRecords:[],accidents:[],openIssues:[],tasks:[]};
   Object.assign(S.basic,meta);
@@ -525,7 +527,57 @@ function work(){
   ${nav(S.wi,D.works.length,`prevWork()`,`nextWork()`)}`,`작업유형별<br>통합점검`,`${S.wi+1}/${D.works.length} · 각 문항의 양호 답변이 기본 선택되어 있습니다.`);
 }
 function inboundWorkFields(){
-  return `<div class="inbound-meta"><div class="field"><label>입고시간대</label><select onchange="S.basic.delivery=this.value;save()"><option value="">선택</option><option ${S.basic.delivery==='오전'?'selected':''}>오전</option><option ${S.basic.delivery==='오후(야간)'?'selected':''}>오후(야간)</option></select></div><div class="field"><label>입고도우미 인원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(S.basic.inboundHelpers)}" onchange="S.basic.inboundHelpers=this.value;save()"><span>명</span></div></div></div>`;
+  const b=S.basic;
+  return `<div class="inbound-meta">
+    <div class="field"><label>입고시간대</label><select onchange="S.basic.delivery=this.value;save()"><option value="">선택</option><option ${b.delivery==='오전'?'selected':''}>오전</option><option ${b.delivery==='오후(야간)'?'selected':''}>오후(야간)</option></select></div>
+  </div>
+  <div class="inbound-labor">
+    <div class="inbound-labor-head">입고 인력부담 측정 <small>(피로도 정량화 · 근골격계 위험신호에 자동 반영)</small></div>
+    <div class="inbound-labor-grid">
+      <div class="field"><label>입고 시작시간</label><input type="time" value="${esc(b.inboundStart||'')}" onchange="S.basic.inboundStart=this.value;save();work()"></div>
+      <div class="field"><label>입고 종료시간</label><input type="time" value="${esc(b.inboundEnd||'')}" onchange="S.basic.inboundEnd=this.value;save();work()"></div>
+      <div class="field"><label>임직원 투입인원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundStaff)}" onchange="S.basic.inboundStaff=this.value;save();work()"><span>명</span></div></div>
+      <div class="field"><label>입고도우미 인원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundHelpers)}" onchange="S.basic.inboundHelpers=this.value;save();work()"><span>명</span></div></div>
+      <div class="field"><label>도우미 퇴근시간 <small>(도우미 없으면 비워두기)</small></label><input type="time" value="${esc(b.inboundHelperOutAt||'')}" onchange="S.basic.inboundHelperOutAt=this.value;save();work()"></div>
+    </div>
+    ${inboundLaborResultBadge()}
+  </div>`;
+}
+/* 인시(person-minutes) 계산: 평균 투입인원, 도우미 공백비율, 위험도(양호/경미/심각)를 리턴한다.
+   시작·종료시간, 인원이 다 입력되지 않으면 null(측정불가)을 리턴해 자동 위험신호를 걸지 않는다. */
+function calcInboundLabor(){
+  const b=S.basic;
+  const start=b.inboundStart,end=b.inboundEnd;
+  const staff=Number(b.inboundStaff),helpers=Number(b.inboundHelpers)||0,helperOut=b.inboundHelperOutAt;
+  if(!start||!end||!Number.isFinite(staff)||staff<=0)return null;
+  const toMin=t=>{const m=/^(\d{2}):(\d{2})$/.exec(t||'');return m?(+m[1]*60+ +m[2]):null};
+  const s=toMin(start),e=toMin(end);
+  if(s==null||e==null||e<=s)return null;
+  const totalMin=e-s;
+  let personMinutes,gapRatio=0;
+  if(helpers>0&&helperOut){
+    let ho=toMin(helperOut);
+    if(ho==null)ho=e;
+    ho=Math.max(s,Math.min(e,ho));
+    const withHelperMin=ho-s,afterMin=e-ho;
+    personMinutes=(staff+helpers)*withHelperMin+staff*afterMin;
+    gapRatio=afterMin/totalMin;
+  }else{
+    personMinutes=(staff+helpers)*totalMin;
+  }
+  const avgPeople=personMinutes/totalMin;
+  const cfg=D.scoring.inboundLabor;
+  let level='good';
+  if(avgPeople<cfg.minorAvgPeople||gapRatio>=cfg.severeGapRatio)level='severe';
+  else if(avgPeople<cfg.goodAvgPeople||gapRatio>=cfg.minorGapRatio)level='minor';
+  return{avgPeople,gapRatio,level,totalMin};
+}
+function inboundLaborResultBadge(){
+  const r=calcInboundLabor();
+  if(!r)return `<div class="inbound-labor-badge muted">시간·인원을 모두 입력하면 인력부담이 자동 계산됩니다.</div>`;
+  const label=r.level==='good'?'양호':r.level==='minor'?'위험(경미)':'위험(심각)';
+  const cls=r.level==='good'?'':r.level==='minor'?'warn':'bad';
+  return `<div class="inbound-labor-badge ${cls}"><b>${label}</b><span>평균 투입인원 ${r.avgPeople.toFixed(1)}명 · 도우미 공백비율 ${Math.round(r.gapRatio*100)}%</span></div>`;
 }
 function question(q,qi,v){
   return `<div class="q" data-required="q${qi}"><h3>${qi+1}. ${q[0]} <span class="req">*</span></h3><div class="answers">${q[1].map((o,oi)=>{
@@ -610,8 +662,12 @@ function checklist(k){
     return row;
   }).join('');
 
+  /* TBM만 '이번 점검을 어떻게 확인했는지'를 추가로 기록한다. 서류확인은 운용하지 않는다. */
+  const tbmMethod=k==='tbm'?`<div class="field tbm-confirm-method"><label>이번 TBM 점검은 어떻게 확인했습니까?</label><div class="answers">${['직접참관','인터뷰만'].map(m=>`<button class="ans ${st.confirmMethod===m||(!st.confirmMethod&&m==='직접참관')?'sel':''}" onclick="setTbmConfirmMethod('${m}')">${m}</button>`).join('')}</div><small class="muted">인터뷰만으로 확인한 경우 이번 TBM 점수 인정 비율이 낮아집니다.</small></div>`:'';
+
   const body=`<div class="card step-card"><div class="step-head"><span>${title}</span><b>양호가 기본 선택 · 미흡만 바꾸세요</b></div>
     <div class="summary"><h2>${title} 점검</h2><span class="pill ${bad?'bad':''}">${bad?`미흡 ${bad}건 · 해당없음 ${naCount}건`:`양호 ${total-naCount}항목 · 해당없음 ${naCount}건`}</span></div>
+    ${tbmMethod}
     <div class="form-list">${rows}</div>
     <div class="navrow"><button class="secondary" onclick="go('${PREV_BEFORE[k]}')">← 이전</button><button class="primary" onclick="finishChecklist('${k}')">${k==='tbm'?'의견청취':CHECKLIST_TITLE[NEXT_AFTER[k]]} →</button></div></div>`;
 
@@ -634,6 +690,10 @@ function setChecklistStatus(k,item,status){
     delete S[k].naItems[item];
   }
   save();checklist(k);
+}
+/* TBM 확인방법 기록 (직접참관/인터뷰만). 서류확인은 운용하지 않는다. */
+function setTbmConfirmMethod(m){
+  S.tbm.confirmMethod=m;save();checklist('tbm');
 }
 function finishChecklist(k){
   const st=S[k];
@@ -738,7 +798,8 @@ function ladderIssueInline(t,label){
   /* 항목명이 짧으니 1열로 쭉 나열할 필요가 없다. 2열 그리드로 배치한다. */
   h+='<div class="lad-chklist">';
 
-  /* data.js의 D.ladder는 [외관상태, 나사상태, 기타사항] 3개뿐이다. */
+  /* data.js의 D.ladder는 [발판상태, 외관상태, 나사상태, 기타사항] 4개다.
+     2026-08 사고DB 분석 결과 발판 파손이 사다리 사고 원인의 30%를 차지해 별도 항목으로 분리했다. */
   D.ladder.forEach(function(row){
     var name=row[0],hint=row[1]||'';
     /* 이 유형 + 이 항목으로 이미 등록된 건이 있는지 찾는다 (사진을 붙일 위치가 필요) */
@@ -1092,6 +1153,24 @@ function syncAccidents(){
   save();
 }
 /* 자동 유해위험요인 초안 확인, 현 상태, 이행상태까지 채우면 조사 완료. */
+/* TBM 실효성 교차검증: 관리자가 체크한 TBM 결과와 근로자 의견청취 응답이 어긋나면 플래그를 띄운다.
+   점검자가 TBM 시간에 못 맞춰 방문하면 관리자 응답만으로는 형식적 답변인지 알 수 없기 때문. */
+function tbmCrossCheckFlags(){
+  const flags=[];
+  const tbmIssueNames=(S.tbm.issues||[]).map(x=>x.item);
+  const shareGood=!tbmIssueNames.includes('최근 사고사례·예방수칙 공유')&&!tbmIssueNames.includes('위험성평가 결과·현장 위험요인 공유');
+  const voiceQIdx=D.voice.findIndex(q=>q[0]==='TBM에서 위험요인을 공유합니까?');
+  if(voiceQIdx<0)return flags;
+  (S.workers||[]).forEach((w,i)=>{
+    const a=w.answers&&w.answers[voiceQIdx];
+    if(!a)return;
+    const answerText=D.voice[voiceQIdx][1][a.oi];
+    if(shareGood&&answerText==='공유하지 않음'){
+      flags.push({worker:i+1,message:`TBM 점검은 '양호'로 체크됐지만 근로자 ${i+1}은 위험요인 공유를 "공유하지 않음"으로 답했습니다.`});
+    }
+  });
+  return flags;
+}
 function isAccidentDone(x){return !!(x.hazardText&&x.currentState&&x.status)}
 function currentStateForStatus(x,status){
   if(status==='조치완료')return (x.source||x.type||'유해위험요인')+' 제거 조치 완료';
@@ -1298,13 +1377,18 @@ function buildSubmitPayload(){
     issues.push({issueId:S.inspectionId+'-accident-'+x.key.replace(/[^a-zA-Z0-9_-]/g,'-'),category:'사고조사',itemName:`${x.date} ${x.type}`.trim(),note:memo,hazard:x.hazardText||x.type||'사고',status:x.status==='조치완료'?'조치완료':'조치대기',photos:after});
   });
 
-  const c=calc();
+  const c=calc(),summary=scoreSummary(),labor=calcInboundLabor();
   return {
     inspectionId:S.inspectionId,
     store:S.store.name, division:S.basic.hq||'', dept:S.basic.dept||'', team:S.basic.team||'',
     inspector:S.basic.inspector||'', date:S.basic.date||new Date().toISOString().slice(0,10),
     delivery:S.basic.delivery||'', inboundHelpers:S.basic.inboundHelpers||'',
+    inboundStart:S.basic.inboundStart||'', inboundEnd:S.basic.inboundEnd||'',
+    inboundStaff:S.basic.inboundStaff||'', inboundHelperOutAt:S.basic.inboundHelperOutAt||'',
+    inboundLaborLevel:labor?labor.level:'', inboundLaborAvgPeople:labor?Math.round(labor.avgPeople*10)/10:'',
     workRisk:c.work, ladderCount:c.lm, facilityCount:c.cm+c.fim, tbmCount:c.tm,
+    score:summary.score, grade:summary.grade, scoreParts:summary.parts,
+    tbmConfirmMethod:S.tbm.confirmMethod||'직접참관', tbmCrossCheckFlags:tbmCrossCheckFlags(),
     tasks:S.tasks.filter(x=>x.include),
     /* 사고조사 결과 (사진은 위 issues에 이미 담겨 있으므로 여기서는 제외) */
     accidents:(S.accidents||[]).map(x=>({
@@ -1351,13 +1435,17 @@ function getLandscapeReportSnapshot(){
     if(!q||!Number.isFinite(oi)||oi===0)return;
     workerOpinions.push({worker:workerIndex+1,question:q[0],answer:(q[1]||[])[oi]||a.text||''});
   }));
+  const summary=scoreSummary(),labor=calcInboundLabor();
   return {
     generatedAt:new Date().toISOString(),inspectionId:S.inspectionId||'',submittedAt:S.submittedAt||'',
     store:{name:S.store?.name||'매장명 미입력',date:S.basic.date||'',inspector:S.basic.inspector||'',hq:S.basic.hq||'',dept:S.basic.dept||'',team:S.basic.team||''},
     work,findings,hazards:Object.entries(hazards).sort((a,b)=>b[1]-a[1]),accidents,workerOpinions,
     sections:{common:(S.common.issues||[]).length,fire:(S.fire.issues||[]).length,tbm:(S.tbm.issues||[]).length,ladder:(S.ladder.issues||[]).length},
     ladder:{counts:{...(S.ladder.counts||{})},typeStatus:{...(S.ladder.typeStatus||{})}},
-    tasks:(S.tasks||[]).filter(x=>x.include),resultNote:S.resultNote||''
+    tasks:(S.tasks||[]).filter(x=>x.include),resultNote:S.resultNote||'',
+    score:summary.score,grade:summary.grade,scoreParts:summary.parts,hasAccidentScore:summary.hasAccident,
+    inboundLabor:labor?{level:labor.level,avgPeople:Math.round(labor.avgPeople*10)/10,gapRatioPct:Math.round(labor.gapRatio*100)}:null,
+    tbmConfirmMethod:S.tbm.confirmMethod||'직접참관',tbmCrossCheckFlags:tbmCrossCheckFlags()
   };
 }
 window.getLandscapeReportSnapshot=getLandscapeReportSnapshot;
@@ -1413,6 +1501,88 @@ function submitToServer(){
   });
 }
 function calc(){const work=D.works.map((w,i)=>{if(S.workNA?.[i])return{name:w[0],risk:0,total:0,status:'na'};const a=Object.values(S.wa[i]||{}),r=a.filter(x=>x.risk).length;return{name:w[0],risk:r,total:a.length,status:'checked'}});const haz={};Object.entries(S.wa).forEach(([wi,ans])=>{if(S.workNA?.[wi])return;Object.values(ans).filter(x=>x.risk).forEach(x=>(x.hazards||[]).forEach(h=>haz[h]=(haz[h]||0)+1))});const cm=(S.common.issues||[]).length,fim=(S.fire.issues||[]).length,tm=(S.tbm.issues||[]).length,lm=(S.ladder.issues||[]).length;return{work,haz:Object.entries(haz).sort((a,b)=>b[1]-a[1]),cm,fim,tm,lm}}
+
+/* ============ 점수 계산 (2026-08 사고DB 670건 분석 기반, data.js의 D.scoring 참고) ============
+   카테고리별 가중합산(B안). 각 카테고리를 0~100으로 환산 후 weight를 곱해 종합점수를 만든다.
+   사고이력이 없는 매장은 accident 가중치를 work로 옮겨 총합을 항상 100으로 유지한다. */
+function hazardWeight(h){const m=D.scoring.hazardMultiplier;return m[h]!=null?m[h]:D.scoring.hazardMultiplierDefault}
+/* 문항 하나가 여러 재해유형을 가질 수 있어, 그 문항의 위험신호 가중치는 태그된 재해유형의 최대값을 쓴다. */
+function workItemWeight(hazards){const list=hazards&&hazards.length?hazards:['기타'];return Math.max(...list.map(hazardWeight))}
+function scoreWork(){
+  let riskSum=0,totalSum=0;
+  D.works.forEach((w,wi)=>{
+    if(S.workNA?.[wi])return;
+    Object.values(S.wa[wi]||{}).forEach(x=>{
+      totalSum+=1;
+      if(x.risk)riskSum+=workItemWeight(x.hazards);
+    });
+  });
+  /* 입고 인력부담(인시 계산)을 근골격계 위험신호 1문항 취급으로 합산한다.
+     시간·인원이 다 입력되지 않으면(측정불가) 집계에서 제외한다. */
+  const labor=calcInboundLabor();
+  if(labor){
+    totalSum+=1;
+    if(labor.level!=='good')riskSum+=hazardWeight('근골격계')*(labor.level==='severe'?1.3:1);
+  }
+  if(!totalSum)return 100;
+  /* 가중 위험신호 비율이 높을수록 감점. 문항 전체가 위험이어도 0점까지만 깎는다. */
+  return Math.max(0,Math.round((1-riskSum/totalSum)*100));
+}
+function scoreChecklist(list,issues,naItems){
+  const total=(list||[]).filter(item=>{const name=typeof item==='string'?item:item.name;return !(naItems&&naItems[name])}).length;
+  if(!total)return 100;
+  const bad=(issues||[]).length;
+  return Math.max(0,Math.round((1-bad/total)*100));
+}
+function scoreLadder(){
+  const st=S.ladder,issues=st.issues||[];
+  const totalSlots=Math.max(1,D.ladderTypes.reduce((n,t)=>n+(Math.max(0,Number((st.counts||{})[t]||0))>0?D.ladder.length:0),D.ladder.length));
+  let base=totalSlots?Math.max(0,Math.round((1-issues.length/totalSlots)*100)):100;
+  const hasHighRisk=D.ladderTypes.some(t=>D.ladderHighRiskTypes[t]&&Math.max(0,Number((st.counts||{})[t]||0))>0);
+  if(hasHighRisk&&issues.length){
+    const penalty=(100-base)*(D.scoring.ladderHighRiskMultiplier-1);
+    base=Math.max(0,Math.round(base-penalty));
+  }
+  return base;
+}
+/* TBM은 확인방법(직접참관/인터뷰만)에 따라 신뢰도를 곱한다. 서류확인은 운용하지 않는다.
+   인터뷰만으로 확인한 회차는 만점이어도 배점을 100% 인정하지 않는다(형식적 응답 위험 보정). */
+function scoreTbm(){
+  const base=scoreChecklist(D.tbm,S.tbm.issues,S.tbm.naItems);
+  const method=S.tbm.confirmMethod||'직접참관';
+  const conf=D.scoring.tbmConfidence[method]!=null?D.scoring.tbmConfidence[method]:1.0;
+  return Math.round(base*conf);
+}
+function scoreAccident(){
+  const list=S.accidents||[];
+  if(!list.length)return null; /* 사고이력 없음: 이 카테고리 자체를 안 쓴다 */
+  const rates=D.scoring.accidentStatusDeductionRate;
+  let deduction=0;
+  list.forEach(a=>{const r=rates[a.status]!=null?rates[a.status]:1;deduction+=r*(100/list.length)});
+  return Math.max(0,Math.round(100-deduction));
+}
+/* 종합점수 + 등급 + 카테고리별 점수를 함께 반환한다. */
+function scoreSummary(){
+  const w=D.scoring.categoryWeights;
+  const parts={work:scoreWork(),ladder:scoreLadder(),common:scoreChecklist(D.common,S.common.issues,S.common.naItems),fire:scoreChecklist(D.fire,S.fire.issues,S.fire.naItems),tbm:scoreTbm()};
+  const accScore=scoreAccident();
+  let weights={...w};
+  if(accScore==null){
+    /* 사고이력 없는 매장: accident 가중치를 work로 이전해 총합 100 유지 */
+    weights={...w,work:w.work+w.accident,accident:0};
+  }else{
+    parts.accident=accScore;
+  }
+  let total=0,weightSum=0;
+  Object.keys(weights).forEach(k=>{
+    if(!weights[k])return;
+    total+=(parts[k]||0)*weights[k];
+    weightSum+=weights[k];
+  });
+  const score=weightSum?Math.round(total/weightSum):null;
+  const grade=score==null?null:score>=90?'A':score>=70?'B':score>=50?'C':'D';
+  return{score,grade,parts,weights,hasAccident:accScore!=null};
+}
 /* 이번 점검에서 새로 발견한 지적사항 목록 (결과보고서에서만 보여준다) */
 function buildFoundIssuesHtml(){
   var rows=[],i;
@@ -1481,9 +1651,14 @@ function report(){
   headCard+='<button class="secondary wide" style="margin-top:8px" onclick="openLandscapeReport()">가로형 결과보고서 보기</button>';
   headCard+='</div>';
 
-  const summaryCard=`<div class="card"><h2>점검 요약</h2><div class="notice"><b>공식 점수·등급은 아직 산출하지 않습니다.</b><br>현재는 확인된 위험신호와 미흡사항 건수를 중심으로 보여줍니다.</div><div class="metric"><div><b>${responses}</b>의견 참여</div><div><b>${c.cm}</b>시설 미흡</div><div><b>${c.fim}</b>소방 미흡</div><div><b>${c.lm}</b>사다리 이상</div><div><b>${c.tm}</b>TBM 미흡</div><div><b>${active.length}</b>개선과제</div></div></div>`;
+  const summary=scoreSummary(),labor=calcInboundLabor(),crossFlags=tbmCrossCheckFlags();
+  const partLabel={work:'작업점검',ladder:'사다리',common:'공통·시설',fire:'소방',tbm:'TBM',accident:'사고 재발방지'};
+  const scoreCard=`<div class="card"><h2>종합점수</h2><div class="score-summary"><div class="score-num ${summary.grade==='D'?'bad':''}"><b>${summary.score}</b><span>점</span></div><div class="score-grade">${summary.grade}등급</div></div><div class="score-part-grid">${Object.entries(summary.parts).map(([k,v])=>`<div class="score-part"><small>${partLabel[k]||k}</small><b>${v}</b></div>`).join('')}</div>${!summary.hasAccident?'<small class="muted">사고이력 없는 매장: 사고 재발방지 배점은 작업점검에 포함</small>':''}</div>`;
+  const laborBadge=labor?`<div class="card"><h2>입고 인력부담</h2><div class="inbound-labor-badge ${labor.level==='good'?'':labor.level==='minor'?'warn':'bad'}"><b>${labor.level==='good'?'양호':labor.level==='minor'?'위험(경미)':'위험(심각)'}</b><span>평균 투입인원 ${labor.avgPeople.toFixed(1)}명 · 도우미 공백비율 ${Math.round(labor.gapRatio*100)}%</span></div></div>`:'';
+  const tbmFlagCard=crossFlags.length?`<div class="card"><h2>TBM 실효성 확인 필요</h2>${crossFlags.map(f=>`<div class="notice bad">${esc(f.message)}</div>`).join('')}</div>`:'';
+  const summaryCard=`<div class="card"><h2>점검 요약</h2><div class="metric"><div><b>${responses}</b>의견 참여</div><div><b>${c.cm}</b>시설 미흡</div><div><b>${c.fim}</b>소방 미흡</div><div><b>${c.lm}</b>사다리 이상</div><div><b>${c.tm}</b>TBM 미흡</div><div><b>${active.length}</b>개선과제</div></div></div>`;
 
-  const body=`${headCard}${summaryCard}<div class="card"><h2>작업유형 위험신호</h2>${c.work.map(x=>`<div class="riskrow"><header><span>${x.name}</span><span>${x.status==='na'?'해당 없음':`위험신호 ${x.risk}건`}</span></header></div>`).join('')}</div><div class="card"><h2>재해유형별 위험신호</h2>${c.haz.length?c.haz.map(([h,n])=>`<div class="riskrow"><header><span>${h}</span><span>${n}건</span></header></div>`).join(''):'<p class="muted">위험신호 없음</p>'}</div><div class="card"><h2>종합진단 초안</h2><textarea readonly>${esc(`${S.store.name}은(는) ${top.filter(x=>x.risk).map(x=>x.name).join(', ')||'전 작업'} 영역을 중심으로 확인되었습니다. 공통·시설 미흡 ${c.cm}건, 소방 미흡 ${c.fim}건, TBM 미흡 ${c.tm}건, 사다리 이상 ${c.lm}건이며 개선과제 ${active.length}건을 검토해야 합니다.`)}</textarea><div class="field" style="margin-top:10px"><label>점검자 추가 의견 <small>(선택)</small></label><textarea placeholder="위 자동 진단에 덧붙일 내용을 입력하세요" onchange="S.resultNote=this.value;save()">${esc(S.resultNote)}</textarea></div>${foundHtml}${active.length?`<h2 style="margin-top:16px">지난 지적사항 조치 확인</h2>${active.map(x=>`<div class="q"><b>${esc(x.title)}</b><div class="muted">${esc(x.source||'')} · ${esc(x.owner||'')} · ${esc(x.status||'')}</div></div>`).join('')}`:''}<button class="secondary wide" style="margin-top:12px" onclick="window.print()">보고서 인쇄</button><button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button></div>`;
+  const body=`${headCard}${scoreCard}${laborBadge}${tbmFlagCard}${summaryCard}<div class="card"><h2>작업유형 위험신호</h2>${c.work.map(x=>`<div class="riskrow"><header><span>${x.name}</span><span>${x.status==='na'?'해당 없음':`위험신호 ${x.risk}건`}</span></header></div>`).join('')}</div><div class="card"><h2>재해유형별 위험신호</h2>${c.haz.length?c.haz.map(([h,n])=>`<div class="riskrow"><header><span>${h}</span><span>${n}건</span></header></div>`).join(''):'<p class="muted">위험신호 없음</p>'}</div><div class="card"><h2>종합진단 초안</h2><textarea readonly>${esc(`${S.store.name}은(는) ${top.filter(x=>x.risk).map(x=>x.name).join(', ')||'전 작업'} 영역을 중심으로 확인되었습니다. 공통·시설 미흡 ${c.cm}건, 소방 미흡 ${c.fim}건, TBM 미흡 ${c.tm}건, 사다리 이상 ${c.lm}건이며 개선과제 ${active.length}건을 검토해야 합니다.`)}</textarea><div class="field" style="margin-top:10px"><label>점검자 추가 의견 <small>(선택)</small></label><textarea placeholder="위 자동 진단에 덧붙일 내용을 입력하세요" onchange="S.resultNote=this.value;save()">${esc(S.resultNote)}</textarea></div>${foundHtml}${active.length?`<h2 style="margin-top:16px">지난 지적사항 조치 확인</h2>${active.map(x=>`<div class="q"><b>${esc(x.title)}</b><div class="muted">${esc(x.source||'')} · ${esc(x.owner||'')} · ${esc(x.status||'')}</div></div>`).join('')}`:''}<button class="secondary wide" style="margin-top:12px" onclick="window.print()">보고서 인쇄</button><button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button></div>`;
 
   frame(body,'점검 결과','제출이 완료되었습니다.');
 }

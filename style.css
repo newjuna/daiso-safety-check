@@ -191,6 +191,36 @@ button{cursor:pointer}
 .number-suffix input{padding-right:42px}
 .number-suffix span{position:absolute;right:15px;top:50%;transform:translateY(-50%);font-weight:900;color:var(--muted)}
 @media (max-width:520px){.inbound-meta{grid-template-columns:1fr}}
+
+/* 입고 인력부담 측정 (시작·종료시간, 투입인원, 도우미 퇴근시간 → 인시 계산) */
+.inbound-labor{margin:0 0 14px;padding:12px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
+.inbound-labor-head{font-size:13px;font-weight:900;margin-bottom:8px}
+.inbound-labor-head small{font-weight:600;color:var(--muted)}
+.inbound-labor-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.inbound-labor-grid .field{margin:0}
+@media (max-width:520px){.inbound-labor-grid{grid-template-columns:1fr}}
+.inbound-labor-badge{margin-top:10px;padding:10px 12px;border-radius:12px;background:#eef1f6;display:flex;align-items:center;gap:10px;font-size:13px}
+.inbound-labor-badge b{font-size:14px}
+.inbound-labor-badge.warn{background:#fff3d6;color:#8a5800}
+.inbound-labor-badge.bad{background:#fff0f3;color:var(--bad)}
+.inbound-labor-badge.muted{color:var(--muted);background:#f1f2f5}
+
+/* TBM 확인방법 선택 */
+.tbm-confirm-method{margin:0 0 14px;padding:12px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
+.tbm-confirm-method .answers{display:flex;gap:8px;margin:8px 0}
+
+/* 종합점수 카드 (앱 내부 결과화면) */
+.score-summary{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+.score-num{display:flex;align-items:baseline;gap:4px}
+.score-num b{font-size:34px;font-weight:900}
+.score-num span{font-size:14px;color:var(--muted)}
+.score-num.bad b{color:var(--bad)}
+.score-grade{font-size:16px;font-weight:900;padding:4px 12px;border-radius:99px;background:#f1f2f5}
+.score-part-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.score-part{padding:10px 6px;background:#f7f7fa;border-radius:12px;text-align:center}
+.score-part small{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
+.score-part b{font-size:16px}
+@media(max-width:560px){.score-part-grid{grid-template-columns:repeat(2,1fr)}}
 /* 좁은 화면에서 입력칸(.grid)은 1열로 쪼개지만, 이동 버튼(.navrow)은 계속 좌우 배치를 유지한다. */
 @media(max-width:560px){.grid{grid-template-columns:1fr}.hero h1{font-size:22px}.card{padding:14px}.metric{grid-template-columns:1fr 1fr 1fr}.nav .primary,.nav .secondary{padding:8px;min-height:46px}}
 @media(max-width:400px){.navrow{grid-template-columns:1fr 1.25fr;gap:7px}.navrow .secondary,.navrow .primary{padding:10px 8px;font-size:14px}}
