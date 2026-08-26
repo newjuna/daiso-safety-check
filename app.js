@@ -72,6 +72,10 @@ function normalizeState(){
   S.tbm.status=S.tbm.status||'';
   /* TBM 확인방법: 직접참관(기본) / 인터뷰만. 서류확인은 운용하지 않는다. */
   S.tbm.confirmMethod=S.tbm.confirmMethod==='인터뷰만'?'인터뷰만':'직접참관';
+  /* TBM 실시시각(오전/오후). 입고 시작시간보다 TBM이 늦으면 "스트레칭 없이 입고작업 시작"으로 보고
+     근골격계 위험신호에 자동 반영한다. */
+  S.tbm.amTime=S.tbm.amTime||'';
+  S.tbm.pmTime=S.tbm.pmTime||'';
   S.screen=S.screen||'start';
   S.wi=Number.isInteger(S.wi)?S.wi:0;
   /* v32에서 첫 문항의 답변 순서만 뒤집었다. 저장 중인 점검의 의미가 바뀌지 않게 인덱스를 함께 변환한다. */
@@ -572,6 +576,31 @@ function calcInboundLabor(){
   else if(avgPeople<cfg.goodAvgPeople||gapRatio>=cfg.minorGapRatio)level='minor';
   return{avgPeople,gapRatio,level,totalMin};
 }
+/* TBM(스트레칭 포함) 시각보다 입고작업 시작시간이 더 빠르면 스트레칭 없이
+   중량물 작업을 시작한 것으로 본다. 입고시간대(오전/오후)에 맞는 TBM 시각과 비교한다.
+   둘 중 하나라도 입력되지 않으면 null(측정불가)을 리턴해 자동 위험신호를 걸지 않는다. */
+function calcTbmStretchGap(){
+  const b=S.basic,tbm=S.tbm||{};
+  const start=b.inboundStart;
+  if(!start)return null;
+  const toMin=t=>{const m=/^(\d{2}):(\d{2})$/.exec(t||'');return m?(+m[1]*60+ +m[2]):null};
+  const s=toMin(start);
+  if(s==null)return null;
+  /* 입고시간대가 오전/오후 중 어디인지에 맞는 TBM 시각을 우선 사용한다.
+     입고시간대를 아직 안 골랐으면 입력된 TBM 시각 중 하나를 그대로 쓴다. */
+  let tbmTimeStr=null;
+  if(b.delivery==='오전')tbmTimeStr=tbm.amTime||null;
+  else if(b.delivery==='오후(야간)')tbmTimeStr=tbm.pmTime||null;
+  else tbmTimeStr=tbm.amTime||tbm.pmTime||null;
+  const t=toMin(tbmTimeStr);
+  if(t==null)return null;
+  const gapMinutes=t-s; /* 양수면 TBM 시각이 입고 시작시간보다 늦음 = 입고작업이 먼저 시작됨(스트레칭 없이 작업) */
+  const cfg=D.scoring.tbmStretchGap;
+  let level='good';
+  if(gapMinutes>cfg.severeMinutes)level='severe';
+  else if(gapMinutes>cfg.minorMinutes)level='minor';
+  return{gapMinutes,level};
+}
 function inboundLaborResultBadge(){
   const r=calcInboundLabor();
   if(!r)return `<div class="inbound-labor-badge muted">시간·인원을 모두 입력하면 인력부담이 자동 계산됩니다.</div>`;
@@ -664,10 +693,13 @@ function checklist(k){
 
   /* TBM만 '이번 점검을 어떻게 확인했는지'를 추가로 기록한다. 서류확인은 운용하지 않는다. */
   const tbmMethod=k==='tbm'?`<div class="field tbm-confirm-method"><label>이번 TBM 점검은 어떻게 확인했습니까?</label><div class="answers">${['직접참관','인터뷰만'].map(m=>`<button class="ans ${st.confirmMethod===m||(!st.confirmMethod&&m==='직접참관')?'sel':''}" onclick="setTbmConfirmMethod('${m}')">${m}</button>`).join('')}</div><small class="muted">인터뷰만으로 확인한 경우 이번 TBM 점수 인정 비율이 낮아집니다.</small></div>`:'';
+  /* TBM(스트레칭 포함) 실시시각. 입고 시작시간보다 늦으면 스트레칭 없이 작업을 시작한 것으로 보고
+     근골격계 위험신호에 자동 반영한다. */
+  const tbmTime=k==='tbm'?`<div class="tbm-time-fields"><div class="field"><label>오전 TBM 실시시각</label><input type="time" value="${esc(st.amTime||'')}" onchange="setTbmTime('am',this.value)"></div><div class="field"><label>오후 TBM 실시시각</label><input type="time" value="${esc(st.pmTime||'')}" onchange="setTbmTime('pm',this.value)"></div></div>${tbmStretchGapNotice()}`:'';
 
   const body=`<div class="card step-card"><div class="step-head"><span>${title}</span><b>양호가 기본 선택 · 미흡만 바꾸세요</b></div>
     <div class="summary"><h2>${title} 점검</h2><span class="pill ${bad?'bad':''}">${bad?`미흡 ${bad}건 · 해당없음 ${naCount}건`:`양호 ${total-naCount}항목 · 해당없음 ${naCount}건`}</span></div>
-    ${tbmMethod}
+    ${tbmMethod}${tbmTime}
     <div class="form-list">${rows}</div>
     <div class="navrow"><button class="secondary" onclick="go('${PREV_BEFORE[k]}')">← 이전</button><button class="primary" onclick="finishChecklist('${k}')">${k==='tbm'?'의견청취':CHECKLIST_TITLE[NEXT_AFTER[k]]} →</button></div></div>`;
 
@@ -694,6 +726,20 @@ function setChecklistStatus(k,item,status){
 /* TBM 확인방법 기록 (직접참관/인터뷰만). 서류확인은 운용하지 않는다. */
 function setTbmConfirmMethod(m){
   S.tbm.confirmMethod=m;save();checklist('tbm');
+}
+/* TBM(스트레칭 포함) 실시시각 기록. 입고 시작시간과 비교해 스트레칭 없이
+   작업을 시작했는지 화면에서 바로 알려준다. */
+function setTbmTime(period,value){
+  if(period==='am')S.tbm.amTime=value;else S.tbm.pmTime=value;
+  save();checklist('tbm');
+}
+function tbmStretchGapNotice(){
+  const g=calcTbmStretchGap();
+  if(!g)return `<div class="inbound-labor-badge muted">입고 시작시간과 TBM 실시시각을 모두 입력하면 스트레칭 여부가 자동 확인됩니다.</div>`;
+  if(g.level==='good')return `<div class="inbound-labor-badge">양호 · TBM(스트레칭) 이후 입고작업을 시작했습니다.</div>`;
+  const label=g.level==='minor'?'위험(경미)':'위험(심각)';
+  const cls=g.level==='minor'?'warn':'bad';
+  return `<div class="inbound-labor-badge ${cls}"><b>${label}</b><span>TBM(스트레칭)보다 입고작업이 ${g.gapMinutes}분 먼저 시작됐습니다 · 스트레칭 없이 무리한 동작 위험</span></div>`;
 }
 function finishChecklist(k){
   const st=S[k];
@@ -922,6 +968,11 @@ function stepLadderCount(t,delta){
       S.ladder.issues=S.ladder.issues.filter(function(x){return x.typeKey!==t});
     }
     if(LADDER_EXPANDED===t)LADDER_EXPANDED=null;
+  }else if(before===0&&after>0){
+    /* 0대→1대 이상이 되는 순간(신규 보유 등록)에는 매번 양호/미흡을 고르게 하면 번거로우므로
+       기본값을 '양호'로 자동 체크해둔다. 실제로 미흡이면 화면에서 바로 '미흡'으로 바꾸면 된다. */
+    S.ladder.typeStatus=S.ladder.typeStatus||{};
+    if(!S.ladder.typeStatus[t])S.ladder.typeStatus[t]='good';
   }
   save();
   var crossedZero=(before===0&&after>0)||(before>0&&after===0);
@@ -1377,7 +1428,7 @@ function buildSubmitPayload(){
     issues.push({issueId:S.inspectionId+'-accident-'+x.key.replace(/[^a-zA-Z0-9_-]/g,'-'),category:'사고조사',itemName:`${x.date} ${x.type}`.trim(),note:memo,hazard:x.hazardText||x.type||'사고',status:x.status==='조치완료'?'조치완료':'조치대기',photos:after});
   });
 
-  const c=calc(),summary=scoreSummary(),labor=calcInboundLabor();
+  const c=calc(),summary=scoreSummary(),labor=calcInboundLabor(),stretchGap=calcTbmStretchGap();
   return {
     inspectionId:S.inspectionId,
     store:S.store.name, division:S.basic.hq||'', dept:S.basic.dept||'', team:S.basic.team||'',
@@ -1389,6 +1440,8 @@ function buildSubmitPayload(){
     workRisk:c.work, ladderCount:c.lm, facilityCount:c.cm+c.fim, tbmCount:c.tm,
     score:summary.score, grade:summary.grade, scoreParts:summary.parts,
     tbmConfirmMethod:S.tbm.confirmMethod||'직접참관', tbmCrossCheckFlags:tbmCrossCheckFlags(),
+    tbmAmTime:S.tbm.amTime||'', tbmPmTime:S.tbm.pmTime||'',
+    tbmStretchGapLevel:stretchGap?stretchGap.level:'', tbmStretchGapMinutes:stretchGap?stretchGap.gapMinutes:'',
     tasks:S.tasks.filter(x=>x.include),
     /* 사고조사 결과 (사진은 위 issues에 이미 담겨 있으므로 여기서는 제외) */
     accidents:(S.accidents||[]).map(x=>({
@@ -1435,7 +1488,7 @@ function getLandscapeReportSnapshot(){
     if(!q||!Number.isFinite(oi)||oi===0)return;
     workerOpinions.push({worker:workerIndex+1,question:q[0],answer:(q[1]||[])[oi]||a.text||''});
   }));
-  const summary=scoreSummary(),labor=calcInboundLabor();
+  const summary=scoreSummary(),labor=calcInboundLabor(),stretchGap=calcTbmStretchGap();
   return {
     generatedAt:new Date().toISOString(),inspectionId:S.inspectionId||'',submittedAt:S.submittedAt||'',
     store:{name:S.store?.name||'매장명 미입력',date:S.basic.date||'',inspector:S.basic.inspector||'',hq:S.basic.hq||'',dept:S.basic.dept||'',team:S.basic.team||''},
@@ -1445,7 +1498,8 @@ function getLandscapeReportSnapshot(){
     tasks:(S.tasks||[]).filter(x=>x.include),resultNote:S.resultNote||'',
     score:summary.score,grade:summary.grade,scoreParts:summary.parts,hasAccidentScore:summary.hasAccident,
     inboundLabor:labor?{level:labor.level,avgPeople:Math.round(labor.avgPeople*10)/10,gapRatioPct:Math.round(labor.gapRatio*100)}:null,
-    tbmConfirmMethod:S.tbm.confirmMethod||'직접참관',tbmCrossCheckFlags:tbmCrossCheckFlags()
+    tbmConfirmMethod:S.tbm.confirmMethod||'직접참관',tbmCrossCheckFlags:tbmCrossCheckFlags(),
+    tbmStretchGap:stretchGap?{level:stretchGap.level,gapMinutes:stretchGap.gapMinutes}:null
   };
 }
 window.getLandscapeReportSnapshot=getLandscapeReportSnapshot;
@@ -1523,6 +1577,13 @@ function scoreWork(){
   if(labor){
     totalSum+=1;
     if(labor.level!=='good')riskSum+=hazardWeight('근골격계')*(labor.level==='severe'?1.3:1);
+  }
+  /* TBM(스트레칭) 없이 입고작업을 먼저 시작한 경우도 근골격계 위험신호 1문항으로 합산한다.
+     TBM 시각·입고 시작시간이 다 입력되지 않으면(측정불가) 집계에서 제외한다. */
+  const stretchGap=calcTbmStretchGap();
+  if(stretchGap){
+    totalSum+=1;
+    if(stretchGap.level!=='good')riskSum+=hazardWeight('근골격계')*(stretchGap.level==='severe'?1.3:1);
   }
   if(!totalSum)return 100;
   /* 가중 위험신호 비율이 높을수록 감점. 문항 전체가 위험이어도 0점까지만 깎는다. */
@@ -1651,14 +1712,15 @@ function report(){
   headCard+='<button class="secondary wide" style="margin-top:8px" onclick="openLandscapeReport()">가로형 결과보고서 보기</button>';
   headCard+='</div>';
 
-  const summary=scoreSummary(),labor=calcInboundLabor(),crossFlags=tbmCrossCheckFlags();
+  const summary=scoreSummary(),labor=calcInboundLabor(),crossFlags=tbmCrossCheckFlags(),stretchGap=calcTbmStretchGap();
   const partLabel={work:'작업점검',ladder:'사다리',common:'공통·시설',fire:'소방',tbm:'TBM',accident:'사고 재발방지'};
   const scoreCard=`<div class="card"><h2>종합점수</h2><div class="score-summary"><div class="score-num ${summary.grade==='D'?'bad':''}"><b>${summary.score}</b><span>점</span></div><div class="score-grade">${summary.grade}등급</div></div><div class="score-part-grid">${Object.entries(summary.parts).map(([k,v])=>`<div class="score-part"><small>${partLabel[k]||k}</small><b>${v}</b></div>`).join('')}</div>${!summary.hasAccident?'<small class="muted">사고이력 없는 매장: 사고 재발방지 배점은 작업점검에 포함</small>':''}</div>`;
   const laborBadge=labor?`<div class="card"><h2>입고 인력부담</h2><div class="inbound-labor-badge ${labor.level==='good'?'':labor.level==='minor'?'warn':'bad'}"><b>${labor.level==='good'?'양호':labor.level==='minor'?'위험(경미)':'위험(심각)'}</b><span>평균 투입인원 ${labor.avgPeople.toFixed(1)}명 · 도우미 공백비율 ${Math.round(labor.gapRatio*100)}%</span></div></div>`:'';
+  const stretchBadge=stretchGap&&stretchGap.level!=='good'?`<div class="card"><h2>TBM(스트레칭) 없이 입고작업 시작</h2><div class="inbound-labor-badge ${stretchGap.level==='minor'?'warn':'bad'}"><b>${stretchGap.level==='minor'?'위험(경미)':'위험(심각)'}</b><span>TBM보다 입고작업이 ${stretchGap.gapMinutes}분 먼저 시작됨 · 근골격계 위험신호 반영</span></div></div>`:'';
   const tbmFlagCard=crossFlags.length?`<div class="card"><h2>TBM 실효성 확인 필요</h2>${crossFlags.map(f=>`<div class="notice bad">${esc(f.message)}</div>`).join('')}</div>`:'';
   const summaryCard=`<div class="card"><h2>점검 요약</h2><div class="metric"><div><b>${responses}</b>의견 참여</div><div><b>${c.cm}</b>시설 미흡</div><div><b>${c.fim}</b>소방 미흡</div><div><b>${c.lm}</b>사다리 이상</div><div><b>${c.tm}</b>TBM 미흡</div><div><b>${active.length}</b>개선과제</div></div></div>`;
 
-  const body=`${headCard}${scoreCard}${laborBadge}${tbmFlagCard}${summaryCard}<div class="card"><h2>작업유형 위험신호</h2>${c.work.map(x=>`<div class="riskrow"><header><span>${x.name}</span><span>${x.status==='na'?'해당 없음':`위험신호 ${x.risk}건`}</span></header></div>`).join('')}</div><div class="card"><h2>재해유형별 위험신호</h2>${c.haz.length?c.haz.map(([h,n])=>`<div class="riskrow"><header><span>${h}</span><span>${n}건</span></header></div>`).join(''):'<p class="muted">위험신호 없음</p>'}</div><div class="card"><h2>종합진단 초안</h2><textarea readonly>${esc(`${S.store.name}은(는) ${top.filter(x=>x.risk).map(x=>x.name).join(', ')||'전 작업'} 영역을 중심으로 확인되었습니다. 공통·시설 미흡 ${c.cm}건, 소방 미흡 ${c.fim}건, TBM 미흡 ${c.tm}건, 사다리 이상 ${c.lm}건이며 개선과제 ${active.length}건을 검토해야 합니다.`)}</textarea><div class="field" style="margin-top:10px"><label>점검자 추가 의견 <small>(선택)</small></label><textarea placeholder="위 자동 진단에 덧붙일 내용을 입력하세요" onchange="S.resultNote=this.value;save()">${esc(S.resultNote)}</textarea></div>${foundHtml}${active.length?`<h2 style="margin-top:16px">지난 지적사항 조치 확인</h2>${active.map(x=>`<div class="q"><b>${esc(x.title)}</b><div class="muted">${esc(x.source||'')} · ${esc(x.owner||'')} · ${esc(x.status||'')}</div></div>`).join('')}`:''}<button class="secondary wide" style="margin-top:12px" onclick="window.print()">보고서 인쇄</button><button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button></div>`;
+  const body=`${headCard}${scoreCard}${laborBadge}${stretchBadge}${tbmFlagCard}${summaryCard}<div class="card"><h2>작업유형 위험신호</h2>${c.work.map(x=>`<div class="riskrow"><header><span>${x.name}</span><span>${x.status==='na'?'해당 없음':`위험신호 ${x.risk}건`}</span></header></div>`).join('')}</div><div class="card"><h2>재해유형별 위험신호</h2>${c.haz.length?c.haz.map(([h,n])=>`<div class="riskrow"><header><span>${h}</span><span>${n}건</span></header></div>`).join(''):'<p class="muted">위험신호 없음</p>'}</div><div class="card"><h2>종합진단 초안</h2><textarea readonly>${esc(`${S.store.name}은(는) ${top.filter(x=>x.risk).map(x=>x.name).join(', ')||'전 작업'} 영역을 중심으로 확인되었습니다. 공통·시설 미흡 ${c.cm}건, 소방 미흡 ${c.fim}건, TBM 미흡 ${c.tm}건, 사다리 이상 ${c.lm}건이며 개선과제 ${active.length}건을 검토해야 합니다.`)}</textarea><div class="field" style="margin-top:10px"><label>점검자 추가 의견 <small>(선택)</small></label><textarea placeholder="위 자동 진단에 덧붙일 내용을 입력하세요" onchange="S.resultNote=this.value;save()">${esc(S.resultNote)}</textarea></div>${foundHtml}${active.length?`<h2 style="margin-top:16px">지난 지적사항 조치 확인</h2>${active.map(x=>`<div class="q"><b>${esc(x.title)}</b><div class="muted">${esc(x.source||'')} · ${esc(x.owner||'')} · ${esc(x.status||'')}</div></div>`).join('')}`:''}<button class="secondary wide" style="margin-top:12px" onclick="window.print()">보고서 인쇄</button><button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button></div>`;
 
   frame(body,'점검 결과','제출이 완료되었습니다.');
 }
