@@ -90,6 +90,7 @@ function normalizeState(){
   S.submittedAt=S.submittedAt||null;S.submittedBy=S.submittedBy||'';
   S.resultNote=S.resultNote||'';
   S.resultLinks=S.resultLinks||null;
+  S.reportPdfError=S.reportPdfError||'';
 }
 normalizeState();
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -122,6 +123,7 @@ function mockServer(fnName,args){
   }
   if(fnName==='getLadderTypeImages')return {};
   if(fnName==='submitInspection')return {pdfUrl:'',folderUrl:''};
+  if(fnName==='saveReportPdf')return {pdfUrl:''};
   if(fnName==='getStoreDashboardHistory')return [];
   if(fnName==='getDashboardData')return {summary:{inspectionCount:0,totalRiskSignals:0,openTaskCount:0},storeNames:[],deptRanking:[],hazardTop:[],openTasks:[]};
   return null;
@@ -1509,7 +1511,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=1','_blank');
+  const win=window.open('report.html?v=3','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -1540,19 +1542,165 @@ function missingScreen(missing){
 }
 function jumpToMissingAt(i){jumpToMissing(MISSING_CACHE[i])}
 
-/* 제출 처리: 로딩화면 -> 완료되면 결과화면(PDF 버튼 포함) */
-function submitToServer(){
-  S.screen='result';
-  frame(`<div class="card submitting"><div class="spinner"></div><h2>제출 처리 중입니다</h2><p class="muted">사진을 올리고 결과보고서를 만들고 있습니다. 사진이 많으면 1~2분 걸릴 수 있습니다.<br><b>창을 닫지 마세요.</b></p></div>`,`제출 중`,`잠시만 기다려 주세요.`);
-  const payload=buildSubmitPayload();
-  gsRun('submitInspection',payload).then(links=>{
-    S.resultLinks=links;S.submitError='';save();
-    report();
-  }).catch(err=>{
-    /* 저장이 실패해도 로컬 결과는 보여준다. 재시도는 결과화면의 버튼으로 한다. */
-    S.submitError=(err&&err.message?err.message:String(err));save();
-    report();
+/* ============ 제출 진행률 게이지 ============
+   제출은 사진 업로드 + PDF 생성까지 포함해 1~2분 걸릴 수 있다.
+   그냥 스피너만 돌리면 멈춘 것처럼 보이므로, 단계와 퍼센트를 눈으로 보여준다. */
+const SUBMIT_STEPS=[
+  {key:'save',   label:'점검결과 저장'},
+  {key:'render', label:'결과보고서 만들기'},
+  {key:'shot',   label:'보고서 페이지 이미지화'},
+  {key:'pdf',    label:'PDF 파일 생성'},
+  {key:'upload', label:'드라이브 업로드'}
+];
+var PROGRESS={pct:0,step:'',stepKey:'',moving:true};
+function renderProgress(){
+  const idx=SUBMIT_STEPS.findIndex(x=>x.key===PROGRESS.stepKey);
+  const steps=SUBMIT_STEPS.map((x,i)=>{
+    const cls=i===idx?'on':(idx>=0&&i<idx?'done':'');
+    const mark=(idx>=0&&i<idx)?'✓':(i+1);
+    return `<div class="${cls}"><i>${mark}</i><span>${x.label}</span></div>`;
+  }).join('');
+  frame(`<div class="card submitting">
+    <h2>제출 처리 중입니다</h2>
+    <div class="submit-progress">
+      <div class="bar"><i class="${PROGRESS.moving?'moving':''}" style="width:${PROGRESS.pct}%"></i></div>
+      <div class="pct">${Math.round(PROGRESS.pct)}%</div>
+      <div class="step">${esc(PROGRESS.step)}</div>
+      <div class="hint">사진이 많으면 1~2분 걸릴 수 있습니다.<br><b>창을 닫지 마세요.</b></div>
+    </div>
+    <div class="submit-steps">${steps}</div>
+  </div>`,'제출 중','잠시만 기다려 주세요.');
+}
+/* 진행률 갱신. 화면이 실제로 다시 그려지도록 다음 프레임까지 양보한다. */
+function setProgress(pct,stepKey,stepText,moving){
+  PROGRESS.pct=Math.max(PROGRESS.pct,pct);
+  if(stepKey)PROGRESS.stepKey=stepKey;
+  if(stepText)PROGRESS.step=stepText;
+  PROGRESS.moving=moving!==false;
+  renderProgress();
+  return new Promise(r=>setTimeout(r,30));
+}
+
+/* ============ 결과보고서를 PDF로 만들어 드라이브에 저장 ============ */
+/* report.js가 그리는 것과 완전히 같은 화면을 화면 밖(보이지 않는 영역)에 그린 뒤
+   html2canvas로 페이지별 이미지를 떠서 jsPDF로 묶는다. 그래서 결과보고서 화면과
+   PDF가 100% 같은 모양이 된다. (구글문서 변환 방식은 이 레이아웃을 못 그린다) */
+function loadScriptOnce(src){
+  return new Promise((resolve,reject)=>{
+    if(document.querySelector('script[data-lib="'+src+'"]'))return resolve();
+    const el=document.createElement('script');
+    el.src=src;el.setAttribute('data-lib',src);
+    el.onload=()=>resolve();
+    el.onerror=()=>reject(new Error('스크립트를 불러오지 못했습니다: '+src));
+    document.head.appendChild(el);
   });
+}
+/* 결과보고서 전용 CSS를 이 문서에도 한 번만 붙인다(캡처용 화면에 스타일이 필요). */
+function loadReportCssOnce(){
+  return new Promise((resolve)=>{
+    if(document.querySelector('link[data-report-css]'))return resolve();
+    const el=document.createElement('link');
+    el.rel='stylesheet';el.href='report.css?v=3';el.setAttribute('data-report-css','1');
+    el.onload=()=>resolve();el.onerror=()=>resolve(); /* 실패해도 진행(모양만 달라짐) */
+    document.head.appendChild(el);
+  });
+}
+async function buildReportPdfBase64(snapshot,onProgress){
+  await loadReportCssOnce();
+  await loadScriptOnce('vendor/html2canvas.min.js?v=1');
+  await loadScriptOnce('vendor/jspdf.umd.min.js?v=1');
+  if(typeof html2canvas!=='function')throw new Error('html2canvas 로드 실패');
+  const jsPDFCtor=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF;
+  if(!jsPDFCtor)throw new Error('jsPDF 로드 실패');
+
+  /* 캡처용 화면: 화면 밖에 두되 display:none은 쓰지 않는다(none이면 렌더링이 안 돼 캡처가 빈다). */
+  const PAGE_W=1280, PAGE_H=720; /* 16:9 */
+  const holder=document.createElement('div');
+  holder.style.cssText='position:fixed;left:-20000px;top:0;width:'+PAGE_W+'px;z-index:-1;background:#fff';
+  holder.innerHTML='<div class="deck" style="padding:0">'+window.buildReportPages(snapshot)+'</div>';
+  document.body.appendChild(holder);
+  /* 캡처 대상은 화면과 동일한 16:9 고정 크기로 맞춘다. */
+  const pages=[...holder.querySelectorAll('.page')];
+  pages.forEach(p=>{
+    p.style.width=PAGE_W+'px';p.style.height=PAGE_H+'px';
+    p.style.aspectRatio='auto';p.style.margin='0';p.style.boxShadow='none';
+  });
+
+  try{
+    /* 사진(base64 img)이 실제로 다 그려진 뒤에 캡처해야 빈 박스로 찍히지 않는다. */
+    await Promise.all([...holder.querySelectorAll('img')].map(img=>
+      (img.complete&&img.naturalWidth) ? Promise.resolve()
+        : new Promise(r=>{img.onload=r;img.onerror=r;setTimeout(r,4000)})
+    ));
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+    const pdf=new jsPDFCtor({orientation:'landscape',unit:'pt',format:[PAGE_W,PAGE_H],compress:true});
+    for(let i=0;i<pages.length;i++){
+      const canvas=await html2canvas(pages[i],{
+        scale:1.5,              /* 너무 키우면 용량이 급증하고 모바일에서 메모리 부족이 난다 */
+        useCORS:false,
+        backgroundColor:'#ffffff',
+        logging:false,
+        width:PAGE_W,height:PAGE_H,
+        windowWidth:PAGE_W,windowHeight:PAGE_H
+      });
+      const jpeg=canvas.toDataURL('image/jpeg',0.82);
+      if(i>0)pdf.addPage([PAGE_W,PAGE_H],'landscape');
+      pdf.addImage(jpeg,'JPEG',0,0,PAGE_W,PAGE_H,undefined,'FAST');
+      if(onProgress)await onProgress(i+1,pages.length);
+    }
+    /* dataURL의 "data:application/pdf;base64," 접두어를 떼고 순수 base64만 서버로 보낸다. */
+    return {base64:pdf.output('datauristring').split(',')[1],pageCount:pages.length};
+  }finally{
+    holder.remove();
+  }
+}
+
+/* 제출 처리: 진행률 게이지 -> 저장 -> 보고서 PDF 생성/업로드 -> 결과화면 */
+async function submitToServer(){
+  S.screen='result';
+  PROGRESS={pct:0,step:'',stepKey:'',moving:true};
+
+  await setProgress(4,'save','점검결과를 저장하고 있습니다');
+  const payload=buildSubmitPayload();
+
+  /* 1) 점검 데이터 + 사진 저장 (가장 중요한 단계. 실패하면 여기서 끝낸다) */
+  let links;
+  try{
+    links=await gsRun('submitInspection',payload);
+    S.resultLinks=links;S.submitError='';S.reportPdfError='';save();
+  }catch(err){
+    S.submitError=(err&&err.message?err.message:String(err));save();
+    report();return;
+  }
+
+  /* 2) 결과보고서를 PDF로 만들어 드라이브에 저장.
+        이 단계가 실패해도 점검결과는 이미 저장됐으므로 제출 자체를 실패로 만들지 않는다. */
+  await setProgress(45,'render','결과보고서를 만들고 있습니다');
+  try{
+    const snapshot=getLandscapeReportSnapshot();
+    const pdf=await buildReportPdfBase64(snapshot,async(done,total)=>{
+      /* 캡처는 페이지 수만큼 진행되므로 실제 진행률을 그대로 보여준다(45% → 78%) */
+      await setProgress(45+Math.round(done/total*33),'shot',
+        '보고서 페이지 이미지화 ('+done+'/'+total+')',false);
+    });
+    await setProgress(80,'pdf','PDF 파일을 만들고 있습니다');
+    await setProgress(86,'upload','드라이브에 업로드하고 있습니다');
+    const res=await gsRun('saveReportPdf',{
+      inspectionId:payload.inspectionId,
+      inspector:payload.inspector,
+      date:payload.date,
+      store:payload.store,
+      pdfBase64:pdf.base64
+    });
+    if(res&&res.pdfUrl){S.resultLinks={...(S.resultLinks||{}),pdfUrl:res.pdfUrl};save()}
+    await setProgress(100,'upload','완료되었습니다');
+  }catch(err){
+    /* PDF만 실패한 경우: 점검결과는 저장됐음을 명확히 하고, 결과보고서는 화면에서 볼 수 있다. */
+    S.reportPdfError=(err&&err.message?err.message:String(err));save();
+    await setProgress(100,'upload','점검결과는 저장되었습니다');
+  }
+  report();
 }
 function calc(){const work=D.works.map((w,i)=>{if(S.workNA?.[i])return{name:w[0],risk:0,total:0,status:'na'};const a=Object.values(S.wa[i]||{}),r=a.filter(x=>x.risk).length;return{name:w[0],risk:r,total:a.length,status:'checked'}});const haz={};Object.entries(S.wa).forEach(([wi,ans])=>{if(S.workNA?.[wi])return;Object.values(ans).filter(x=>x.risk).forEach(x=>(x.hazards||[]).forEach(h=>haz[h]=(haz[h]||0)+1))});const cm=(S.common.issues||[]).length,fim=(S.fire.issues||[]).length,tm=(S.tbm.issues||[]).length,lm=(S.ladder.issues||[]).length;return{work,haz:Object.entries(haz).sort((a,b)=>b[1]-a[1]),cm,fim,tm,lm}}
 
@@ -1644,85 +1792,36 @@ function scoreSummary(){
   const grade=score==null?null:score>=90?'A':score>=70?'B':score>=50?'C':'D';
   return{score,grade,parts,weights,hasAccident:accScore!=null};
 }
-/* 이번 점검에서 새로 발견한 지적사항 목록 (결과보고서에서만 보여준다) */
-function buildFoundIssuesHtml(){
-  var rows=[],i;
-  D.works.forEach(function(w,wi){
-    if(S.workNA&&S.workNA[wi])return;
-    var ans=S.wa[wi]||{};
-    Object.keys(ans).forEach(function(qi){
-      var v=ans[qi];
-      if(!v||!v.risk)return;
-      /* 설명 입력칸을 없앴으므로, 실제로 고른 위험 답변을 지적내용으로 쓴다. */
-      var q=w[1][qi];
-      var picked=(q&&q[1]&&q[1][v.oi])?q[1][v.oi]:q[0];
-      rows.push({cat:w[0],text:picked,hazard:(v.hazards||[]).join('/')});
-    });
-  });
-  (S.ladder.issues||[]).forEach(function(x){
-    rows.push({cat:'사다리',text:((x.type||'')+' '+(x.item||'이상사항')).trim(),hazard:'떨어짐'});
-  });
-  (S.common.issues||[]).forEach(function(x){
-    rows.push({cat:'공통·시설',text:x.item||'미흡사항',hazard:'시설'});
-  });
-  (S.fire.issues||[]).forEach(function(x){
-    rows.push({cat:'소방',text:x.item||'미흡사항',hazard:'소방'});
-  });
-  (S.tbm.issues||[]).forEach(function(x){
-    rows.push({cat:'TBM',text:x.item||'미흡사항',hazard:'안전관리'});
-  });
-  (S.others||[]).filter(function(x){return (x.text||'').trim()}).forEach(function(x){
-    rows.push({cat:'기타사항',text:x.text,hazard:'기타'});
-  });
-
-  var h='<h2 style="margin-top:16px">이번 점검 지적사항 ('+rows.length+'건)</h2>';
-  if(!rows.length)return h+'<p class="muted">이번 점검에서 발견된 지적사항이 없습니다.</p>';
-  for(i=0;i<rows.length;i++){
-    h+='<div class="q"><b>'+esc(rows[i].text)+'</b><div class="muted">'+esc(rows[i].cat)+' · '+esc(rows[i].hazard)+'</div></div>';
-  }
-  return h;
-}
 /* 결과화면. 탭에서 빠졌고, 최종 제출을 마친 뒤에만 나온다.
-   맨 위에 저장 결과와 PDF 받기 버튼을 두고, 그 아래에 요약을 보여준다. */
+   상세 결과는 전부 결과보고서(report.html)에서 보여주므로 이 화면은 최소한만 남긴다. */
 function report(){
   S.screen='result';
-  const c=calc(),active=S.tasks.filter(x=>x.include),
-        top=[...c.work].filter(x=>x.status!=='na').sort((a,b)=>b.risk-a.risk).slice(0,3),
-        responses=S.workers.length,
-        submittedText=S.submittedAt?`${new Date(S.submittedAt).toLocaleDateString('ko-KR')} · ${esc(S.submittedBy||'')} 제출`:'';
-  const links=S.resultLinks||{};
-  const foundHtml=buildFoundIssuesHtml();
-
-  /* 저장 결과 카드: 성공이면 PDF/폴더 버튼, 실패면 원인과 재시도 버튼 */
+  const submittedText=S.submittedAt?`${new Date(S.submittedAt).toLocaleDateString('ko-KR')} · ${esc(S.submittedBy||'')} 제출`:'';
+  /* 결과화면은 "제출이 됐다"는 사실과 결과보고서로 넘어가는 버튼만 보여준다.
+     점수·요약·지적사항 목록 등 상세 내용은 모두 결과보고서(report.html)에서 확인하고,
+     PDF 저장도 그 화면에서 하므로 여기서 중복해서 보여주지 않는다. */
   let headCard='<div class="card result-head">';
   if(S.submitError){
+    /* 저장 실패는 반드시 알리고 재시도 경로를 남겨야 한다. */
     headCard+='<div class="result-badge fail">저장 실패</div>';
     headCard+='<h2>제출은 됐지만 저장에 실패했습니다</h2>';
     headCard+='<div class="notice">'+esc(S.submitError)+'</div>';
-    headCard+='<p class="muted">아래 결과는 이 기기에 남아 있습니다. 연결을 확인한 뒤 다시 제출하면 그대로 저장됩니다.</p>';
+    headCard+='<p class="muted">점검 내용은 이 기기에 남아 있습니다. 연결을 확인한 뒤 다시 제출하면 그대로 저장됩니다.</p>';
     headCard+='<button class="primary wide" onclick="submitToServer()">다시 제출하기</button>';
   }else{
     headCard+='<div class="result-badge ok">제출 완료</div>';
     headCard+='<h2>'+esc(S.store.name)+' 점검이 저장되었습니다</h2>';
     if(submittedText)headCard+='<p class="muted">'+submittedText+'</p>';
-    if(links.pdfUrl)headCard+='<a class="primary wide result-link" href="'+esc(links.pdfUrl)+'" target="_blank">📄 결과 PDF 받기</a>';
-    if(links.folderUrl)headCard+='<a class="secondary wide result-link" href="'+esc(links.folderUrl)+'" target="_blank">📁 사진 폴더 열기</a>';
-    if(!links.pdfUrl&&!links.folderUrl)headCard+='<div class="notice">테스트 모드로 진행해 저장 링크가 없습니다.</div>';
+    /* 점검결과는 저장됐지만 보고서 PDF 자동저장만 실패한 경우 (드라이브 저장본 없음) */
+    if(S.reportPdfError){
+      headCard+='<div class="notice">결과보고서 PDF를 드라이브에 저장하지 못했습니다. 아래 «결과보고서 보기»에서 확인하고 필요하면 직접 PDF로 저장해 주세요.</div>';
+    }
   }
-  headCard+='<button class="secondary wide" style="margin-top:8px" onclick="openLandscapeReport()">결과보고서 보기</button>';
+  headCard+='<button class="primary wide" style="margin-top:10px" onclick="openLandscapeReport()">결과보고서 보기</button>';
+  headCard+='<button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button>';
   headCard+='</div>';
 
-  const summary=scoreSummary(),labor=calcInboundLabor(),crossFlags=tbmCrossCheckFlags(),stretchGap=calcTbmStretchGap();
-  const partLabel={work:'작업점검',ladder:'사다리',common:'공통·시설',fire:'소방',tbm:'TBM',accident:'사고 재발방지'};
-  const scoreCard=`<div class="card"><h2>종합점수</h2><div class="score-summary"><div class="score-num ${summary.grade==='D'?'bad':''}"><b>${summary.score}</b><span>점</span></div><div class="score-grade">${summary.grade}등급</div></div><div class="score-part-grid">${Object.entries(summary.parts).map(([k,v])=>`<div class="score-part"><small>${partLabel[k]||k}</small><b>${v}</b></div>`).join('')}</div>${!summary.hasAccident?'<small class="muted">사고이력 없는 매장: 사고 재발방지 배점은 작업점검에 포함</small>':''}</div>`;
-  const laborBadge=labor?`<div class="card"><h2>입고 인력부담</h2><div class="inbound-labor-badge ${labor.level==='good'?'':labor.level==='minor'?'warn':'bad'}"><b>${labor.level==='good'?'양호':labor.level==='minor'?'위험(경미)':'위험(심각)'}</b><span>평균 투입인원 ${labor.avgPeople.toFixed(1)}명 · 도우미 공백비율 ${Math.round(labor.gapRatio*100)}%</span></div></div>`:'';
-  const stretchBadge=stretchGap&&stretchGap.level!=='good'?`<div class="card"><h2>TBM(스트레칭) 없이 입고작업 시작</h2><div class="inbound-labor-badge ${stretchGap.level==='minor'?'warn':'bad'}"><b>${stretchGap.level==='minor'?'위험(경미)':'위험(심각)'}</b><span>TBM보다 입고작업이 ${stretchGap.gapMinutes}분 먼저 시작됨 · 근골격계 위험신호 반영</span></div></div>`:'';
-  const tbmFlagCard=crossFlags.length?`<div class="card"><h2>TBM 실효성 확인 필요</h2>${crossFlags.map(f=>`<div class="notice bad">${esc(f.message)}</div>`).join('')}</div>`:'';
-  const summaryCard=`<div class="card"><h2>점검 요약</h2><div class="metric"><div><b>${responses}</b>의견 참여</div><div><b>${c.cm}</b>시설 미흡</div><div><b>${c.fim}</b>소방 미흡</div><div><b>${c.lm}</b>사다리 이상</div><div><b>${c.tm}</b>TBM 미흡</div><div><b>${active.length}</b>개선과제</div></div></div>`;
-
-  const body=`${headCard}${scoreCard}${laborBadge}${stretchBadge}${tbmFlagCard}${summaryCard}<div class="card"><h2>작업유형 위험신호</h2>${c.work.map(x=>`<div class="riskrow"><header><span>${x.name}</span><span>${x.status==='na'?'해당 없음':`위험신호 ${x.risk}건`}</span></header></div>`).join('')}</div><div class="card"><h2>재해유형별 위험신호</h2>${c.haz.length?c.haz.map(([h,n])=>`<div class="riskrow"><header><span>${h}</span><span>${n}건</span></header></div>`).join(''):'<p class="muted">위험신호 없음</p>'}</div><div class="card"><h2>종합진단 초안</h2><textarea readonly>${esc(`${S.store.name}은(는) ${top.filter(x=>x.risk).map(x=>x.name).join(', ')||'전 작업'} 영역을 중심으로 확인되었습니다. 공통·시설 미흡 ${c.cm}건, 소방 미흡 ${c.fim}건, TBM 미흡 ${c.tm}건, 사다리 이상 ${c.lm}건이며 개선과제 ${active.length}건을 검토해야 합니다.`)}</textarea><div class="field" style="margin-top:10px"><label>점검자 추가 의견 <small>(선택)</small></label><textarea placeholder="위 자동 진단에 덧붙일 내용을 입력하세요" onchange="S.resultNote=this.value;save()">${esc(S.resultNote)}</textarea></div>${foundHtml}${active.length?`<h2 style="margin-top:16px">지난 지적사항 조치 확인</h2>${active.map(x=>`<div class="q"><b>${esc(x.title)}</b><div class="muted">${esc(x.source||'')} · ${esc(x.owner||'')} · ${esc(x.status||'')}</div></div>`).join('')}`:''}<button class="secondary wide" style="margin-top:12px" onclick="window.print()">보고서 인쇄</button><button class="danger wide" style="margin-top:8px" onclick="resetAll()">새 점검 시작</button></div>`;
-
-  frame(body,'점검 결과','제출이 완료되었습니다.');
+  frame(headCard,'점검 결과','제출이 완료되었습니다.');
 }
 function resetAll(){if(confirm('저장된 점검 내용을 지우고 새로 시작할까요?')){localStorage.removeItem(KEY);S=fresh();normalizeState();STORE_LIST=null;PHOTO_STORE.clear();start()}}
 
