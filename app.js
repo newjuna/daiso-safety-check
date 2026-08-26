@@ -1585,15 +1585,25 @@ function setProgress(pct,stepKey,stepText,moving){
 /* report.js가 그리는 것과 완전히 같은 화면을 화면 밖(보이지 않는 영역)에 그린 뒤
    html2canvas로 페이지별 이미지를 떠서 jsPDF로 묶는다. 그래서 결과보고서 화면과
    PDF가 100% 같은 모양이 된다. (구글문서 변환 방식은 이 레이아웃을 못 그린다) */
-function loadScriptOnce(src){
+function loadOneScript(src){
   return new Promise((resolve,reject)=>{
-    if(document.querySelector('script[data-lib="'+src+'"]'))return resolve();
     const el=document.createElement('script');
     el.src=src;el.setAttribute('data-lib',src);
-    el.onload=()=>resolve();
-    el.onerror=()=>reject(new Error('스크립트를 불러오지 못했습니다: '+src));
+    el.onload=()=>resolve(src);
+    el.onerror=()=>{el.remove();reject(new Error(src))};
     document.head.appendChild(el);
   });
+}
+/* PDF 변환 라이브러리 로드.
+   후보 주소를 순서대로 시도한다. 저장소 안(vendor/)에 파일을 두면 그걸 쓰고,
+   파일이 없으면(회사 보안정책 때문에 업로드가 막힌 경우) CDN에서 받아온다.
+   isReady()로 이미 로드됐는지 먼저 확인해 중복 로드를 막는다. */
+function loadLibrary(isReady,candidates){
+  if(isReady())return Promise.resolve();
+  return candidates.reduce(
+    (chain,src)=>chain.catch(()=>loadOneScript(src).then(()=>{ if(!isReady())throw new Error(src+' 로드 후에도 사용할 수 없습니다') })),
+    Promise.reject()
+  ).catch(()=>{ throw new Error('PDF 변환 라이브러리를 불러오지 못했습니다. 네트워크(또는 vendor 폴더)를 확인해 주세요.') });
 }
 /* 결과보고서 전용 CSS를 이 문서에도 한 번만 붙인다(캡처용 화면에 스타일이 필요). */
 function loadReportCssOnce(){
@@ -1605,13 +1615,20 @@ function loadReportCssOnce(){
     document.head.appendChild(el);
   });
 }
+/* 저장소 vendor 폴더 우선, 없으면 CDN. 둘 중 하나만 되면 정상 동작한다. */
+const LIB_HTML2CANVAS=['vendor/html2canvas.min.js?v=1',
+  'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+  'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'];
+const LIB_JSPDF=['vendor/jspdf.umd.min.js?v=1',
+  'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+  'https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js'];
+function jsPDFCtor(){return (window.jspdf&&window.jspdf.jsPDF)||window.jsPDF}
+
 async function buildReportPdfBase64(snapshot,onProgress){
   await loadReportCssOnce();
-  await loadScriptOnce('vendor/html2canvas.min.js?v=1');
-  await loadScriptOnce('vendor/jspdf.umd.min.js?v=1');
-  if(typeof html2canvas!=='function')throw new Error('html2canvas 로드 실패');
-  const jsPDFCtor=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF;
-  if(!jsPDFCtor)throw new Error('jsPDF 로드 실패');
+  await loadLibrary(()=>typeof html2canvas==='function',LIB_HTML2CANVAS);
+  await loadLibrary(()=>!!jsPDFCtor(),LIB_JSPDF);
+  const jsPDFCtorFn=jsPDFCtor();
 
   /* 캡처용 화면: 화면 밖에 두되 display:none은 쓰지 않는다(none이면 렌더링이 안 돼 캡처가 빈다). */
   const PAGE_W=1280, PAGE_H=720; /* 16:9 */
@@ -1634,7 +1651,7 @@ async function buildReportPdfBase64(snapshot,onProgress){
     ));
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    const pdf=new jsPDFCtor({orientation:'landscape',unit:'pt',format:[PAGE_W,PAGE_H],compress:true});
+    const pdf=new jsPDFCtorFn({orientation:'landscape',unit:'pt',format:[PAGE_W,PAGE_H],compress:true});
     for(let i=0;i<pages.length;i++){
       const canvas=await html2canvas(pages[i],{
         scale:1.5,              /* 너무 키우면 용량이 급증하고 모바일에서 메모리 부족이 난다 */
