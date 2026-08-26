@@ -1508,8 +1508,8 @@ function openLandscapeReport(){
   /* 새 창 접근이 제한된 경우에도 텍스트 결과는 복원할 수 있게 사진을 제외한 사본을 저장한다. */
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
-  const file=hasAccidents()?'result-preview-accident.html?live=1':'result-preview-no-accident.html?live=1';
-  const win=window.open(file,'_blank');
+  /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
+  const win=window.open('report.html?v=1','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -1709,7 +1709,7 @@ function report(){
     if(links.folderUrl)headCard+='<a class="secondary wide result-link" href="'+esc(links.folderUrl)+'" target="_blank">📁 사진 폴더 열기</a>';
     if(!links.pdfUrl&&!links.folderUrl)headCard+='<div class="notice">테스트 모드로 진행해 저장 링크가 없습니다.</div>';
   }
-  headCard+='<button class="secondary wide" style="margin-top:8px" onclick="openLandscapeReport()">가로형 결과보고서 보기</button>';
+  headCard+='<button class="secondary wide" style="margin-top:8px" onclick="openLandscapeReport()">결과보고서 보기</button>';
   headCard+='</div>';
 
   const summary=scoreSummary(),labor=calcInboundLabor(),crossFlags=tbmCrossCheckFlags(),stretchGap=calcTbmStretchGap();
