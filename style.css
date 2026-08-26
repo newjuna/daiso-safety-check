@@ -209,6 +209,11 @@ button{cursor:pointer}
 .tbm-confirm-method{margin:0 0 14px;padding:12px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
 .tbm-confirm-method .answers{display:flex;gap:8px;margin:8px 0}
 
+/* TBM(스트레칭) 실시시각 입력 */
+.tbm-time-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 10px}
+.tbm-time-fields .field{margin:0}
+@media (max-width:520px){.tbm-time-fields{grid-template-columns:1fr}}
+
 /* 종합점수 카드 (앱 내부 결과화면) */
 .score-summary{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
 .score-num{display:flex;align-items:baseline;gap:4px}
