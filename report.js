@@ -24,6 +24,11 @@ function loadSnapshot(){
   return d;
 }
 
+/* 이 파일은 두 곳에서 쓰인다.
+   1) report.html — 점검자가 화면으로 보는 결과보고서
+   2) app.js      — 최종 제출 시 같은 화면을 그려서 PDF로 캡처(드라이브 자동저장)
+   그래서 페이지 HTML을 만드는 함수를 window.buildReportPages()로 노출한다. */
+
 /* ============ 시안C 원본 유틸 (구조 그대로) ============ */
 function esc(v){ return String(v ?? "").replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[s])); }
 function pageNo(n){ return `<div class="page-no">${String(n).padStart(2,"0")}</div>`; }
@@ -139,7 +144,7 @@ function makeCover(s,n){
     <div class="issue-preview-wrap">
       ${previews.length?previews.map(f=>`
         <div class="issue-preview">
-          <div>${photoBox(f.photos,"이미지 첨부 박스","tall")}</div>
+          <div class="photo-cell">${photoBox(f.photos,"이미지 첨부 박스","tall")}</div>
           <div class="text">
             <div>${tag(f.category,"info")} ${tag(findingState(f)[0],findingState(f)[1])}</div>
             <h3>${esc(f.area)} · ${esc(f.title)}</h3>
@@ -229,7 +234,7 @@ function makeAreaPage(s,n){
     <div class="section-head"><div><h2>분야별 핵심 현황</h2></div></div>
     <div class="grid2">
       <div class="area-card">
-        <div>${photoBox(acc?acc.photos:[], "사고조사 / 조치 후 이미지 첨부 박스","tall")}</div>
+        <div class="photo-cell">${photoBox(acc?acc.photos:[], "사고조사 / 조치 후 이미지 첨부 박스","tall")}</div>
         <div class="body">
           <div>${tag("사고 재발방지","info")} ${acc?tag(st.accident[0],st.accident[1]):tag("해당없음","info")}</div>
           <h3>${acc?esc(acc.type)+" 사고":"사고이력 없음"}</h3>
@@ -239,7 +244,7 @@ function makeAreaPage(s,n){
         </div>
       </div>
       <div class="area-card">
-        <div>${photoBox(areaPhotos(s,"사다리"), "사다리 미흡 이미지 첨부 박스","tall")}</div>
+        <div class="photo-cell">${photoBox(areaPhotos(s,"사다리"), "사다리 미흡 이미지 첨부 박스","tall")}</div>
         <div class="body">
           <div>${tag("사다리","info")} ${tag(st.ladder[0],st.ladder[1])}</div>
           <h3>${ladderF?esc(ladderF.title):"사다리 현황"}</h3>
@@ -249,7 +254,7 @@ function makeAreaPage(s,n){
         </div>
       </div>
       <div class="area-card">
-        <div>${photoBox(areaPhotos(s,"공통·시설").concat(areaPhotos(s,"소방")), "공통·시설 / 소방 이미지 첨부 박스","tall")}</div>
+        <div class="photo-cell">${photoBox(areaPhotos(s,"공통·시설").concat(areaPhotos(s,"소방")), "공통·시설 / 소방 이미지 첨부 박스","tall")}</div>
         <div class="body">
           <div>${tag("공통·시설","info")} ${tag(st.common[0],st.common[1])} ${tag("소방","info")} ${tag(st.fire[0],st.fire[1])}</div>
           <h3>공통·시설 / 소방</h3>
@@ -259,7 +264,7 @@ function makeAreaPage(s,n){
         </div>
       </div>
       <div class="area-card">
-        <div>${photoBox(areaPhotos(s,"TBM"), "TBM / 작업 확인 이미지 첨부 박스","tall")}</div>
+        <div class="photo-cell">${photoBox(areaPhotos(s,"TBM"), "TBM / 작업 확인 이미지 첨부 박스","tall")}</div>
         <div class="body">
           <div>${tag("TBM","info")} ${tag(st.tbm[0],st.tbm[1])}</div>
           <h3>${tbmF?esc(tbmF.title):"TBM 현황"}</h3>
@@ -293,8 +298,8 @@ function makeOpinionPage(s,n){
             <div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(t.title)}</b>${tag(t.status, t.status==="조치완료"?"good":"warn")}</div>
             <p class="meta" style="margin:7px 0 0">${esc(t.date)} · ${esc(t.owner)}</p>
             <div class="beforeafter">
-              <div>${photoBox([], "조치 전 이미지 첨부 박스","small")}</div>
-              <div>${photoBox([], "조치 후 이미지 첨부 박스","small")}</div>
+              <div class="photo-cell">${photoBox([], "조치 전 이미지 첨부 박스","small")}</div>
+              <div class="photo-cell">${photoBox([], "조치 후 이미지 첨부 박스","small")}</div>
             </div>
           </div>
         `).join("") || "<p class='meta'>지난 지적사항 없음</p>"}
@@ -330,7 +335,7 @@ function makeIssuePages(s,startNo){
       <div style="display:grid;grid-template-rows:1fr 1fr;gap:14px">
         ${chunk.map(f=>`
           <div class="issue-card">
-            <div>${photoBox(f.photos,"이미지 첨부 박스","tall")}</div>
+            <div class="photo-cell">${photoBox(f.photos,"이미지 첨부 박스","tall")}</div>
             <div class="issue-copy">
               <div>${tag(f.category,"info")} ${tag(findingState(f)[0],findingState(f)[1])}</div>
               <h3>${esc(f.area)} · ${esc(f.title)}</h3>
@@ -350,23 +355,31 @@ function makeIssuePages(s,startNo){
   return pages.join("");
 }
 
-/* ============ 렌더링 ============ */
-function render(){
-  var s=loadSnapshot();
-  var deck=document.getElementById("deck");
-  if(!s || !s.store){
-    deck.innerHTML='<div class="empty-live"><b>보고서 데이터를 불러오지 못했습니다.</b>'
-      +'<small>점검 결과화면에서 «가로형 결과보고서 보기» 버튼을 다시 눌러 주세요.<br>'
-      +'브라우저가 팝업을 차단했거나, 결과화면을 거치지 않고 이 주소를 직접 열면 데이터가 없습니다.</small></div>';
-    return;
-  }
+/* ============ 페이지 HTML 생성 (app.js의 PDF 캡처에서도 재사용) ============ */
+function buildReportPages(s){
+  if(!s || !s.store) return "";
   var n=1, html="";
   html += makeCover(s,n++);
   html += makeWorkPage(s,n++);
   html += makeAreaPage(s,n++);
   html += makeOpinionPage(s,n++);
   html += makeIssuePages(s,n);
-  deck.innerHTML = html;
+  return html;
+}
+window.buildReportPages=buildReportPages;
+
+/* ============ 렌더링 (report.html 전용) ============ */
+function render(){
+  var deck=document.getElementById("deck");
+  if(!deck)return; /* app.js가 이 파일을 불러쓸 때는 #deck이 없다. 그 경우 렌더링하지 않는다. */
+  var s=loadSnapshot();
+  if(!s || !s.store){
+    deck.innerHTML='<div class="empty-live"><b>보고서 데이터를 불러오지 못했습니다.</b>'
+      +'<small>점검 결과화면에서 «결과보고서 보기» 버튼을 다시 눌러 주세요.<br>'
+      +'브라우저가 팝업을 차단했거나, 결과화면을 거치지 않고 이 주소를 직접 열면 데이터가 없습니다.</small></div>';
+    return;
+  }
+  deck.innerHTML = buildReportPages(s);
 }
 window.reportGo=function(n){ var p=document.querySelectorAll(".page")[n-1]; if(p) p.scrollIntoView({behavior:"smooth"}); };
 render();

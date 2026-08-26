@@ -68,13 +68,25 @@ h1,h2,h3,p{margin-top:0} h1{font-size:33px;margin-bottom:8px} h2{font-size:25px;
 .footer-note{font-size:10px;color:#9aa1ad;position:absolute;left:40px;bottom:18px}
 
 /* ===== 실제 데이터 연결용 추가 규칙 ===== */
-/* 사진이 실제로 있을 때는 점선 박스 대신 사진 자체가 꽉 차게 보이도록 한다. */
-.photo{border-radius:14px;overflow:hidden;background:#e9edf1;min-height:130px;display:block;position:relative}
+/* 사진/박스를 감싸는 칸. 카드(그리드)의 높이를 그대로 물려받아야 사진이 박스에 꽉 찬다.
+   min-height:0 / align-self:stretch 를 주지 않으면 그리드 아이템이 내용 크기만큼만
+   잡혀서 사진이 카드 안에서 작게 떠 보인다. (사진이 박스에 안 맞던 원인) */
+.photo-cell{display:flex;align-self:stretch;min-height:0;min-width:0}
+.photo-cell>*{flex:1 1 auto;min-height:0;width:100%}
+/* 사진이 들어가는 카드들은 그리드 칸 높이를 자식에게 물려줘야 한다. */
+.issue-card,.area-card,.issue-preview{align-items:stretch}
+
+/* 사진이 실제로 있을 때는 점선 박스 대신 사진 자체가 박스를 꽉 채운다. */
+.photo{border-radius:14px;overflow:hidden;background:#eceff3;display:block;position:relative;min-height:130px}
 .photo.small{min-height:88px}
 .photo.tall{min-height:160px}
-.photo img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0}
+/* object-fit:contain — 사진을 잘라내지 않고 전체가 보이도록 한다.
+   현장사진은 위험요인이 사진 가장자리에 있을 수 있어 잘리면 증빙 가치가 떨어진다. */
+.photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
 /* 사진이 여러 장일 때 남은 장수를 우측 하단에 표시 */
 .photo .more{position:absolute;right:8px;bottom:8px;background:#000000a8;color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;z-index:2}
+/* 점선 placeholder도 사진과 같은 크기 규칙을 따르게 한다. */
+.photo-cell>.placeholder{height:auto}
 /* 데이터를 못 불러왔을 때 안내 화면 */
 .empty-live{max-width:620px;margin:80px auto;padding:38px;background:#fff;border-left:8px solid var(--red);box-shadow:0 16px 40px #0002}
 .empty-live b{display:block;font-size:18px}
@@ -85,14 +97,37 @@ h1,h2,h3,p{margin-top:0} h1{font-size:33px;margin-bottom:8px} h2{font-size:25px;
  .hero{margin:16px -18px 0;padding:18px 18px;grid-template-columns:1fr}
  .grid2,.issue-preview-wrap,.statusrow,.beforeafter,.issue-card,.area-card,.issue-preview{grid-template-columns:1fr}
  .issue-card,.area-card,.issue-preview{height:auto}
+ /* 1열로 쌓이면 사진 칸의 기준 높이가 사라지므로 최소 높이를 직접 준다. */
+ .photo-cell{min-height:200px}
+ .photo,.placeholder{min-height:200px}
  .work-table{grid-template-columns:1fr}
  .work-head{display:none}
  .work-row{display:block;border-bottom:1px solid #edf0f4;padding:10px 0}
  .work-cell{border-bottom:none;padding:4px 0}
  .sample-badge{position:static;display:inline-block;margin-bottom:10px}
 }
+/* ===== 인쇄 / PDF 저장 =====
+   화면과 똑같은 결과물이 나오도록 아래 3가지를 반드시 지정한다.
+   1) @page size: 브라우저 기본 용지(A4 세로)를 쓰면 16:9 화면이 잘리거나 찌그러진다.
+      화면과 같은 16:9 비율(297mm x 167mm) 가로 용지로 고정한다.
+   2) print-color-adjust:exact: 브라우저는 인쇄할 때 배경색/배경이미지를 기본적으로 제거한다.
+      이 값을 지정하지 않으면 남색 헤더와 색상 태그가 전부 흰색으로 빠져 화면과 완전히 달라진다.
+   3) vw/vh 단위는 인쇄 컨텍스트에서 신뢰할 수 없으므로 mm 고정값을 쓴다. */
+@page{ size:297mm 167mm; margin:0 }
 @media print{
- body{background:#fff} .topbar{display:none} .deck{padding:0}
- .page{width:100vw;height:56.25vw;box-shadow:none;margin:0;page-break-after:always}
- .page:last-child{page-break-after:auto}
+ html,body{background:#fff;margin:0;padding:0;
+   -webkit-print-color-adjust:exact;print-color-adjust:exact}
+ *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .topbar{display:none}
+ .deck{padding:0;margin:0}
+ .page{width:297mm;height:167mm;aspect-ratio:auto;margin:0;padding:12mm 14mm;
+   box-shadow:none;border:0;overflow:hidden;break-after:page;page-break-after:always}
+ .page:last-child{break-after:auto;page-break-after:auto}
+ /* 카드/사진이 페이지 경계에서 잘리지 않게 한다. */
+ .issue-card,.area-card,.issue-preview,.card,.follow-card,.photo,.placeholder{
+   break-inside:avoid;page-break-inside:avoid}
+ /* 남색 헤더는 페이지 좌우 여백까지 꽉 차게(화면과 동일하게) 유지한다. */
+ .hero{margin-left:-14mm;margin-right:-14mm;padding-left:14mm;padding-right:14mm}
+ .footer-note{left:14mm;bottom:6mm}
+ .page-no{right:14mm;bottom:6mm}
 }

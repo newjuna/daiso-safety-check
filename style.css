@@ -497,6 +497,28 @@ button{cursor:pointer}
 .submitting{text-align:center;padding:34px 18px}
 .submitting h2{margin:16px 0 8px}
 .spinner{width:46px;height:46px;margin:0 auto;border:5px solid #f0f1f4;border-top-color:var(--p);border-radius:50%;animation:spin .9s linear infinite}
+
+/* 제출 진행률 게이지 — 멈춘 것처럼 보이지 않게 진행 상황을 눈으로 보여준다. */
+.submit-progress{margin:20px auto 0;max-width:460px}
+.submit-progress .bar{height:12px;border-radius:99px;background:#eceef2;overflow:hidden}
+.submit-progress .bar i{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,var(--p),#ff6a86);
+  transition:width .45s cubic-bezier(.25,.8,.3,1)}
+/* 서버 응답을 기다리는 동안에도 살아있다는 느낌을 주려고 옅은 줄무늬를 흘려보낸다. */
+.submit-progress .bar i.moving{background-image:linear-gradient(90deg,var(--p),#ff6a86),
+  repeating-linear-gradient(115deg,#ffffff00 0 10px,#ffffff59 10px 20px);
+  background-blend-mode:normal;animation:barflow 1s linear infinite}
+@keyframes barflow{from{background-position:0 0,0 0}to{background-position:0 0,28px 0}}
+.submit-progress .pct{margin-top:10px;font-size:26px;font-weight:1000;letter-spacing:-.5px}
+.submit-progress .step{margin-top:2px;font-size:13.5px;font-weight:800;color:var(--ink)}
+.submit-progress .hint{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5}
+.submit-steps{margin:16px auto 0;max-width:460px;display:grid;gap:6px;text-align:left}
+.submit-steps div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.submit-steps i{width:18px;height:18px;flex:none;border-radius:50%;background:#e9ebf0;color:#9aa0aa;
+  display:flex;align-items:center;justify-content:center;font-style:normal;font-size:10px;font-weight:900}
+.submit-steps div.on{color:var(--ink);font-weight:800}
+.submit-steps div.on i{background:var(--p);color:#fff}
+.submit-steps div.done i{background:#dfe3ea;color:#5b616b}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* 제출 완료 결과 화면 맨 위 카드 */
