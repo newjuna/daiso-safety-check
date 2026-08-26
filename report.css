@@ -1,0 +1,98 @@
+/* ============================================================
+   안전보건 현장진단 결과보고서 (시안C 레이아웃)
+   - GPT 시안(안전보건_결과보고서_시안C_최종본.html)의 스타일을 그대로 옮긴 것.
+   - 실제 데이터 연결을 위해 사진(placeholder → 실제 img) 관련 규칙만 추가했다.
+   ============================================================ */
+*{box-sizing:border-box}
+:root{
+  --red:#e60033; --navy:#13245a; --ink:#171a21; --muted:#6b7280;
+  --line:#dfe3ea; --bg:#eef1f5; --soft:#f6f7f9;
+  --good-bg:#edf8f2; --good:#14754a;
+  --warn-bg:#fff4df; --warn:#9a5b00;
+  --danger-bg:#fff0f2; --danger:#b31236;
+  --blue-bg:#eef3ff; --blue:#284fa1;
+}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);font-family:Pretendard,"Noto Sans KR","Malgun Gothic",sans-serif;color:var(--ink)}
+.topbar{position:sticky;top:0;z-index:20;background:#101522;color:#fff;padding:10px 16px;display:flex;gap:8px;align-items:center;box-shadow:0 2px 14px #0003}
+.topbar b{margin-right:auto;font-size:14px}
+.topbar button{border:1px solid #ffffff40;background:#ffffff12;color:white;border-radius:8px;padding:7px 10px;cursor:pointer}
+.deck{padding:22px}
+.page{width:min(1280px,96vw);aspect-ratio:16/9;background:#fff;margin:0 auto 24px;box-shadow:0 8px 28px #1f293722;position:relative;overflow:hidden;padding:34px 40px}
+.page-no{position:absolute;right:26px;bottom:18px;color:#9ca3af;font-size:12px}
+.kicker{font-size:11px;letter-spacing:.14em;color:var(--red);font-weight:900;margin-bottom:8px}
+h1,h2,h3,p{margin-top:0} h1{font-size:33px;margin-bottom:8px} h2{font-size:25px;margin-bottom:8px} h3{font-size:16px;margin-bottom:8px}
+.meta{font-size:13px;color:var(--muted)}
+.rule{height:1px;background:var(--line);margin:14px 0}
+.card{border:1px solid var(--line);border-radius:15px;padding:15px;background:#fff}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tag{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:850;white-space:nowrap}
+.tag.good{background:var(--good-bg);color:var(--good)}
+.tag.warn{background:var(--warn-bg);color:var(--warn)}
+.tag.danger{background:var(--danger-bg);color:var(--danger)}
+.tag.info{background:var(--blue-bg);color:var(--blue)}
+.hero{background:var(--navy);color:#fff;margin:16px -40px 0;padding:20px 40px;display:grid;grid-template-columns:1.25fr .75fr;gap:24px}
+.keywords{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.kw{padding:8px 12px;border-radius:999px;background:#ffffff15;border:1px solid #ffffff22;font-size:12px;font-weight:800}
+.hero-highlight{color:#ffd84d;font-weight:900}
+.statusrow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}
+.statusbox{border:1px solid var(--line);background:#fff;border-radius:13px;padding:12px}
+.statusbox b{display:block;margin-bottom:7px;font-size:14px}
+.placeholder{border:2px dashed #aeb5c1;background:#f2f4f7;border-radius:14px;min-height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#737c8a;font-weight:800;text-align:center}
+.placeholder.small{min-height:88px}
+.placeholder.tall{min-height:160px}
+.placeholder small{font-weight:500;margin-top:6px;color:#9aa1ad}
+.hazards{display:flex;gap:5px;flex-wrap:wrap}
+.hazard{border:1px solid #d7dce5;border-radius:999px;padding:3px 7px;font-size:11px;color:#596173;background:#fff}
+.issue-preview-wrap{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.issue-preview{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:grid;grid-template-columns:44% 56%;gap:12px;min-height:184px}
+.issue-preview .text{display:flex;flex-direction:column;justify-content:center}
+.issue-preview h3{font-size:16px;margin:8px 0}
+.work-table{display:grid;grid-template-columns:1.1fr .7fr 1.7fr;gap:8px;font-size:13px}
+.work-row{display:contents}
+.work-head>div{font-size:12px;font-weight:900;color:#7b8492;padding:8px 0;border-bottom:2px solid #e7ebf1}
+.work-cell{padding:10px 0;border-bottom:1px solid #edf0f4}
+.section-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:10px}
+.area-card{border:1px solid var(--line);border-radius:15px;padding:14px;background:#fff;display:grid;grid-template-columns:46% 54%;gap:12px;min-height:220px}
+.area-card .body{display:flex;flex-direction:column;justify-content:center}
+.area-card h3{font-size:17px}
+.opinion{border-left:4px solid var(--navy);padding:10px 12px;background:#f7f8fb;border-radius:0 10px 10px 0;margin-bottom:10px}
+.note{background:#fff8e8;border:1px solid #f3dfaa;border-radius:12px;padding:12px;font-size:13px;line-height:1.55}
+.follow-card{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px;background:#fff}
+.beforeafter{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.label{font-size:11px;font-weight:900;letter-spacing:.08em;color:#8a93a1;margin-bottom:5px}
+.issue-card{display:grid;grid-template-columns:42% 58%;gap:16px;border:1px solid var(--line);border-radius:16px;padding:14px;height:240px}
+.issue-card h3{font-size:18px;margin-top:8px}
+.issue-copy{display:flex;flex-direction:column;justify-content:center;padding-right:6px}
+.sample-badge{position:absolute;top:20px;right:25px;background:#111827;color:#fff;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:800}
+.footer-note{font-size:10px;color:#9aa1ad;position:absolute;left:40px;bottom:18px}
+
+/* ===== 실제 데이터 연결용 추가 규칙 ===== */
+/* 사진이 실제로 있을 때는 점선 박스 대신 사진 자체가 꽉 차게 보이도록 한다. */
+.photo{border-radius:14px;overflow:hidden;background:#e9edf1;min-height:130px;display:block;position:relative}
+.photo.small{min-height:88px}
+.photo.tall{min-height:160px}
+.photo img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0}
+/* 사진이 여러 장일 때 남은 장수를 우측 하단에 표시 */
+.photo .more{position:absolute;right:8px;bottom:8px;background:#000000a8;color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;z-index:2}
+/* 데이터를 못 불러왔을 때 안내 화면 */
+.empty-live{max-width:620px;margin:80px auto;padding:38px;background:#fff;border-left:8px solid var(--red);box-shadow:0 16px 40px #0002}
+.empty-live b{display:block;font-size:18px}
+.empty-live small{display:block;margin-top:10px;color:var(--muted);line-height:1.6}
+
+@media(max-width:850px){
+ .deck{padding:8px} .page{width:100%;aspect-ratio:auto;min-height:760px;padding:22px 18px}
+ .hero{margin:16px -18px 0;padding:18px 18px;grid-template-columns:1fr}
+ .grid2,.issue-preview-wrap,.statusrow,.beforeafter,.issue-card,.area-card,.issue-preview{grid-template-columns:1fr}
+ .issue-card,.area-card,.issue-preview{height:auto}
+ .work-table{grid-template-columns:1fr}
+ .work-head{display:none}
+ .work-row{display:block;border-bottom:1px solid #edf0f4;padding:10px 0}
+ .work-cell{border-bottom:none;padding:4px 0}
+ .sample-badge{position:static;display:inline-block;margin-bottom:10px}
+}
+@media print{
+ body{background:#fff} .topbar{display:none} .deck{padding:0}
+ .page{width:100vw;height:56.25vw;box-shadow:none;margin:0;page-break-after:always}
+ .page:last-child{page-break-after:auto}
+}
