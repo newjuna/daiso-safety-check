@@ -91,7 +91,7 @@ function normalizeState(){
   S.timeDrafts=S.timeDrafts||{};
   /* 누락 보완 모드 여부. 최종 제출 화면에서 특정 누락 항목으로 들어온 상태를 뜻한다. */
   S.fixMode=!!S.fixMode;
-  S.audit=S.audit||{};S.workChecked=S.workChecked||{};S.finalValidation=S.finalValidation||{};
+  S.workChecked=S.workChecked||{};
   S.submittedAt=S.submittedAt||null;S.submittedBy=S.submittedBy||'';
   S.resultNote=S.resultNote||'';
   S.resultLinks=S.resultLinks||null;
@@ -596,8 +596,6 @@ function showLadderTypeGuide(){
   document.body.appendChild(m);
 }
 function closeLadderTypeGuide(){const m=document.getElementById('guideModal');if(m)m.remove()}
-/* 사다리/공통·시설/소방/TBM 모두 체크항목이 짧아 별도 안내 팝업이 필요 없다. */
-function showGuide(kind){if(S[kind])S[kind].guideSeen=true;save()}
 function workTabs(){return `<nav class="work-nav ${WORK_NAV_OPEN?'open':''}" aria-label="작업유형"><button class="work-nav-trigger" onclick="toggleWorkNav()"><i>${String(S.wi+1).padStart(2,'0')}</i><span><small>작업유형 · ${S.wi+1}/${D.works.length}</small><b>${esc(D.works[S.wi][0])}</b></span><strong>⌄</strong></button><div class="work-nav-body"><div class="work-nav-head"><b>작업유형 선택</b><span>${S.wi+1} / ${D.works.length}</span></div><div class="work-chips">${D.works.map((w,i)=>{
   /* '완료' 여부는 실제로 '다음' 버튼을 눌러 확인한 workChecked 기준으로 판단한다. */
   /* (S.wa는 ensureDefaults가 진입 시 미리 채워두므로 완료 판단 기준으로 쓰면 안 됨) */
@@ -888,7 +886,7 @@ async function pickFiles(k,id,input){
   if(k==='work')work();
 }
 function getObj(k,id){if(k==='work'){const [a,b]=id.split('-');return S.wa[a][b]}return S[k][id]}
-function invalid(sel,msg){const e=$(sel);if(e){e.classList.add('shake');e.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>e.classList.remove('shake'),400)}toast(msg);return false}function nextWork(){ensureDefaults();S.workChecked[S.wi]={checkedAt:new Date().toISOString(),checkedBy:S.basic?.inspector||'',status:S.workNA?.[S.wi]?'na':'checked'};save();
+function nextWork(){ensureDefaults();S.workChecked[S.wi]={checkedAt:new Date().toISOString(),checkedBy:S.basic?.inspector||'',status:S.workNA?.[S.wi]?'na':'checked'};save();
   /* 누락 보완 모드면 다음 작업유형으로 넘기지 않고 누락 목록으로 돌아간다. */
   if(inFixMode())return fixReturn();
   if(S.wi<D.works.length-1){S.wi++;work()}else ladder()}function prevWork(){if(S.wi){S.wi--;work()}else start()}
@@ -948,7 +946,7 @@ function checklist(k){
      근골격계 위험신호에 자동 반영한다. */
   const tbmTime=k==='tbm'?`<div class="tbm-time-fields"><div class="field"><label>오전 TBM 실시시각</label>${timeSelectHtml('tbmAm')}</div><div class="field"><label>오후 TBM 실시시각</label>${timeSelectHtml('tbmPm')}</div></div>${tbmStretchGapNotice()}`:'';
 
-  const body=`<div class="card step-card"><div class="step-head"><span>${title}</span><b>양호가 기본 선택 · 미흡만 바꾸세요</b></div>
+  const body=`<div class="card"><div class="step-head"><span>${title}</span><b>양호가 기본 선택 · 미흡만 바꾸세요</b></div>
     <div class="summary"><h2>${title} 점검</h2><div class="heading-actions"><span class="pill ${bad?'bad':''}">${bad?`미흡 ${bad}건 · 해당없음 ${naCount}건`:`양호 ${total-naCount}항목 · 해당없음 ${naCount}건`}</span>${k==='tbm'?'':`<button class="guide-btn" onclick="checklistGuide('${k}')">ⓘ 점검 가이드</button>`}</div></div>
     ${tbmMethod}${tbmTime}
     <div class="form-list">${rows}</div>
@@ -1153,7 +1151,7 @@ function ladder(){
   const total=D.ladderTypes.reduce(function(n,t){return n+Math.max(0,Number((st.counts||{})[t]||0))},0);
   const badTypes=D.ladderTypes.filter(function(t){return (st.typeStatus||{})[t]==='bad'});
 
-  const body=`<div class="card step-card"><div class="step-head"><span>사다리</span><b>보유현황 · 상태 · 이상사항</b></div>
+  const body=`<div class="card"><div class="step-head"><span>사다리</span><b>보유현황 · 상태 · 이상사항</b></div>
     <div class="summary ladder-summary"><h2>보유 사다리</h2><div class="heading-actions"><button class="compact-na" onclick="noLadder()">∅ 사다리 없음</button><button class="guide-btn" onclick="showLadderTypeGuide()">📷 유형 사진</button></div></div>
     <div class="choice-divider"><span>또는 보유 사다리 입력</span></div>
     <div class="lad-grid">${D.ladderTypes.map(ladderInventoryCard).join('')}</div>
@@ -1344,9 +1342,6 @@ function removeWorkerAt(index){
   else if(S.worker===index)S.worker=Math.min(index,S.workers.length-1);
   save();voice();toast('근로자 응답을 삭제했습니다.');
 }
-function removeWorker(){
-  removeWorkerAt(S.worker);
-}
 
 function other(){
   S.screen='other';
@@ -1376,8 +1371,6 @@ async function attachOtherPhotos(i,input){
  */
 function hasAccidents(){return (S.store&&(S.store.accidentRecords||[]).length)>0}
 function hasOpenIssues(){return (S.store&&(S.store.openIssues||[]).length)>0}
-/* 예전 코드에서 쓰던 이름. 둘 중 하나라도 있으면 true. */
-function hasPastTasks(){return hasAccidents()||hasOpenIssues()}
 
 /* 조치확인 탭 데이터: 지난 점검의 미조치 지적사항만 담는다. */
 function syncTasks(){
@@ -1971,7 +1964,7 @@ function loadReportCssOnce(){
   return new Promise((resolve)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report.css?v=4';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report.css?v=5';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();el.onerror=()=>resolve(); /* 실패해도 진행(모양만 달라짐) */
     document.head.appendChild(el);
   });

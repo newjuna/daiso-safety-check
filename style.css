@@ -31,7 +31,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1
 .menu-foot{margin-top:auto;padding:16px 4px 0;border-top:1px solid var(--line);color:#92969d;font-size:10px;font-weight:800}
 body.menu-open{overflow:hidden}
 @media (min-width:900px){.hero-menu-panel{width:33.333vw;max-width:380px}}
-@media (prefers-reduced-motion:reduce){.menu-backdrop,.hero-menu-panel{transition:none}.start-step,.shake,.shake-strong,.risk-alert{animation:none}}
+@media (prefers-reduced-motion:reduce){.menu-backdrop,.hero-menu-panel{transition:none}.shake,.shake-strong,.risk-alert{animation:none}}
 .hero-logo{width:30px;height:30px;border-radius:10px;background:#fff;color:var(--p);font-weight:1000;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
 .eyebrow{font-size:10px;font-weight:900;letter-spacing:.08em;opacity:.88}
 .hero h1{position:relative;z-index:2;font-size:22px;line-height:1.25;margin:11px 0 5px}
@@ -46,7 +46,6 @@ body.menu-open{overflow:hidden}
 .card h2{font-size:20px;margin:0 0 12px;letter-spacing:-.2px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .field{margin:12px 0}
-.start-step.step-new{animation:stepIn .22s ease both}
 .start-section-label{display:flex;align-items:center;justify-content:space-between;margin:12px 2px 8px}.start-section-label b{font-size:13px}.start-section-label span{padding:3px 7px;border-radius:999px;background:#fff0f4;color:var(--p);font-size:9.5px;font-weight:900}
 .inspector-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
 .inspector-card{position:relative;min-width:0;min-height:58px;padding:8px;border:1.5px solid var(--line);border-radius:14px;background:#fafbfc;color:var(--ink);display:flex;align-items:center;gap:7px;text-align:left;transition:transform .15s ease,border-color .18s ease,background .18s ease}
@@ -78,7 +77,6 @@ button{cursor:pointer}
 .navrow .secondary,.navrow .primary{width:100%}
 
 /* 탭바 - 스크롤 없이 한 화면에 다 보이도록 줄바꿈 허용 (좌우 스크롤 대신 여러 줄로 펼침) */
-.tabs-wrap{margin:0 0 9px}
 .tabs{display:flex;flex-wrap:wrap;gap:6px}
 .tab{flex:none;border:1.5px solid var(--line);border-radius:999px;background:#fff;padding:10px 14px;font-size:13px;font-weight:900;white-space:nowrap;color:var(--muted)}
 /* 완료(양호) = 옅은 초록, 완료(위험발견) = 옅은 빨강, 미완료 = 기본 회색 텍스트 */
@@ -151,13 +149,11 @@ button{cursor:pointer}
 .ans:active{transform:scale(.97)}
 .ans.sel{border-color:var(--select-line);background:var(--select);color:var(--select-ink);font-weight:900;animation:pop .18s}
 .ans.risk-answer.sel{border-color:#ff9aae;background:#fff0f3;color:var(--bad)}
-.answer2{grid-template-columns:1fr 1fr}
 .good.sel{border-color:var(--select-line);background:var(--select);color:var(--select-ink)}
 .bad.sel{border-color:#ffbbc8;background:#fff0f3;color:var(--bad)}
 /* 작업점검에서 위험 답변을 고른 문항에 붙는 사진칸.
    설명 입력칸은 없앴고 사진만 붙이므로 높이를 최소로 유지한다. */
 .detail{margin-top:10px;padding:11px 12px;border-radius:13px;background:#fff7f8;border:1px dashed #ffb0c0;animation:detailReveal .22s ease both}
-.detail .form-detail-head{margin-bottom:8px}
 .muted{font-size:13.5px;line-height:1.6;color:var(--muted)}
 .notice{padding:13px;border-radius:13px;background:#fff8e9;color:#8a5800;font-size:13.5px;line-height:1.5;margin:11px 0}
 /* 작업점검 하단 고정바. 가운데 진행표시를 두고, 진행 방향인 '다음'을 더 넓게 잡는다. */
@@ -168,8 +164,6 @@ button{cursor:pointer}
 .photo-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
 .photo-list span{background:#f0f1f4;border-radius:8px;padding:5px 7px;font-size:10px}
 .worker-head{display:flex;justify-content:space-between;align-items:center}
-.stepdots{height:6px;background:#eee;border-radius:5px;margin:10px 0 16px;overflow:hidden}
-.stepdots i{display:block;height:100%;background:var(--p)}
 .task{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:start}
 .task input[type=checkbox]{width:20px;height:20px;accent-color:var(--p)}
 .metric{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -177,8 +171,6 @@ button{cursor:pointer}
 .metric b{font-size:20px;display:block}
 .riskrow{margin:10px 0}
 .riskrow header{display:flex;justify-content:space-between;font-size:13px;font-weight:800}
-.riskbar{height:8px;background:#eee;border-radius:8px;margin-top:5px;overflow:hidden}
-.riskbar i{display:block;height:100%;background:linear-gradient(90deg,#ffc14d,var(--p))}
 #toast{position:fixed;z-index:20;left:50%;bottom:90px;transform:translate(-50%,20px);background:#20232a;color:white;padding:10px 14px;border-radius:12px;font-size:12px;opacity:0;pointer-events:none;transition:.2s}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 .shake{animation:shake .3s}
@@ -189,7 +181,6 @@ button{cursor:pointer}
 @keyframes shake{25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
 @keyframes shakeStrong{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
 @keyframes riskAlert{0%{background:#fff;transform:scale(1)}35%{background:#fff1f4;box-shadow:0 0 0 6px rgba(231,44,84,.16);transform:scale(1.01)}100%{background:#fff;transform:scale(1)}}
-@keyframes stepIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes detailReveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes photoInlineIn{from{opacity:.65;transform:scale(.992)}to{opacity:1;transform:none}}
 .inbound-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 14px;padding:12px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
@@ -222,17 +213,6 @@ button{cursor:pointer}
 @media (max-width:520px){.tbm-time-fields{grid-template-columns:1fr}}
 
 /* 종합점수 카드 (앱 내부 결과화면) */
-.score-summary{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
-.score-num{display:flex;align-items:baseline;gap:4px}
-.score-num b{font-size:34px;font-weight:900}
-.score-num span{font-size:14px;color:var(--muted)}
-.score-num.bad b{color:var(--bad)}
-.score-grade{font-size:16px;font-weight:900;padding:4px 12px;border-radius:99px;background:#f1f2f5}
-.score-part-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.score-part{padding:10px 6px;background:#f7f7fa;border-radius:12px;text-align:center}
-.score-part small{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
-.score-part b{font-size:16px}
-@media(max-width:560px){.score-part-grid{grid-template-columns:repeat(2,1fr)}}
 /* 좁은 화면에서 입력칸(.grid)은 1열로 쪼개지만, 이동 버튼(.navrow)은 계속 좌우 배치를 유지한다. */
 @media(max-width:560px){.grid{grid-template-columns:1fr}.hero h1{font-size:22px}.card{padding:14px}.metric{grid-template-columns:1fr 1fr 1fr}.nav .primary,.nav .secondary{padding:8px;min-height:46px}}
 @media(max-width:400px){.navrow{grid-template-columns:1fr 1.25fr;gap:7px}.navrow .secondary,.navrow .primary{padding:10px 8px;font-size:14px}}
@@ -312,7 +292,6 @@ button{cursor:pointer}
 
 /* v5 STEP 간편점검 */
 .step-head{display:flex;align-items:center;gap:9px;margin:-4px 0 15px;flex-wrap:wrap}.step-head span{background:#303746;color:#fff;border-radius:9px;padding:6px 9px;font-size:10.5px;font-weight:1000;letter-spacing:.6px;white-space:nowrap}.step-head b{font-size:13px;color:#555d6d}
-.status-choice{display:grid;gap:10px;margin:15px 0 18px}.status-choice button{width:100%;min-height:78px;text-align:left;border:1.5px solid var(--line);border-radius:17px;background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:5px;transition:.15s}.status-choice b{font-size:15px}.status-choice small{font-size:10px;color:var(--muted);font-weight:700}.status-choice .status-good.selected{border-color:var(--select-line);background:var(--select);box-shadow:0 0 0 3px rgba(90,94,101,.07)}.status-choice .status-good.selected b{color:var(--select-ink)}.status-choice .status-bad.selected{border-color:var(--p);background:#fff3f6;box-shadow:0 0 0 3px #e72c5415}.status-choice .status-bad.selected b{color:var(--p)}
 
 /* v6 usability (global-progress는 히어로 안의 .hero-progress로 대체됨) */
 .work-na{width:100%;border:1.5px dashed #aab0ba;background:#fafbfc;border-radius:14px;padding:11px;margin:0 0 12px;font-weight:900;color:#596170}.work-na.active{border-style:solid;border-color:#6e7684;background:#f0f2f5;color:#303746}
@@ -320,10 +299,6 @@ button{cursor:pointer}
 
 /* v2(Apps Script) 추가: 매장 목록 로딩 상태, 사고이력 배지 */
 .loading-notice{padding:11px;border-radius:13px;background:#f0f2f5;color:#596170;font-size:12px;text-align:center;margin:9px 0}
-.badge-approved{display:inline-block;background:#16845b;color:#fff;font-size:9px;font-weight:900;padding:2px 6px;border-radius:99px;margin-left:6px;vertical-align:middle}
-.accident-item{padding:9px 0;border-bottom:1px solid var(--line);font-size:12px;line-height:1.5}
-.accident-item:last-child{border-bottom:0}
-.accident-item .date{font-weight:900;color:#303746}
 
 /* 사진 첨부 썸네일 */
 .photo-thumb{position:relative;width:64px;height:64px;border-radius:12px;overflow:hidden;background:#f0f1f4;flex:0 0 auto;display:inline-block}
@@ -337,10 +312,6 @@ button{cursor:pointer}
    수량 조절 + 양호/미흡. 화면 폭을 전부 쓰므로 글씨와 버튼을 크게 둘 수 있다.
    '미흡'을 누르면 그 줄 아래로 이상사항 입력칸이 그대로 펼쳐진다. */
 .lad-grid{display:flex;flex-direction:column;gap:7px}
-.ladder-empty-choice{width:100%;min-height:66px;margin:10px 0 0;padding:10px 12px;border:1.5px solid #cfd6e1;border-radius:15px;background:linear-gradient(135deg,#f8fafc,#f1f4f8);color:#27344a;display:flex;align-items:center;gap:11px;text-align:left;transition:transform .15s ease,border-color .18s ease,box-shadow .18s ease}
-.ladder-empty-choice>i{width:39px;height:39px;border-radius:12px;background:#e4e9f0;color:#667085;display:flex;align-items:center;justify-content:center;font-size:20px;font-style:normal;font-weight:900;flex:none}
-.ladder-empty-choice>span{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}.ladder-empty-choice b{font-size:14px}.ladder-empty-choice small{color:#7b8492;font-size:10.5px;line-height:1.35}
-.ladder-empty-choice>strong{color:#667085;font-size:11.5px;white-space:nowrap}.ladder-empty-choice:active{transform:scale(.98);border-color:#9ea9b8;box-shadow:0 0 0 3px rgba(102,112,133,.1)}
 .choice-divider{display:flex;align-items:center;gap:9px;margin:13px 0;color:#9aa1ac;font-size:10.5px;font-weight:900}
 .choice-divider:before,.choice-divider:after{content:'';height:1px;background:#e4e7ec;flex:1}
 .ladder-nav{display:grid;grid-template-columns:1fr 1.25fr;gap:8px;margin-top:13px}
@@ -424,10 +395,6 @@ button{cursor:pointer}
 .lad-na.sel{border-color:#6e7684;background:#f0f2f5;color:#303746;box-shadow:0 0 0 2px #6e768422}
 .conditional-label{display:block;margin-top:5px;font-size:11px;font-weight:800;color:#7b8493}
 /* 선택 색상은 사다리와 동일한 .lad-ok.sel / .lad-ng.sel 규칙을 그대로 쓴다 */
-
-/* 미흡으로 바꾼 줄에만 나오는 사진 첨부 영역 */
-.form-detail{margin-top:11px;padding-top:11px;border-top:1.5px dashed #ffb0c0}
-.form-detail-head{font-size:12.5px;font-weight:900;color:var(--p);margin-bottom:8px}
 /* 사진칸은 가운데 정렬. 왼쪽으로 몰리면 빈 공간이 커서 눌러야 할 곳이 눈에 안 들어온다. */
 .form-photos{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .form-photos .photo-list{margin-top:0;gap:8px;justify-content:center}
@@ -461,9 +428,6 @@ button{cursor:pointer}
 .worker-nav-body{max-height:0;opacity:0;overflow:hidden;padding:0 11px;transition:max-height .3s cubic-bezier(.32,.72,0,1),opacity .2s ease,padding .3s ease;border-top:1px solid transparent}.worker-nav.open .worker-nav-body{max-height:620px;opacity:1;padding:10px 11px 11px;border-top-color:#dfe1e5}
 .worker-nav-head{display:flex;align-items:center;justify-content:space-between;margin:0 2px 9px}.worker-nav-head b{font-size:12px}.worker-nav-head span{font-size:10px;font-weight:900;color:#92969d}
 .worker-nav-add{width:100%;min-height:43px;margin-top:8px;border:1.5px dashed #c9ccd1;border-radius:12px;background:#fff;color:#555a62;font-size:12px;font-weight:900}
-.worker-manager{padding:15px}
-.worker-manager-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
-.worker-manager-head>div{display:grid;gap:2px}.worker-manager-head small{font-size:10px;font-weight:900;color:var(--muted);letter-spacing:.5px}.worker-manager-head b{font-size:16px}.worker-manager-head>span{padding:6px 9px;border-radius:999px;background:#f1f3f6;color:#697181;font-size:10px;font-weight:900}
 .worker-list{display:grid;gap:8px}
 .worker-item{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:6px;border:1.5px solid var(--line);border-radius:15px;background:#fafbfc;transition:.18s}
 .worker-item.active{border-color:var(--select-line);background:var(--select);box-shadow:0 4px 14px rgba(70,73,78,.08)}
@@ -569,13 +533,19 @@ button{cursor:pointer}
 .risk-levels{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
 .risk-levels span{height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#e9ebef;color:#8a909b;font-size:12px;font-weight:1000}
 .risk-levels .risk-상.selected{background:#c62847;color:#fff}.risk-levels .risk-중.selected{background:#d97706;color:#fff}.risk-levels .risk-하.selected{background:#16845b;color:#fff}
-.acc-photo-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .acc-photo-box{min-width:0;padding:10px;border-radius:12px;background:#f7f8fa;border:1px solid var(--line)}
 .acc-photo-box>b{display:block;font-size:12.5px;margin-bottom:7px}
 .acc-photo-box .form-photos{margin:0}
-.auto-state{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;padding:11px 12px;border-radius:12px;background:#f7f8fa;border:1px solid var(--line)}
-.auto-state small{color:var(--muted);font-size:11px;font-weight:900}.auto-state b{font-size:13px;text-align:right}
 .acc-after-only{margin-top:9px;background:#f2faf6;border-color:#c8ead8}
+
+/* 현 상태: 이행상태를 고르면 문구가 자동으로 채워지지만 점검자가 고칠 수 있다.
+   고친 경우에는 아래에 "수정했다"는 표시와 되돌리기 버튼이 함께 나온다. */
+.acc-state-field{margin:11px 0 0}
+.acc-state-field textarea{min-height:64px}
+.acc-state-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:7px}
+.acc-state-foot>span{font-size:10.5px;font-weight:800;color:var(--p)}
+.acc-state-reset{min-height:32px;border:1px solid var(--line);border-radius:10px;background:#fff;color:#596170;padding:6px 10px;font-size:10.5px;font-weight:900;white-space:nowrap}
+.acc-state-reset:active{transform:scale(.96);background:#f1f2f5}
 
 /* 이행상태 3단 버튼 */
 .form-status3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
@@ -583,7 +553,7 @@ button{cursor:pointer}
 .form-status3 .status-done.sel{border-color:#16845b;background:#edf9f4;color:#16845b}
 .form-status3 .status-progress.sel{border-color:#d97706;background:#fff8e9;color:#a65d00}
 .form-status3 .status-none.sel{border-color:#c62847;background:#fff0f3;color:#c62847}
-@media(max-width:430px){.acc-analysis-grid{grid-template-columns:1fr}.risk-level-box{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px}.risk-level-box>label{margin:0}.risk-level-box>small{grid-column:1/-1;margin:0}.acc-photo-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:430px){.acc-analysis-grid{grid-template-columns:1fr}.risk-level-box{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px}.risk-level-box>label{margin:0}.risk-level-box>small{grid-column:1/-1;margin:0}}
 
 /* ===== 제출 진행률 오버레이 =====
    화면 전체를 덮는 독립 레이어다. 앱 화면을 다시 그리지 않고 이 레이어만 갱신한다.
@@ -624,8 +594,6 @@ button{cursor:pointer}
 .result-badge.ok{background:#edf9f4;color:var(--ok)}
 .result-badge.fail{background:#fff0f3;color:var(--bad)}
 /* <a>를 버튼처럼 쓰기 위한 보정 */
-.result-link{display:flex;align-items:center;justify-content:center;text-decoration:none;margin-top:9px}
-.result-link.primary{color:#fff}
 
 /* 제출 전 누락 항목 목록 (누르면 그 화면으로 이동) */
 .missing-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:56px;padding:12px 14px;border:1.5px solid #ffc7d1;border-radius:14px;background:#fff7f9;font-size:14.5px;font-weight:800;color:var(--ink);text-align:left}
@@ -642,4 +610,4 @@ button{cursor:pointer}
 .rank-info{min-width:0}.rank-name{font-size:12px;font-weight:800;margin-bottom:5px}
 .rank-bar{height:7px;background:#eceef2;border-radius:99px;overflow:hidden}.rank-bar i{display:block;height:100%;background:var(--p)}
 .rank-value{font-size:11px;font-weight:900;color:var(--muted);white-space:nowrap}
-@media (prefers-reduced-motion:reduce){.start-step,.shake,.shake-strong,.risk-alert{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.shake,.shake-strong,.risk-alert{animation:none!important}}
