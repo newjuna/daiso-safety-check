@@ -461,10 +461,31 @@ function activeSections(){
     return true;
   });
 }
+/* 점검 메뉴별 완료 여부. 점검 메뉴 타일을 남색(완료)으로 칠하는 데 쓴다.
+   판정 기준은 최종 제출 전 누락검사(completionState)와 같다.
+   기타사항·조치확인은 반드시 입력해야 하는 항목이 없어 완료 개념을 두지 않는다. */
+function sectionDone(k){
+  if(k==='work')return D.works.every(function(w,i){
+    return (S.workNA&&S.workNA[i])||(S.workChecked&&S.workChecked[i]);
+  });
+  if(k==='ladder')return ['good','bad','na'].indexOf(S.ladder.status)>=0;
+  if(k==='common'||k==='fire'||k==='tbm')return ['good','bad'].indexOf(S[k].status)>=0;
+  if(k==='voice'){
+    var qs=voiceQuestions();
+    return (S.workers||[]).length>0&&S.workers.every(function(w){
+      return qs.every(function(_,i){return w.answers&&w.answers[i]});
+    });
+  }
+  if(k==='accident'){
+    if(!hasAccidents())return false;
+    return (S.accidents||[]).length>0&&(S.accidents||[]).every(isAccidentDone);
+  }
+  return false;
+}
 function tabs(a){
   const nm={work:'작업점검',ladder:'사다리',common:'공통·시설',fire:'소방',tbm:'TBM',voice:'의견청취',other:'기타사항',accident:'사고조사',tasks:'조치확인'};
   const marks={work:'✓',ladder:'↗',common:'◇',fire:'●',tbm:'T',voice:'”',other:'＋',accident:'!',tasks:'↻'};
-  return `<nav class="section-nav ${SECTION_NAV_OPEN?'open':''}" aria-label="점검 메뉴"><button class="section-nav-trigger" onclick="toggleSectionNav()"><i>${marks[a]}</i><span><small>점검 메뉴</small><b>${nm[a]}</b></span><strong>⌄</strong></button><div class="section-nav-body"><div class="section-nav-title"><span>INSPECTION MENU</span><b>이동할 메뉴 선택</b></div><div class="section-tabs">${activeSections().map(k=>`<button class="section-tab ${a===k?'active':''}" onclick="go('${k}')"><i>${marks[k]}</i><span>${nm[k]}</span></button>`).join('')}</div></div></nav>`;
+  return `<nav class="section-nav ${SECTION_NAV_OPEN?'open':''}" aria-label="점검 메뉴"><button class="section-nav-trigger" onclick="toggleSectionNav()"><i>${marks[a]}</i><span><small>점검 메뉴</small><b>${nm[a]}</b></span><strong>⌄</strong></button><div class="section-nav-body"><div class="section-nav-title"><span>INSPECTION MENU</span><b>이동할 메뉴 선택</b></div><div class="section-tabs">${activeSections().map(k=>`<button class="section-tab ${a===k?'active':''} ${sectionDone(k)?'done':''}" onclick="go('${k}')" aria-label="${nm[k]}${sectionDone(k)?' · 점검 완료':''}"><i>${marks[k]}</i><span>${nm[k]}</span></button>`).join('')}</div></div></nav>`;
 }
 function toggleSectionNav(){SECTION_NAV_OPEN=!SECTION_NAV_OPEN;if(SECTION_NAV_OPEN){WORK_NAV_OPEN=false;WORKER_NAV_OPEN=false}render(S.screen)}
 function toggleWorkNav(){WORK_NAV_OPEN=!WORK_NAV_OPEN;if(WORK_NAV_OPEN){SECTION_NAV_OPEN=false;WORKER_NAV_OPEN=false}work()}
@@ -1369,7 +1390,9 @@ function accident(){
   var i,j;
   var h=tabs('accident');
   var done=S.accidents.filter(isAccidentDone).length;
-  if(S.accidentOpenKey===undefined)S.accidentOpenKey=S.accidents[0]?S.accidents[0].key:'';
+  /* 처음 들어오면 모든 카드를 접어둔다.
+     사고가 여러 건일 때 첫 카드가 펼쳐진 채로 나오면 화면이 길어져서 전체 목록 파악이 어렵다. */
+  if(S.accidentOpenKey===undefined)S.accidentOpenKey='';
   h+='<div class="card"><div class="summary"><h2>사고조사</h2>';
   h+='<span class="pill'+(done<S.accidents.length?' bad':'')+'">'+done+'/'+S.accidents.length+' 조사완료</span></div>';
   h+='<p class="muted">사고DB의 원본정보와 자동 생성된 위험요인을 확인하고, 현재 이행상태를 기록하세요.</p>';
@@ -1378,7 +1401,10 @@ function accident(){
     var x=S.accidents[i];
     var ok=isAccidentDone(x);
     var expanded=S.accidentOpenKey===x.key;
-    h+='<div class="acc-card'+(ok?' done':'')+(expanded?' expanded':'')+'">';
+    /* 방금 펼친 카드에만 열림 애니메이션 클래스를 붙인다.
+       (상태 선택 등으로 화면을 다시 그릴 때마다 애니메이션이 재생되면 산만해진다) */
+    var opening=expanded&&ACC_OPENING_KEY===x.key;
+    h+='<div class="acc-card'+(ok?' done':'')+(expanded?' expanded':'')+(opening?' opening':'')+'" data-acc-key="'+esc(x.key)+'">';
     h+='<button class="acc-accordion-head" onclick="toggleAccidentCard('+i+')"><span><small>'+esc(x.date||'-')+'</small><b>'+esc(x.type||'사고')+'</b><em>'+esc(x.source||'기인물 미등록')+'</em></span><span class="acc-head-state"><i class="risk-dot risk-'+x.riskLevel+'">'+esc(x.riskLevel)+'</i><i>'+(x.status?esc(x.status):'확인 전')+'</i><strong>⌄</strong></span></button>';
     if(!expanded){h+='</div>';continue}
 
@@ -1426,10 +1452,25 @@ function accident(){
 
   frame(h,'사고조사','사고 원본정보와 현재 이행상태를 확인합니다.');
 }
+/* 방금 펼친 카드의 key. 그 카드만 열림 애니메이션을 재생한다. */
+var ACC_OPENING_KEY='';
 function toggleAccidentCard(i){
   if(!S.accidents[i])return;
-  S.accidentOpenKey=S.accidentOpenKey===S.accidents[i].key?'':S.accidents[i].key;
+  var key=S.accidents[i].key;
+  var willOpen=S.accidentOpenKey!==key;
+  S.accidentOpenKey=willOpen?key:'';
+  ACC_OPENING_KEY=willOpen?key:'';
   save();accident();
+  ACC_OPENING_KEY='';
+  /* 펼친 카드가 화면 밖으로 밀려나지 않도록 위쪽으로 끌어온다(모바일에서 특히 중요). */
+  if(willOpen){
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        var el=document.querySelector('.acc-card.expanded');
+        if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'start'});
+      });
+    });
+  }
 }
 function setAccidentText(i,field,value){
   if(!S.accidents[i])return;
@@ -1723,6 +1764,13 @@ const SUBMIT_STEPS=[
   {key:'upload', label:'드라이브 업로드'}
 ];
 var PROGRESS={pct:0,step:'',stepKey:'',moving:true};
+/* 제출 진행률 화면.
+   frame()으로 앱 화면을 다시 그리지 않고, 화면 전체를 덮는 독립 오버레이로 띄운다.
+   이유가 두 가지다.
+     1) PDF를 만드는 동안 report.css가 문서에 붙어 앱 화면 스타일이 잠깐 덮인다.
+        오버레이가 그 위를 완전히 가려서 헤더 색이 바뀌는 등의 깜빡임이 보이지 않는다.
+     2) 진행률은 수십 번 갱신되는데, 그때마다 앱 전체를 다시 그리는 것은 낭비다.
+   클래스명은 report.css와 겹치지 않도록 subov- 접두어를 쓴다. */
 function renderProgress(){
   const idx=SUBMIT_STEPS.findIndex(x=>x.key===PROGRESS.stepKey);
   const steps=SUBMIT_STEPS.map((x,i)=>{
@@ -1730,16 +1778,24 @@ function renderProgress(){
     const mark=(idx>=0&&i<idx)?'✓':(i+1);
     return `<div class="${cls}"><i>${mark}</i><span>${x.label}</span></div>`;
   }).join('');
-  frame(`<div class="card submitting">
-    <h2>제출 처리 중입니다</h2>
-    <div class="submit-progress">
-      <div class="bar"><i class="${PROGRESS.moving?'moving':''}" style="width:${PROGRESS.pct}%"></i></div>
-      <div class="pct">${Math.round(PROGRESS.pct)}%</div>
-      <div class="step">${esc(PROGRESS.step)}</div>
-      <div class="hint">사진이 많으면 1~2분 걸릴 수 있습니다.<br><b>창을 닫지 마세요.</b></div>
-    </div>
-    <div class="submit-steps">${steps}</div>
-  </div>`,'제출 중','잠시만 기다려 주세요.');
+  let ov=document.getElementById('submitOverlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='submitOverlay';ov.className='subov';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML=`<div class="subov-box">
+    <div class="subov-title">제출 처리 중입니다</div>
+    <div class="subov-bar"><i class="${PROGRESS.moving?'moving':''}" style="width:${PROGRESS.pct}%"></i></div>
+    <div class="subov-pct">${Math.round(PROGRESS.pct)}%</div>
+    <div class="subov-step">${esc(PROGRESS.step)}</div>
+    <div class="subov-hint">사진이 많으면 1~2분 걸릴 수 있습니다.<br><b>창을 닫지 마세요.</b></div>
+    <div class="subov-steps">${steps}</div>
+  </div>`;
+}
+function removeProgressOverlay(){
+  const ov=document.getElementById('submitOverlay');
+  if(ov)ov.remove();
 }
 /* 진행률 갱신. 화면이 실제로 다시 그려지도록 다음 프레임까지 양보한다. */
 function setProgress(pct,stepKey,stepText,moving){
@@ -1775,7 +1831,11 @@ function loadLibrary(isReady,candidates){
     Promise.reject()
   ).catch(()=>{ throw new Error('PDF 변환 라이브러리를 불러오지 못했습니다. 네트워크(또는 vendor 폴더)를 확인해 주세요.') });
 }
-/* 결과보고서 전용 CSS를 이 문서에도 한 번만 붙인다(캡처용 화면에 스타일이 필요). */
+/* 결과보고서 전용 CSS를 이 문서에 잠깐 붙인다(캡처할 화면에 스타일이 필요하므로).
+   주의: report.css와 style.css는 .hero / .card / .meta / .label 같은 클래스명을 공유한다.
+   그래서 이 CSS가 문서에 붙어 있는 동안에는 앱 화면(붉은 헤더 등)이 결과보고서 스타일로
+   덮여 모양이 바뀐다. 캡처가 끝나면 반드시 removeReportCss()로 떼어내야 한다.
+   캡처하는 동안에는 제출 진행률 오버레이가 화면 전체를 덮으므로 사용자 눈에는 보이지 않는다. */
 function loadReportCssOnce(){
   return new Promise((resolve)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
@@ -1784,6 +1844,10 @@ function loadReportCssOnce(){
     el.onload=()=>resolve();el.onerror=()=>resolve(); /* 실패해도 진행(모양만 달라짐) */
     document.head.appendChild(el);
   });
+}
+function removeReportCss(){
+  const el=document.querySelector('link[data-report-css]');
+  if(el)el.remove();
 }
 /* 저장소 vendor 폴더 우선, 없으면 CDN. 둘 중 하나만 되면 정상 동작한다. */
 const LIB_HTML2CANVAS=['vendor/html2canvas.min.js?v=1',
@@ -1840,6 +1904,8 @@ async function buildReportPdfBase64(snapshot,onProgress){
     return {base64:pdf.output('datauristring').split(',')[1],pageCount:pages.length};
   }finally{
     holder.remove();
+    /* 결과보고서 CSS가 남아 있으면 이후 앱 화면(결과화면 등)이 계속 깨져 보인다. */
+    removeReportCss();
   }
 }
 
@@ -1983,6 +2049,8 @@ function scoreSummary(){
    상세 결과는 전부 결과보고서(report.html)에서 보여주므로 이 화면은 최소한만 남긴다. */
 function report(){
   S.screen='result';
+  /* 제출이 끝났으니 진행률 오버레이를 걷고, 혹시 남아있는 보고서 CSS도 떼어낸다. */
+  removeProgressOverlay();removeReportCss();
   const submittedText=S.submittedAt?`${new Date(S.submittedAt).toLocaleDateString('ko-KR')} · ${esc(S.submittedBy||'')} 제출`:'';
   /* 결과화면은 "제출이 됐다"는 사실과 결과보고서로 넘어가는 버튼만 보여준다.
      점수·요약·지적사항 목록 등 상세 내용은 모두 결과보고서(report.html)에서 확인하고,

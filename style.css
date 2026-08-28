@@ -104,6 +104,13 @@ button{cursor:pointer}
 .section-tab:active{transform:scale(.96)}
 .section-tab.active{background:#8f9195;color:#fff;box-shadow:0 7px 16px rgba(70,73,78,.16)}
 .section-tab.active i{background:rgba(255,255,255,.2);color:#fff}
+/* 점검이 끝난 메뉴는 남색 + 흰 글씨로 칠해 "이건 다 했다"를 한눈에 보여준다.
+   우측 상단의 작은 ✓ 는 색을 구분하기 어려운 환경(햇빛·색약)에서도 알 수 있게 하는 보조표시다. */
+.section-tab.done{position:relative;background:#13245a;color:#fff;box-shadow:0 6px 15px rgba(19,36,90,.22)}
+.section-tab.done i{background:rgba(255,255,255,.22);color:#fff}
+.section-tab.done:after{content:'✓';position:absolute;top:3px;right:6px;font-size:9px;font-weight:1000;opacity:.9}
+/* 완료된 메뉴에 지금 머무는 중이면 안쪽 흰 테두리로 '현재 위치'를 덧붙인다. */
+.section-tab.active.done{background:#0e1c46;box-shadow:inset 0 0 0 2px rgba(255,255,255,.5),0 6px 15px rgba(19,36,90,.26)}
 
 /* 하위 작업유형: 번호형 칩과 남색 활성색으로 상위 메뉴와 시각적으로 분리한다. */
 .work-nav{margin:0 0 11px;border:1px solid #dfe4eb;border-radius:16px;background:linear-gradient(145deg,#eef1f6,#f7f8fa);overflow:hidden}
@@ -484,6 +491,36 @@ button{cursor:pointer}
 .risk-dot.risk-상{background:#c62847}.risk-dot.risk-중{background:#d97706}.risk-dot.risk-하{background:#16845b}
 .acc-head-state strong{font-size:18px;color:var(--muted);transition:transform .2s ease}
 .acc-card.expanded .acc-head-state strong{transform:rotate(180deg)}
+
+/* ===== 사고조사 아코디언 펼침 액션 =====
+   기본은 전부 접힌 상태다. 카드를 누르면 아래 네 가지가 동시에 일어난다.
+     1) 헤더를 누를 때 살짝 눌리는 느낌(스케일)
+     2) 펼쳐진 카드가 남색 왼쪽 띠 + 그림자로 떠올라 "지금 보는 카드"가 명확해짐
+     3) 내용이 위에서 아래로 미끄러지며 나타남(높이+투명도)
+     4) 화살표 회전 (위에 이미 정의됨)
+   애니메이션은 .opening 이 붙은 렌더에서만 재생된다. 상태를 고쳐 화면을 다시 그릴 때
+   매번 다시 재생되면 눈이 피로해지므로 app.js가 방금 펼친 카드에만 클래스를 붙인다. */
+.acc-accordion-head{transition:background .16s ease}
+.acc-accordion-head:active{background:#f1f3f6;transform:scale(.995)}
+.acc-card{transition:box-shadow .22s ease,border-color .22s ease,transform .22s ease}
+.acc-card.expanded{border-color:#13245a;box-shadow:0 10px 26px rgba(19,36,90,.16)}
+/* 왼쪽 남색 띠. 접힌 카드에서는 폭 0이라 보이지 않는다. */
+.acc-card{position:relative}
+.acc-card:before{content:'';position:absolute;left:0;top:0;bottom:0;width:0;background:#13245a;
+  border-radius:17px 0 0 17px;transition:width .22s ease;pointer-events:none;z-index:1}
+.acc-card.expanded:before{width:4px}
+.acc-card.expanded .acc-accordion-head{background:#f7f9fd}
+.acc-card.expanded.done .acc-accordion-head{background:#f2faf6}
+.acc-card.opening .acc-head,.acc-card.opening .acc-body{animation:accOpen .3s cubic-bezier(.32,.72,0,1) both}
+.acc-card.opening .acc-body{animation-delay:.04s}
+@keyframes accOpen{
+  from{opacity:0;transform:translateY(-8px);clip-path:inset(0 0 100% 0)}
+  to{opacity:1;transform:none;clip-path:inset(0 0 0 0)}
+}
+@media(prefers-reduced-motion:reduce){
+  .acc-card.opening .acc-head,.acc-card.opening .acc-body{animation:none}
+  .acc-card,.acc-card:before,.acc-accordion-head{transition:none}
+}
 .acc-head{background:#f7f8fa;padding:13px 14px;border-bottom:1.5px solid var(--line)}
 .acc-card.done .acc-head{background:#f2faf6;border-bottom-color:#d7ecdf}
 .acc-head-top{display:flex;align-items:center;justify-content:space-between;gap:9px}
@@ -524,33 +561,38 @@ button{cursor:pointer}
 .form-status3 .status-none.sel{border-color:#c62847;background:#fff0f3;color:#c62847}
 @media(max-width:430px){.acc-analysis-grid{grid-template-columns:1fr}.risk-level-box{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px}.risk-level-box>label{margin:0}.risk-level-box>small{grid-column:1/-1;margin:0}.acc-photo-grid{grid-template-columns:1fr 1fr}}
 
-/* 제출 중 로딩 화면 */
-.submitting{text-align:center;padding:34px 18px}
-.submitting h2{margin:16px 0 8px}
-.spinner{width:46px;height:46px;margin:0 auto;border:5px solid #f0f1f4;border-top-color:var(--p);border-radius:50%;animation:spin .9s linear infinite}
-
-/* 제출 진행률 게이지 — 멈춘 것처럼 보이지 않게 진행 상황을 눈으로 보여준다. */
-.submit-progress{margin:20px auto 0;max-width:460px}
-.submit-progress .bar{height:12px;border-radius:99px;background:#eceef2;overflow:hidden}
-.submit-progress .bar i{display:block;height:100%;width:0;border-radius:99px;
+/* ===== 제출 진행률 오버레이 =====
+   화면 전체를 덮는 독립 레이어다. 앱 화면을 다시 그리지 않고 이 레이어만 갱신한다.
+   PDF를 만드는 동안 report.css가 문서에 잠깐 붙어 앱 스타일(.hero/.card 등)을 덮는데,
+   이 레이어가 그 위를 완전히 가려서 헤더 색이 바뀌는 등의 깜빡임이 보이지 않는다.
+   그래서 클래스명도 report.css와 겹치지 않는 subov- 접두어를 쓰고,
+   폰트·색을 이 안에서 직접 지정해 외부 CSS 영향을 받지 않게 한다. */
+.subov{position:fixed;inset:0;z-index:10000;background:#fff;
+  display:flex;align-items:center;justify-content:center;padding:22px;
+  font-family:'Pretendard','Noto Sans KR',-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;
+  color:var(--ink);animation:subovIn .2s ease both}
+@keyframes subovIn{from{opacity:0}to{opacity:1}}
+.subov-box{width:100%;max-width:460px;text-align:center}
+.subov-title{font-size:20px;font-weight:1000;letter-spacing:-.2px;margin-bottom:20px}
+.subov-bar{height:12px;border-radius:99px;background:#eceef2;overflow:hidden}
+.subov-bar i{display:block;height:100%;width:0;border-radius:99px;
   background:linear-gradient(90deg,var(--p),#ff6a86);
   transition:width .45s cubic-bezier(.25,.8,.3,1)}
 /* 서버 응답을 기다리는 동안에도 살아있다는 느낌을 주려고 옅은 줄무늬를 흘려보낸다. */
-.submit-progress .bar i.moving{background-image:linear-gradient(90deg,var(--p),#ff6a86),
+.subov-bar i.moving{background-image:linear-gradient(90deg,var(--p),#ff6a86),
   repeating-linear-gradient(115deg,#ffffff00 0 10px,#ffffff59 10px 20px);
   background-blend-mode:normal;animation:barflow 1s linear infinite}
 @keyframes barflow{from{background-position:0 0,0 0}to{background-position:0 0,28px 0}}
-.submit-progress .pct{margin-top:10px;font-size:26px;font-weight:1000;letter-spacing:-.5px}
-.submit-progress .step{margin-top:2px;font-size:13.5px;font-weight:800;color:var(--ink)}
-.submit-progress .hint{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5}
-.submit-steps{margin:16px auto 0;max-width:460px;display:grid;gap:6px;text-align:left}
-.submit-steps div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
-.submit-steps i{width:18px;height:18px;flex:none;border-radius:50%;background:#e9ebf0;color:#9aa0aa;
+.subov-pct{margin-top:10px;font-size:26px;font-weight:1000;letter-spacing:-.5px}
+.subov-step{margin-top:2px;font-size:13.5px;font-weight:800}
+.subov-hint{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5}
+.subov-steps{margin:18px auto 0;display:grid;gap:6px;text-align:left}
+.subov-steps div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.subov-steps i{width:18px;height:18px;flex:none;border-radius:50%;background:#e9ebf0;color:#9aa0aa;
   display:flex;align-items:center;justify-content:center;font-style:normal;font-size:10px;font-weight:900}
-.submit-steps div.on{color:var(--ink);font-weight:800}
-.submit-steps div.on i{background:var(--p);color:#fff}
-.submit-steps div.done i{background:#dfe3ea;color:#5b616b}
-@keyframes spin{to{transform:rotate(360deg)}}
+.subov-steps div.on{color:var(--ink);font-weight:800}
+.subov-steps div.on i{background:var(--p);color:#fff}
+.subov-steps div.done i{background:#dfe3ea;color:#5b616b}
 
 /* 제출 완료 결과 화면 맨 위 카드 */
 .result-head{text-align:center}
