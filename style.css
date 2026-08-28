@@ -248,6 +248,37 @@ button{cursor:pointer}
 @keyframes guideUp{from{transform:translateY(18px) scale(.9);opacity:0}to{transform:none;opacity:1}}
 @media(min-width:700px){.modal-backdrop{align-items:center}.guide-modal{border-radius:24px}}
 
+/* 점검 가이드 - 항목별 양호/미흡 판단기준 목록 */
+.gd-list{display:grid;gap:10px;margin:14px 0 4px}
+.gd-item{border:1px solid var(--line);border-radius:14px;padding:11px 12px;background:#fff}
+.gd-q{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:start;margin-bottom:9px}
+.gd-q i{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:7px;background:#eef0f4;color:#5b6373;font-style:normal;font-size:10.5px;font-weight:1000;margin-top:1px}
+.gd-q b{font-size:13px;line-height:1.4;word-break:keep-all}
+.gd-row{display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:start;padding:7px 8px;border-radius:10px;margin-bottom:5px}
+.gd-row>span{font-size:10px;font-weight:1000;text-align:center;padding:3px 0;border-radius:999px}
+.gd-row ul{margin:0;padding-left:15px;display:grid;gap:3px}
+.gd-row li{font-size:11.5px;line-height:1.45;word-break:keep-all}
+.gd-row.good{background:#f2f8f4}.gd-row.good>span{background:#dcefe3;color:#14754a}
+.gd-row.bad{background:#fff4f6}.gd-row.bad>span{background:#ffdfe5;color:#b31236}
+.gd-row.etc{background:#f5f6f8}.gd-row.etc>span{background:#e6e8ec;color:#5b6373}
+.gd-haz{margin-top:6px;font-size:10.5px;font-weight:800;color:var(--muted)}
+.gd-note{margin-top:5px;padding:7px 9px;border-radius:10px;background:#fff8e8;border:1px solid #f3dfaa;font-size:11px;line-height:1.45}
+
+/* 시간 입력(시/분 분리 드롭다운) */
+.time-split{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.time-split select{padding:13px 8px}
+.time-hint{display:block;margin-top:5px;font-size:10.5px;font-weight:800;color:var(--p)}
+
+/* 누락 보완 모드 안내 띠 */
+.fix-banner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin:0 0 12px;padding:11px 13px;border-radius:15px;background:#13245a;color:#fff;box-shadow:0 6px 18px rgba(19,36,90,.2)}
+.fix-banner-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fix-banner-text b{font-size:13px}
+.fix-banner-text small{font-size:10.5px;opacity:.82;font-weight:700;line-height:1.4}
+.fix-banner-actions{display:flex;gap:6px;flex:none}
+.fix-banner-actions button{min-height:34px;border:0;border-radius:10px;padding:7px 11px;font-size:11px;font-weight:900;background:#fff;color:#13245a;white-space:nowrap}
+.fix-banner-actions button.ghost{background:#ffffff1f;color:#fff;box-shadow:inset 0 0 0 1px #ffffff4d}
+.fix-banner-actions button:active{transform:scale(.95)}
+
 /* v5 STEP 간편점검 */
 .step-head{display:flex;align-items:center;gap:9px;margin:-4px 0 15px;flex-wrap:wrap}.step-head span{background:#303746;color:#fff;border-radius:9px;padding:6px 9px;font-size:10.5px;font-weight:1000;letter-spacing:.6px;white-space:nowrap}.step-head b{font-size:13px;color:#555d6d}
 .status-choice{display:grid;gap:10px;margin:15px 0 18px}.status-choice button{width:100%;min-height:78px;text-align:left;border:1.5px solid var(--line);border-radius:17px;background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:5px;transition:.15s}.status-choice b{font-size:15px}.status-choice small{font-size:10px;color:var(--muted);font-weight:700}.status-choice .status-good.selected{border-color:var(--select-line);background:var(--select);box-shadow:0 0 0 3px rgba(90,94,101,.07)}.status-choice .status-good.selected b{color:var(--select-ink)}.status-choice .status-bad.selected{border-color:var(--p);background:#fff3f6;box-shadow:0 0 0 3px #e72c5415}.status-choice .status-bad.selected b{color:var(--p)}

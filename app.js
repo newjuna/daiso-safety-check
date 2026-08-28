@@ -86,6 +86,11 @@ function normalizeState(){
   }
   S.workNA=S.workNA||{};
   S.guides=S.guides||{};
+  /* 시간 입력(시/분 분리 드롭다운)에서 고르던 중인 임시값.
+     "시"만 고른 상태를 화면을 다시 그려도 유지하려면 저장소가 필요하다. */
+  S.timeDrafts=S.timeDrafts||{};
+  /* 누락 보완 모드 여부. 최종 제출 화면에서 특정 누락 항목으로 들어온 상태를 뜻한다. */
+  S.fixMode=!!S.fixMode;
   S.audit=S.audit||{};S.workChecked=S.workChecked||{};S.finalValidation=S.finalValidation||{};
   S.submittedAt=S.submittedAt||null;S.submittedBy=S.submittedBy||'';
   S.resultNote=S.resultNote||'';
@@ -239,6 +244,9 @@ function currentViewKey(){
   }
   return parts.join('|');
 }
+/* 누락 목록 화면 자체에는 보완 안내 띠를 붙이지 않는다(같은 내용이 두 번 보이므로).
+   missingScreen()이 이 값을 true로 켜고, frame()이 한 번 쓰고 되돌린다. */
+var SUPPRESS_FIX_BAR=false;
 function frame(body,title='안전보건 현장진단',sub='모바일 현장점검'){
   const viewKey=currentViewKey();
   const sameView=(viewKey===LAST_VIEW_KEY);
@@ -246,8 +254,12 @@ function frame(body,title='안전보건 현장진단',sub='모바일 현장점�
 
   /* 테스트 모드에서는 실수로 실제 점검으로 착각하지 않게 항상 눈에 띄는 띠를 붙인다. */
   const testBar=TEST_MODE?'<div class="test-bar">테스트 모드 · 구글시트/드라이브에 저장되지 않습니다</div>':'';
+  /* 누락 보완 모드 안내 띠. 점검을 채우는 화면에서만 붙인다(제출 전 확인/결과화면 제외). */
+  const FIX_SCREENS=['work','ladder','common','fire','tbm','voice','accident'];
+  const fixBar=(!SUPPRESS_FIX_BAR&&FIX_SCREENS.indexOf(S.screen)>=0)?fixBanner():'';
+  SUPPRESS_FIX_BAR=false;
 
-  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div><div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="active" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button onclick="menuUnderTest('사고 이력')"><span class="menu-icon">!</span><span>사고 이력<small>테스트 진행</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${body}</main><button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button></div>`;
+  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div><div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="active" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button onclick="menuUnderTest('사고 이력')"><span class="menu-icon">!</span><span>사고 이력<small>테스트 진행</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main><button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button></div>`;
 
   LAST_VIEW_KEY=viewKey;
   if(sameView){
@@ -532,6 +544,61 @@ function work(){
   ${S.workNA[S.wi]?`<div class="notice"><b>${esc(w[0])}</b> 작업은 해당 없음으로 기록됩니다.</div>`:w[1].map((q,qi)=>question(q,qi,a[qi])).join('')}</div>
   ${nav(S.wi,D.works.length,`prevWork()`,`nextWork()`)}`,`작업유형별<br>통합점검`,`${S.wi+1}/${D.works.length} · 각 문항의 양호 답변이 기본 선택되어 있습니다.`);
 }
+/* ============ 시간 입력 (시/분 분리 드롭다운) ============
+   왜 <input type="time">을 쓰지 않는가:
+   모바일 기본 time 입력은 휠을 스크롤하는 도중 값이 확정돼 버린다.
+   "07시"를 맞추고 분을 고르려는데 창이 닫히면서 분이 00으로 들어가는 문제가 실제 점검에서 발생했다.
+   그래서 시와 분을 각각 눌러서 고르는 select 두 개로 바꿨다.
+   시·분을 모두 고르기 전에는 값을 저장하지 않으므로 반쪽짜리 시각이 기록되지 않는다. */
+const TIME_MINUTES=['00','05','10','15','20','25','30','35','40','45','50','55'];
+const TIME_FIELDS={
+  inboundStart:{get:function(){return S.basic.inboundStart||''},set:function(v){S.basic.inboundStart=v},after:function(){work()}},
+  inboundEnd:{get:function(){return S.basic.inboundEnd||''},set:function(v){S.basic.inboundEnd=v},after:function(){work()}},
+  inboundHelperOutAt:{get:function(){return S.basic.inboundHelperOutAt||''},set:function(v){S.basic.inboundHelperOutAt=v},after:function(){work()}},
+  tbmAm:{get:function(){return S.tbm.amTime||''},set:function(v){S.tbm.amTime=v},after:function(){checklist('tbm')}},
+  tbmPm:{get:function(){return S.tbm.pmTime||''},set:function(v){S.tbm.pmTime=v},after:function(){checklist('tbm')}}
+};
+function timeParts(v){
+  const m=/^(\d{1,2}):(\d{2})$/.exec(v||'');
+  return m?{h:String(+m[1]).padStart(2,'0'),m:m[2]}:{h:'',m:''};
+}
+/* 확정된 값이 있으면 그 값을, 없으면 고르던 중인 임시값을 돌려준다. */
+function timeDraft(key){
+  const saved=timeParts(TIME_FIELDS[key].get());
+  if(saved.h&&saved.m)return saved;
+  S.timeDrafts=S.timeDrafts||{};
+  return S.timeDrafts[key]||{h:'',m:''};
+}
+function setTimePart(key,part,val){
+  const f=TIME_FIELDS[key];if(!f)return;
+  const d=timeDraft(key);
+  const next={h:part==='h'?val:d.h,m:part==='m'?val:d.m};
+  S.timeDrafts=S.timeDrafts||{};
+  S.timeDrafts[key]=next;
+  /* 시·분이 모두 채워졌을 때만 실제 값으로 확정한다. */
+  f.set(next.h&&next.m?(next.h+':'+next.m):'');
+  save();f.after();
+}
+function timeSelectHtml(key){
+  const d=timeDraft(key);
+  let h='<div class="time-split">';
+  h+='<select aria-label="시" onchange="setTimePart(\''+key+'\',\'h\',this.value)">';
+  h+='<option value=""'+(d.h?'':' selected')+'>시</option>';
+  for(var i=0;i<24;i++){
+    var hh=String(i).padStart(2,'0');
+    h+='<option value="'+hh+'"'+(d.h===hh?' selected':'')+'>'+hh+'시</option>';
+  }
+  h+='</select>';
+  h+='<select aria-label="분" onchange="setTimePart(\''+key+'\',\'m\',this.value)">';
+  h+='<option value=""'+(d.m?'':' selected')+'>분</option>';
+  TIME_MINUTES.forEach(function(mm){
+    h+='<option value="'+mm+'"'+(d.m===mm?' selected':'')+'>'+mm+'분</option>';
+  });
+  h+='</select></div>';
+  /* 시만 고르고 분을 안 고른 상태를 눈으로 알 수 있게 안내한다. */
+  if(d.h&&!d.m)h+='<small class="time-hint">분까지 선택하면 저장됩니다.</small>';
+  return h;
+}
 function inboundWorkFields(){
   const b=S.basic;
   return `<div class="inbound-meta">
@@ -540,11 +607,11 @@ function inboundWorkFields(){
   <div class="inbound-labor">
     <div class="inbound-labor-head">입고 인력부담 측정 <small>(피로도 정량화 · 근골격계 위험신호에 자동 반영)</small></div>
     <div class="inbound-labor-grid">
-      <div class="field"><label>입고 시작시간</label><input type="time" value="${esc(b.inboundStart||'')}" onchange="S.basic.inboundStart=this.value;save();work()"></div>
-      <div class="field"><label>입고 종료시간</label><input type="time" value="${esc(b.inboundEnd||'')}" onchange="S.basic.inboundEnd=this.value;save();work()"></div>
+      <div class="field"><label>입고 시작시간</label>${timeSelectHtml('inboundStart')}</div>
+      <div class="field"><label>입고 종료시간</label>${timeSelectHtml('inboundEnd')}</div>
       <div class="field"><label>임직원 투입인원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundStaff)}" onchange="S.basic.inboundStaff=this.value;save();work()"><span>명</span></div></div>
       <div class="field"><label>입고도우미 인원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundHelpers)}" onchange="S.basic.inboundHelpers=this.value;save();work()"><span>명</span></div></div>
-      <div class="field"><label>도우미 퇴근시간 <small>(도우미 없으면 비워두기)</small></label><input type="time" value="${esc(b.inboundHelperOutAt||'')}" onchange="S.basic.inboundHelperOutAt=this.value;save();work()"></div>
+      <div class="field"><label>도우미 퇴근시간 <small>(도우미 없으면 비워두기)</small></label>${timeSelectHtml('inboundHelperOutAt')}</div>
     </div>
     ${inboundLaborResultBadge()}
   </div>`;
@@ -618,13 +685,71 @@ function question(q,qi,v){
   }).join('')}</div></div>`
 }
 
-function workGuide(){
+/* ============ 점검 가이드 ============
+   현장에서 "무엇이 양호이고 무엇이 미흡인지" 구분이 안 된다는 피드백을 반영한 화면.
+   작업점검은 문항 보기 자체가 판단기준이라 data.js의 문항 데이터에서 그대로 뽑아 쓰고,
+   공통·시설/소방은 항목명만 있어서 data.js의 D.guides에 정리해 둔 기준을 읽어온다. */
+function openGuideModal(icon,title,lead,bodyHtml,closeFn){
   const old=document.getElementById('guideModal');if(old)old.remove();
   const m=document.createElement('div');m.id='guideModal';m.className='modal-backdrop';
-  m.innerHTML=`<div class="guide-modal"><button class="modal-close" aria-label="점검 안내 닫기" onclick="closeWorkGuide()">×</button><div class="guide-icon">👀</div><h2>작업점검 안내</h2>
-  <p class="muted">빠른 점검을 위해 각 문항의 <b>양호한 답변이 미리 선택</b>되어 있습니다.</p>
-  <div class="guide-list"><div><b>1</b><span>실제 작업현장을 직접 확인해 주세요.</span></div><div><b>2</b><span>현장 상태가 기본 선택과 다를 때만 답변을 변경하세요.</span></div><div><b>3</b><span>해당 작업을 하지 않는 매장은 ‘해당 작업 없음’을 선택하세요.</span></div></div></div>`;
-  document.body.appendChild(m)
+  m.innerHTML='<div class="guide-modal"><button class="modal-close" aria-label="점검 가이드 닫기" onclick="'+closeFn+'">×</button>'
+    +'<div class="guide-icon">'+icon+'</div><h2>'+esc(title)+'</h2>'
+    +'<p class="muted">'+lead+'</p>'
+    +'<div class="gd-list">'+bodyHtml+'</div></div>';
+  /* 어두운 배경을 눌러도 닫히게 한다. */
+  m.onclick=function(e){if(e.target===m)closeGuideModal()};
+  document.body.appendChild(m);
+}
+function closeGuideModal(){const m=document.getElementById('guideModal');if(m)m.remove()}
+/* 양호/미흡 목록 한 덩어리를 그린다. */
+function guideRows(good,bad,note){
+  var s='';
+  if((good||[]).length)s+='<div class="gd-row good"><span>양호</span><ul>'+good.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
+  if((bad||[]).length)s+='<div class="gd-row bad"><span>미흡</span><ul>'+bad.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
+  if(note)s+='<div class="gd-note">'+esc(note)+'</div>';
+  return s;
+}
+/* 작업점검 가이드. q[3]=미흡(위험) 보기 번호, q[4]=양호 보기 번호.
+   둘 다 아닌 보기는 '해당 작업 없음' 성격이므로 참고로 묶어서 보여준다. */
+function workGuide(){
+  const w=D.works[S.wi];
+  const body=w[1].map(function(q,qi){
+    const opts=q[1]||[];
+    const risk=Array.isArray(q[3])?q[3]:[];
+    const good=Array.isArray(q[4])?q[4]:[];
+    const goodList=opts.filter(function(o,i){return good.indexOf(i)>=0});
+    const badList=opts.filter(function(o,i){return risk.indexOf(i)>=0});
+    const etcList=opts.filter(function(o,i){return good.indexOf(i)<0&&risk.indexOf(i)<0});
+    var s='<div class="gd-item"><div class="gd-q"><i>'+(qi+1)+'</i><b>'+esc(q[0])+'</b></div>';
+    s+=guideRows(goodList,badList,'');
+    if(etcList.length)s+='<div class="gd-row etc"><span>참고</span><ul>'+etcList.map(function(o){return '<li>'+esc(o)+'</li>'}).join('')+'</ul></div>';
+    if((q[2]||[]).length)s+='<div class="gd-haz">관련 재해유형 · '+(q[2]||[]).map(esc).join(' / ')+'</div>';
+    s+='</div>';
+    return s;
+  }).join('');
+  openGuideModal('👀',w[0]+' 점검 가이드',
+    '이 작업유형 문항의 <b>양호 기준</b>과 <b>미흡에 해당하는 경우</b>입니다. 현장이 미흡에 해당할 때만 답변을 바꿔 주세요.',
+    body,'closeWorkGuide()');
+}
+/* 공통·시설 / 소방 가이드. TBM은 "실시했는지"를 묻는 항목이라 제외한다. */
+function checklistGuide(k){
+  const map=(D.guides||{})[k]||{};
+  const body=(D[k]||[]).map(function(item,i){
+    const name=typeof item==='string'?item:item.name;
+    const conditional=!!(item&&typeof item==='object'&&item.conditional);
+    const g=map[name]||{};
+    var s='<div class="gd-item"><div class="gd-q"><i>'+(i+1)+'</i><b>'+esc(name)+'</b></div>';
+    if(g.good||g.bad){
+      s+=guideRows(g.good,g.bad,g.note||(conditional?'해당 시설이 없으면 [해당 없음]을 선택하세요.':''));
+    }else{
+      s+='<div class="gd-note">판단기준이 아직 등록되지 않은 항목입니다. 현장 상태를 확인해 판단해 주세요.</div>';
+    }
+    s+='</div>';
+    return s;
+  }).join('');
+  openGuideModal(k==='fire'?'🧯':'🏬',CHECKLIST_TITLE[k]+' 점검 가이드',
+    '항목별 <b>양호 기준</b>과 <b>미흡 예시</b>입니다. 현장이 미흡에 해당하는 항목만 [미흡]으로 바꿔 주세요.',
+    body,'closeGuideModal()');
 }
 function closeWorkGuide(){S.guides.work=true;save();const m=document.getElementById('guideModal');if(m)m.remove()}
 function toggleWorkNA(wi){
@@ -645,11 +770,17 @@ async function pickFiles(k,id,input){
   if(k==='work')work();
 }
 function getObj(k,id){if(k==='work'){const [a,b]=id.split('-');return S.wa[a][b]}return S[k][id]}
-function invalid(sel,msg){const e=$(sel);if(e){e.classList.add('shake');e.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>e.classList.remove('shake'),400)}toast(msg);return false}function nextWork(){ensureDefaults();S.workChecked[S.wi]={checkedAt:new Date().toISOString(),checkedBy:S.basic?.inspector||'',status:S.workNA?.[S.wi]?'na':'checked'};save();if(S.wi<D.works.length-1){S.wi++;work()}else ladder()}function prevWork(){if(S.wi){S.wi--;work()}else start()}
+function invalid(sel,msg){const e=$(sel);if(e){e.classList.add('shake');e.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>e.classList.remove('shake'),400)}toast(msg);return false}function nextWork(){ensureDefaults();S.workChecked[S.wi]={checkedAt:new Date().toISOString(),checkedBy:S.basic?.inspector||'',status:S.workNA?.[S.wi]?'na':'checked'};save();
+  /* 누락 보완 모드면 다음 작업유형으로 넘기지 않고 누락 목록으로 돌아간다. */
+  if(inFixMode())return fixReturn();
+  if(S.wi<D.works.length-1){S.wi++;work()}else ladder()}function prevWork(){if(S.wi){S.wi--;work()}else start()}
 /* 작업점검 화면만 쓰는 하단 고정 이동바.
    화면 아래에 고정되어 내용을 가리므로, 같은 높이의 빈 공간(nav-spacer)을 함께 넣어준다.
    (다른 화면은 고정바가 없으므로 .content에 큰 아래 여백을 두지 않는다) */
-function nav(i,n,prev,next){return `<div class="nav-spacer"></div><nav class="nav"><button class="secondary" onclick="${prev}">← 이전</button><div class="progress">${i+1}/${n}<div class="bar"><i style="width:${(i+1)/n*100}%"></i></div></div><button class="primary" onclick="${next}">다음 →</button></nav>`}
+function nav(i,n,prev,next){
+  /* 보완 모드에서는 눌렀을 때 무슨 일이 일어나는지 버튼 글자로 미리 알려준다. */
+  const label=inFixMode()?'확인 완료 · 목록으로 →':'다음 →';
+  return `<div class="nav-spacer"></div><nav class="nav"><button class="secondary" onclick="${prev}">← 이전</button><div class="progress">${i+1}/${n}<div class="bar"><i style="width:${(i+1)/n*100}%"></i></div></div><button class="primary" onclick="${next}">${label}</button></nav>`}
 
 
 /* 공통·시설 / 소방 / TBM 점검표.
@@ -697,10 +828,10 @@ function checklist(k){
   const tbmMethod=k==='tbm'?`<div class="field tbm-confirm-method"><label>이번 TBM 점검은 어떻게 확인했습니까?</label><div class="answers">${['직접참관','인터뷰만'].map(m=>`<button class="ans ${st.confirmMethod===m||(!st.confirmMethod&&m==='직접참관')?'sel':''}" onclick="setTbmConfirmMethod('${m}')">${m}</button>`).join('')}</div><small class="muted">인터뷰만으로 확인한 경우 이번 TBM 점수 인정 비율이 낮아집니다.</small></div>`:'';
   /* TBM(스트레칭 포함) 실시시각. 입고 시작시간보다 늦으면 스트레칭 없이 작업을 시작한 것으로 보고
      근골격계 위험신호에 자동 반영한다. */
-  const tbmTime=k==='tbm'?`<div class="tbm-time-fields"><div class="field"><label>오전 TBM 실시시각</label><input type="time" value="${esc(st.amTime||'')}" onchange="setTbmTime('am',this.value)"></div><div class="field"><label>오후 TBM 실시시각</label><input type="time" value="${esc(st.pmTime||'')}" onchange="setTbmTime('pm',this.value)"></div></div>${tbmStretchGapNotice()}`:'';
+  const tbmTime=k==='tbm'?`<div class="tbm-time-fields"><div class="field"><label>오전 TBM 실시시각</label>${timeSelectHtml('tbmAm')}</div><div class="field"><label>오후 TBM 실시시각</label>${timeSelectHtml('tbmPm')}</div></div>${tbmStretchGapNotice()}`:'';
 
   const body=`<div class="card step-card"><div class="step-head"><span>${title}</span><b>양호가 기본 선택 · 미흡만 바꾸세요</b></div>
-    <div class="summary"><h2>${title} 점검</h2><span class="pill ${bad?'bad':''}">${bad?`미흡 ${bad}건 · 해당없음 ${naCount}건`:`양호 ${total-naCount}항목 · 해당없음 ${naCount}건`}</span></div>
+    <div class="summary"><h2>${title} 점검</h2><div class="heading-actions"><span class="pill ${bad?'bad':''}">${bad?`미흡 ${bad}건 · 해당없음 ${naCount}건`:`양호 ${total-naCount}항목 · 해당없음 ${naCount}건`}</span>${k==='tbm'?'':`<button class="guide-btn" onclick="checklistGuide('${k}')">ⓘ 점검 가이드</button>`}</div></div>
     ${tbmMethod}${tbmTime}
     <div class="form-list">${rows}</div>
     <div class="navrow"><button class="secondary" onclick="go('${PREV_BEFORE[k]}')">← 이전</button><button class="primary" onclick="finishChecklist('${k}')">${k==='tbm'?'의견청취':CHECKLIST_TITLE[NEXT_AFTER[k]]} →</button></div></div>`;
@@ -729,12 +860,8 @@ function setChecklistStatus(k,item,status){
 function setTbmConfirmMethod(m){
   S.tbm.confirmMethod=m;save();checklist('tbm');
 }
-/* TBM(스트레칭 포함) 실시시각 기록. 입고 시작시간과 비교해 스트레칭 없이
-   작업을 시작했는지 화면에서 바로 알려준다. */
-function setTbmTime(period,value){
-  if(period==='am')S.tbm.amTime=value;else S.tbm.pmTime=value;
-  save();checklist('tbm');
-}
+/* TBM 실시시각은 시/분 분리 드롭다운(TIME_FIELDS의 tbmAm/tbmPm)에서 기록한다.
+   입고 시작시간과 비교해 스트레칭 없이 작업을 시작했는지 아래 알림으로 바로 알려준다. */
 function tbmStretchGapNotice(){
   const g=calcTbmStretchGap();
   if(!g)return `<div class="inbound-labor-badge muted">입고 시작시간과 TBM 실시시각을 모두 입력하면 스트레칭 여부가 자동 확인됩니다.</div>`;
@@ -748,6 +875,7 @@ function finishChecklist(k){
   st.status=st.issues.length?'bad':'good';
   st.checkedAt=new Date().toISOString();st.checkedBy=S.basic?.inspector||'';
   save();
+  if(inFixMode())return fixReturn();
   if(k==='tbm')voice();else go(NEXT_AFTER[k]);
 }
 
@@ -913,7 +1041,7 @@ function ladder(){
     <div class="lad-grid">${D.ladderTypes.map(ladderInventoryCard).join('')}</div>
     <div class="ladder-nav">
       <button class="nav-action back" onclick="work()"><i>←</i><span><small>이전 단계</small><b>작업점검</b></span></button>
-      <button class="nav-action next" onclick="ladderInventoryNext()"><span><small>다음 단계</small><b>공통·시설</b></span><i>→</i></button>
+      <button class="nav-action next" onclick="ladderInventoryNext()"><span><small>${inFixMode()?'확인 완료':'다음 단계'}</small><b>${inFixMode()?'누락 목록으로':'공통·시설'}</b></span><i>→</i></button>
     </div></div>`;
 
   frame(`${tabs('ladder')}${body}`,`사다리 현황<br>점검`,'수량 · 양호/미흡 · 이상사항을 한 화면에서 입력');
@@ -923,7 +1051,9 @@ function noLadder(){
   LADDER_EXPANDED=null;
   S.ladder.status='na';S.ladder.step=1;
   S.ladder.checkedAt=new Date().toISOString();S.ladder.checkedBy=S.basic?.inspector||'';
-  save();checklist('common')
+  save();
+  if(inFixMode())return fixReturn();
+  checklist('common')
 }
 /* 사다리 화면을 마치고 시설·소방으로 넘어간다.
    한 화면에서 수량 / 양호·미흡 / 이상사항까지 모두 입력하므로 여기서 전부 검증한다. */
@@ -954,7 +1084,9 @@ function ladderInventoryNext(){
   st.step=1;
   st.checkedAt=new Date().toISOString();
   st.checkedBy=S.basic?.inspector||'';
-  save();checklist('common');
+  save();
+  if(inFixMode())return fixReturn();
+  checklist('common');
 }
 /* +/- 버튼으로 수량을 조절한다. 0 -> 1이 되면 상태 선택 UI가 나타나야 하고,
    1 -> 0이 되면 사라져야 하므로 그 경계에서만 화면을 다시 그린다. */
@@ -1085,7 +1217,7 @@ function pickVoice(qi,oi){
   w.answers[qi]={oi:oi,text:old.text||''};
   save();voice();
 }
-function workerDone(){frame(`${tabs('voice')}${workerNav()}<div class="card worker-complete"><div class="complete-mark">✓</div><h2>근로자 ${S.worker+1} 의견 저장 완료</h2><p class="muted">응답은 익명으로 저장됩니다. 위 참여 근로자 메뉴에서 응답을 관리할 수 있습니다.</p><div class="voice-actions"><button class="worker-add-action" onclick="addWorker()"><i>＋</i><span><b>근로자 추가</b><small>다음 근로자 의견 받기</small></span></button><button class="worker-finish-action" onclick="other()"><span><b>의견청취 종료</b><small>기타사항으로 이동</small></span><i>→</i></button></div></div>`,`의견청취 완료`,`현재 ${S.workers.length}명의 응답이 저장되었습니다.`)}function addWorker(){S.workers.push({answers:{},qi:0});S.worker=S.workers.length-1;WORKER_NAV_OPEN=false;save();voice()}
+function workerDone(){frame(`${tabs('voice')}${workerNav()}<div class="card worker-complete"><div class="complete-mark">✓</div><h2>근로자 ${S.worker+1} 의견 저장 완료</h2><p class="muted">응답은 익명으로 저장됩니다. 위 참여 근로자 메뉴에서 응답을 관리할 수 있습니다.</p><div class="voice-actions"><button class="worker-add-action" onclick="addWorker()"><i>＋</i><span><b>근로자 추가</b><small>다음 근로자 의견 받기</small></span></button><button class="worker-finish-action" onclick="${inFixMode()?'fixReturn()':'other()'}"><span><b>의견청취 종료</b><small>${inFixMode()?'누락 목록으로 돌아가기':'기타사항으로 이동'}</small></span><i>→</i></button></div></div>`,`의견청취 완료`,`현재 ${S.workers.length}명의 응답이 저장되었습니다.`)}function addWorker(){S.workers.push({answers:{},qi:0});S.worker=S.workers.length-1;WORKER_NAV_OPEN=false;save();voice()}
 function removeWorkerAt(index){
   if(S.workers.length<2)return toast('최소 1명은 필요합니다.');
   if(!confirm('근로자 '+(index+1)+'의 응답을 삭제할까요?'))return;
@@ -1284,9 +1416,11 @@ function accident(){
     h+='<button class="primary" onclick="S.accidentPhase=\'final\';S.screen=\'work\';work()">작업점검 시작 →</button>';
   }else{
     h+='<button class="secondary" onclick="other()">← 이전</button>';
-    h+=hasOpenIssues()
-      ?'<button class="primary" onclick="tasks()">조치확인 →</button>'
-      :'<button class="primary" onclick="finalSubmit()">최종 제출 →</button>';
+    h+=inFixMode()
+      ?'<button class="primary" onclick="fixReturn()">확인 완료 · 목록으로 →</button>'
+      :hasOpenIssues()
+        ?'<button class="primary" onclick="tasks()">조치확인 →</button>'
+        :'<button class="primary" onclick="finalSubmit()">최종 제출 →</button>';
   }
   h+='</div></div>';
 
@@ -1391,6 +1525,37 @@ function jumpToMissing(m){
   if(m.kind==='tbm'){checklist('tbm');return}
   if(m.kind==='voice'){voice();return}
   if(m.kind==='accident'){accident();return}
+}
+
+/* ============ 누락 보완 모드 ============
+   최종 제출 화면에서 누락 항목을 눌러 들어온 상태.
+   왜 필요한가: 예전에는 누락된 '분전반' 항목을 고치고 [다음]을 누르면
+   그 뒤의 작업유형(입고·하차 등)이 순서대로 다 나와서 [다음]을 계속 눌러야 했다.
+   이 모드에서는 한 항목을 마치면 곧바로 '남은 누락 목록'으로 돌아오고,
+   남은 것이 없으면 그대로 제출로 넘어간다. */
+function inFixMode(){return !!S.fixMode}
+function exitFixMode(){S.fixMode=false;save()}
+/* 현재 항목을 마쳤을 때 호출. 남은 누락을 다시 계산해 목록으로 돌아간다. */
+function fixReturn(){
+  const missing=completionState();
+  if(!missing.length){
+    exitFixMode();
+    toast('누락된 항목을 모두 마쳤습니다.');
+    finalSubmit();
+    return;
+  }
+  missingScreen(missing);
+}
+/* 보완 모드에서 화면 맨 위에 붙는 안내 띠. 지금 무엇을 하는 중인지 알려준다. */
+function fixBanner(){
+  if(!inFixMode())return '';
+  const left=completionState().length;
+  return '<div class="fix-banner"><div class="fix-banner-text"><b>누락 보완 중</b>'
+    +'<small>'+(left?'남은 누락 '+left+'건 · 이 항목을 마치면 목록으로 돌아갑니다.':'남은 누락 없음 · 제출로 넘어갈 수 있습니다.')+'</small></div>'
+    +'<div class="fix-banner-actions">'
+    +'<button onclick="fixReturn()">'+(left?'목록으로':'제출하기')+'</button>'
+    +'<button class="ghost" onclick="exitFixMode();render(S.screen)">전체 점검</button>'
+    +'</div></div>';
 }
 /* PHOTO_STORE(브라우저 메모리)에서 실제 사진 데이터를 꺼내온다. */
 function resolvePhotos(list){
@@ -1520,6 +1685,7 @@ function openLandscapeReport(){
 function finalSubmit(){
   const missing=completionState();
   if(missing.length){missingScreen(missing);return}
+  exitFixMode();
   syncTasks();
   if(hasAccidents())syncAccidents();
   if(!S.inspectionId)S.inspectionId='INSP-'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'-'+uid();
@@ -1538,9 +1704,13 @@ function missingScreen(missing){
   h+='</div>';
   h+='<button class="secondary wide" style="margin-top:14px" onclick="jumpToMissingAt(0)">첫 미완료 항목부터 진행하기</button>';
   h+='</div>';
+  SUPPRESS_FIX_BAR=true;
   frame(tabs('')+h,'제출 전 확인','누락된 점검을 먼저 마쳐 주세요.');
 }
-function jumpToMissingAt(i){jumpToMissing(MISSING_CACHE[i])}
+/* 누락 목록에서 항목을 누르면 보완 모드로 들어간다.
+   보완 모드에서는 그 항목을 마치는 즉시 목록으로 돌아오므로
+   뒤에 있는 다른 점검화면을 [다음]으로 계속 넘길 필요가 없다. */
+function jumpToMissingAt(i){S.fixMode=true;save();jumpToMissing(MISSING_CACHE[i])}
 
 /* ============ 제출 진행률 게이지 ============
    제출은 사진 업로드 + PDF 생성까지 포함해 1~2분 걸릴 수 있다.
