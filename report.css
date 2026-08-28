@@ -48,10 +48,15 @@ h1,h2,h3,p{margin-top:0} h1{font-size:33px;margin-bottom:8px} h2{font-size:25px;
 .issue-preview{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:grid;grid-template-columns:44% 56%;gap:12px;min-height:184px}
 .issue-preview .text{display:flex;flex-direction:column;justify-content:center}
 .issue-preview h3{font-size:16px;margin:8px 0}
-.work-table{display:grid;grid-template-columns:1.1fr .7fr 1.7fr;gap:8px;font-size:13px}
+/* 작업유형 11개가 16:9 한 페이지 안에 모두 들어가야 한다.
+   행 사이 gap을 두면 11행 × 8px = 88px가 더해져 마지막 행이 페이지 밖으로 밀려 잘렸다.
+   그래서 세로 간격은 0으로 두고 칸 안쪽 padding으로만 여백을 만든다. */
+.work-table{display:grid;grid-template-columns:1.1fr .7fr 1.7fr;column-gap:8px;row-gap:0;font-size:13px}
 .work-row{display:contents}
-.work-head>div{font-size:12px;font-weight:900;color:#7b8492;padding:8px 0;border-bottom:2px solid #e7ebf1}
-.work-cell{padding:10px 0;border-bottom:1px solid #edf0f4}
+.work-head>div{font-size:12px;font-weight:900;color:#7b8492;padding:7px 0;border-bottom:2px solid #e7ebf1}
+.work-cell{padding:8px 0;border-bottom:1px solid #edf0f4;min-width:0}
+/* '주요 내용'은 한 줄로 고정한다. 두 줄로 넘어가면 표 전체가 페이지를 넘어간다. */
+.work-cell-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .section-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:10px}
 .area-card{border:1px solid var(--line);border-radius:15px;padding:14px;background:#fff;display:grid;grid-template-columns:46% 54%;gap:12px;min-height:220px}
 .area-card .body{display:flex;flex-direction:column;justify-content:center}
@@ -104,8 +109,48 @@ h1,h2,h3,p{margin-top:0} h1{font-size:33px;margin-bottom:8px} h2{font-size:25px;
  .work-head{display:none}
  .work-row{display:block;border-bottom:1px solid #edf0f4;padding:10px 0}
  .work-cell{border-bottom:none;padding:4px 0}
+ /* 모바일 화면에서는 세로로 쌓이므로 줄바꿈을 허용해 내용을 다 보여준다. */
+ .work-cell-note{white-space:normal}
  .sample-badge{position:static;display:inline-block;margin-bottom:10px}
 }
+
+/* ============================================================
+   PDF 캡처 전용 강제 데스크톱 레이아웃 (.rpt-capture)
+   ------------------------------------------------------------
+   문제: 위 @media(max-width:850px) 는 "화면(viewport) 너비"를 기준으로 동작한다.
+   PDF는 화면 밖에 1280px 짜리 캡처용 화면을 만들어 찍는 방식인데,
+   휴대폰에서 제출하면 viewport가 약 390px이라 이 모바일 규칙이 캡처 화면에도 적용된다.
+   그래서 PC에서 제출하면 16:9 가로형으로 잘 나오는데, 휴대폰에서 제출하면
+   내용이 1열로 쌓이고 min-height:760px 때문에 세로로 길어진 PDF가 만들어졌다.
+
+   해결: 캡처용 컨테이너에 .rpt-capture 클래스를 붙이고,
+   미디어쿼리보다 우선순위가 높은 선택자(.rpt-capture 자손)로 데스크톱 값을 되돌린다.
+   (미디어쿼리 안이라도 선택자 우선순위가 낮으면 밀린다 — .rpt-capture .page 가 .page 를 이긴다)
+   이 블록은 PDF를 만들 때만 쓰이며, report.html 화면 보기에는 영향이 없다.
+   ============================================================ */
+.rpt-capture{padding:0}
+.rpt-capture .page{width:1280px;height:720px;min-height:0;aspect-ratio:auto;padding:34px 40px;margin:0}
+.rpt-capture .hero{margin:16px -40px 0;padding:20px 40px;grid-template-columns:1.25fr .75fr}
+.rpt-capture .grid2{grid-template-columns:1fr 1fr}
+.rpt-capture .issue-preview-wrap{grid-template-columns:1fr 1fr}
+.rpt-capture .statusrow{grid-template-columns:repeat(5,1fr)}
+.rpt-capture .beforeafter{grid-template-columns:1fr 1fr}
+.rpt-capture .issue-card{grid-template-columns:42% 58%;height:240px}
+.rpt-capture .area-card{grid-template-columns:46% 54%;height:auto;min-height:220px}
+.rpt-capture .issue-preview{grid-template-columns:44% 56%;height:auto;min-height:184px}
+.rpt-capture .photo-cell{min-height:0}
+.rpt-capture .photo{min-height:130px}
+.rpt-capture .photo.small{min-height:88px}
+.rpt-capture .photo.tall{min-height:160px}
+.rpt-capture .placeholder{min-height:130px}
+.rpt-capture .placeholder.small{min-height:88px}
+.rpt-capture .placeholder.tall{min-height:160px}
+.rpt-capture .work-table{grid-template-columns:1.1fr .7fr 1.7fr}
+.rpt-capture .work-head{display:block}
+.rpt-capture .work-row{display:contents}
+.rpt-capture .work-cell{padding:8px 0;border-bottom:1px solid #edf0f4}
+.rpt-capture .work-cell-note{white-space:nowrap}
+.rpt-capture .sample-badge{position:absolute;top:20px;right:25px;display:block;margin-bottom:0}
 /* ===== 인쇄 / PDF 저장 =====
    화면과 똑같은 결과물이 나오도록 아래 3가지를 반드시 지정한다.
    1) @page size: 브라우저 기본 용지(A4 세로)를 쓰면 16:9 화면이 잘리거나 찌그러진다.

@@ -161,15 +161,24 @@ function makeCover(s,n){
 }
 
 /* ============ 2페이지: 작업유형별 분석 ============ */
+/* 작업유형 11개가 16:9 한 페이지에 모두 들어가야 하므로 '주요 내용'은 반드시 한 줄로 끝나야 한다.
+   미흡사항이 여러 건이면 전부 나열하지 않고 "첫 항목 외 N건"으로 줄인다.
+   (전체 내용은 뒤쪽 '현장 개선사항' 페이지에 사진과 함께 빠짐없이 나온다) */
+function workNoteText(s,w,map){
+  const list=map[w.name]||[];
+  if(!list.length)return w.status==="na" ? "해당없음" : "특이사항 없음";
+  if(list.length===1)return list[0];
+  return list[0]+" 외 "+(list.length-1)+"건";
+}
 function workRows(s){
   const map=workSummaryMap(s);
   return (s.work||[]).map(w=>{
     const level = w.status==="na" ? ["해당없음","info"] : (w.risk>0 ? ["관리필요","warn"] : ["양호","good"]);
-    const txt = (map[w.name]&&map[w.name].join(" / ")) || (w.status==="na" ? "해당없음" : "특이사항 없음");
+    const txt = workNoteText(s,w,map);
     return `<div class="work-row">
       <div class="work-cell"><b>${esc(w.name)}</b></div>
       <div class="work-cell">${tag(level[0],level[1])}</div>
-      <div class="work-cell">${esc(txt)}</div>
+      <div class="work-cell work-cell-note" title="${esc((map[w.name]||[]).join(" / "))}">${esc(txt)}</div>
     </div>`;
   }).join("");
 }

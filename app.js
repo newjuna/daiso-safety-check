@@ -1430,7 +1430,18 @@ function accident(){
       h+='<button class="'+cls+(x.status===st?' sel':'')+'" onclick="setAccidentStatus('+i+',\u0027'+st+'\u0027)">'+st+'</button>';
     }
     h+='</div></div>';
-    if(x.status)h+='<div class="auto-state"><small>현 상태</small><b>'+esc(x.currentState)+'</b></div>';
+    /* 현 상태: 이행상태를 고르면 자동으로 문구가 채워지지만, 현장 상황이 문구와 다를 수 있어
+       점검자가 직접 고칠 수 있게 열어둔다. 한 번 고치면 이행상태를 바꿔도 고친 문구를 유지하고,
+       [자동문구로 되돌리기]를 누르면 다시 자동 생성으로 돌아간다. */
+    if(x.status){
+      h+='<div class="field acc-state-field"><label>현 상태 <small>자동 생성 · 수정 가능</small></label>';
+      h+='<textarea onchange="setAccidentCurrentState('+i+',this.value)" placeholder="현장에서 확인한 현재 상태를 적어 주세요.">'+esc(x.currentState)+'</textarea>';
+      if(x.currentStateEdited){
+        h+='<div class="acc-state-foot"><span>점검자가 수정한 문구입니다.</span>';
+        h+='<button class="acc-state-reset" onclick="resetAccidentCurrentState('+i+')">자동문구로 되돌리기</button></div>';
+      }
+      h+='</div>';
+    }
     if(x.status==='조치완료')h+='<div class="acc-photo-box acc-after-only"><b>조치 후 사진</b><div class="form-photos">'+renderPhotoList(x.afterFiles,'accidentAfter',i)+'<label class="lad-cam" title="조치 후 사진 추가">📷<input class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\u0027afterFiles\u0027,this)"></label></div></div>';
     h+='</section>';
     h+='</div></div>';
@@ -1480,8 +1491,31 @@ function setAccidentStatus(i,status){
   if(!S.accidents[i])return;
   S.accidents[i].status=status;
   S.accidents[i].riskLevel=riskLevelForStatus(status,S.accidents[i].approved);
-  S.accidents[i].currentState=currentStateForStatus(S.accidents[i],status);
+  /* 점검자가 현 상태 문구를 직접 고쳤다면 덮어쓰지 않는다. */
+  if(!S.accidents[i].currentStateEdited){
+    S.accidents[i].currentState=currentStateForStatus(S.accidents[i],status);
+  }
   save();accident();
+}
+/* 현 상태 문구를 점검자가 직접 수정. 이후 이행상태를 바꿔도 이 문구가 유지된다. */
+function setAccidentCurrentState(i,value){
+  if(!S.accidents[i])return;
+  var v=String(value||'').trim();
+  S.accidents[i].currentState=v;
+  /* 비우면 다시 자동 생성으로 되돌린다(빈 값으로 남아 조사 미완료가 되는 것을 막는다). */
+  if(!v){
+    S.accidents[i].currentStateEdited=false;
+    S.accidents[i].currentState=currentStateForStatus(S.accidents[i],S.accidents[i].status);
+  }else{
+    S.accidents[i].currentStateEdited=true;
+  }
+  save();accident();
+}
+function resetAccidentCurrentState(i){
+  if(!S.accidents[i])return;
+  S.accidents[i].currentStateEdited=false;
+  S.accidents[i].currentState=currentStateForStatus(S.accidents[i],S.accidents[i].status);
+  save();accident();toast('자동 생성 문구로 되돌렸습니다.');
 }
 async function attachAccidentPhotos(i,field,input){
   const n=input.files.length;toast('사진 압축 중...');
@@ -1717,7 +1751,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=3','_blank');
+  const win=window.open('report.html?v=4','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -1840,7 +1874,7 @@ function loadReportCssOnce(){
   return new Promise((resolve)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report.css?v=3';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report.css?v=4';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();el.onerror=()=>resolve(); /* 실패해도 진행(모양만 달라짐) */
     document.head.appendChild(el);
   });
@@ -1868,13 +1902,25 @@ async function buildReportPdfBase64(snapshot,onProgress){
   const PAGE_W=1280, PAGE_H=720; /* 16:9 */
   const holder=document.createElement('div');
   holder.style.cssText='position:fixed;left:-20000px;top:0;width:'+PAGE_W+'px;z-index:-1;background:#fff';
-  holder.innerHTML='<div class="deck" style="padding:0">'+window.buildReportPages(snapshot)+'</div>';
+  /* rpt-capture 클래스가 핵심이다.
+     report.css의 모바일 규칙은 "화면 너비" 기준(@media max-width:850px)이라
+     휴대폰에서 제출하면 이 캡처 화면에도 모바일 레이아웃이 적용돼 세로로 길어진 PDF가 나온다.
+     이 클래스가 붙으면 report.css의 .rpt-capture 블록이 데스크톱 레이아웃(16:9)을 강제한다. */
+  holder.innerHTML='<div class="deck rpt-capture" style="padding:0">'+window.buildReportPages(snapshot)+'</div>';
   document.body.appendChild(holder);
-  /* 캡처 대상은 화면과 동일한 16:9 고정 크기로 맞춘다. */
+  /* 캡처 대상은 화면과 동일한 16:9 고정 크기로 맞춘다.
+     setProperty의 'important'를 쓰는 이유: CSS의 min-height가 인라인 height를 이겨버리기 때문에
+     (모바일 규칙의 min-height:760px) 크기를 확실히 고정하려면 우선순위를 올려야 한다. */
   const pages=[...holder.querySelectorAll('.page')];
   pages.forEach(p=>{
-    p.style.width=PAGE_W+'px';p.style.height=PAGE_H+'px';
-    p.style.aspectRatio='auto';p.style.margin='0';p.style.boxShadow='none';
+    p.style.setProperty('width',PAGE_W+'px','important');
+    p.style.setProperty('height',PAGE_H+'px','important');
+    p.style.setProperty('min-height','0','important');
+    p.style.setProperty('max-height',PAGE_H+'px','important');
+    p.style.setProperty('aspect-ratio','auto','important');
+    p.style.setProperty('margin','0','important');
+    p.style.setProperty('box-shadow','none','important');
+    p.style.setProperty('overflow','hidden','important');
   });
 
   try{
