@@ -122,6 +122,10 @@ function mockServer(fnName,args){
     ];
     return [];
   }
+  /* 사고이력 + 미조치 지적사항을 한 번에 주는 합친 함수 */
+  if(fnName==='getStorePrepData'){
+    return {accidents:mockServer('getStoreAccidentHistory',args),openIssues:mockServer('getStoreOpenIssues',args)};
+  }
   if(fnName==='getStoreOpenIssues'){
     if(args[0]==='테스트 강남점')return [{date:'2025-11-20',title:'창고·후방 통로 및 적재'}];
     return [];
@@ -374,7 +378,52 @@ function onOrgChange(field,value){
   if(field==='division'){SEL.dept='';SEL.team='';SEL.store=''}
   if(field==='dept'){SEL.team='';SEL.store=''}
   if(field==='team'){SEL.store=''}
+  /* 매장을 고른 순간 사고이력 조회를 미리 시작한다.
+     점검자가 [점검 시작]을 누를 때까지의 시간(보통 1~3초)을 그대로 벌어서
+     버튼을 눌렀을 때 이미 도착해 있으면 대기화면 없이 바로 넘어간다. */
+  if(field==='store'&&value)prefetchStorePrep(value);
   renderStart();
+}
+
+/* ============ 매장 준비데이터(사고이력 + 미조치 지적사항) ============
+   왜 이렇게 하는가:
+   예전에는 [점검 시작]을 누른 뒤에 getStoreAccidentHistory / getStoreOpenIssues
+   두 개를 각각 호출했다. Apps Script는 호출 1회마다 왕복 시간이 붙어서
+   두 번 부르면 그만큼 두 배로 기다려야 했다.
+   그래서 (1) 서버 함수를 하나로 합치고, (2) 매장을 고른 순간 미리 받아오고,
+   (3) 받아온 결과를 매장별로 기억해 두었다. */
+var STORE_PREP={};              /* 매장명 -> {at:시각, promise} */
+const PREP_TTL=5*60*1000;       /* 5분 안에 다시 고르면 이미 받아둔 결과를 그대로 쓴다 */
+
+function fetchStorePrep(store){
+  return gsRun('getStorePrepData',store).then(function(d){
+    d=d||{};
+    return {accidents:d.accidents||[],openIssues:d.openIssues||[]};
+  }).catch(function(err){
+    var msg=err&&err.message?err.message:String(err);
+    /* Apps Script가 아직 옛 버전이면(합친 함수가 없으면) 기존 두 함수로 대체한다. */
+    if(/허용되지 않은 요청|함수를 찾을 수 없습니다/.test(msg)){
+      return Promise.all([gsRun('getStoreAccidentHistory',store),gsRun('getStoreOpenIssues',store)])
+        .then(function(r){return {accidents:r[0]||[],openIssues:r[1]||[]}});
+    }
+    throw err;
+  });
+}
+/* 미리 받아오기. 실패해도 여기서는 조용히 넘긴다(실제 사용 시점에 다시 시도한다). */
+function prefetchStorePrep(store){
+  var e=STORE_PREP[store];
+  if(e&&Date.now()-e.at<PREP_TTL)return;
+  var p=fetchStorePrep(store);
+  p.catch(function(){delete STORE_PREP[store]});
+  STORE_PREP[store]={at:Date.now(),promise:p};
+}
+/* 실제 사용. 미리 받아둔 것이 있으면 그것을 쓰고, 없으면 지금 받아온다. */
+function getStorePrep(store){
+  var e=STORE_PREP[store];
+  if(e&&Date.now()-e.at<PREP_TTL)return e.promise;
+  var p=fetchStorePrep(store);
+  STORE_PREP[store]={at:Date.now(),promise:p};
+  return p;
 }
 function onInspectorChange(value){SEL.inspector=value;renderStart()}
 function onInspectionDateChange(value){SEL.date=value}
@@ -432,8 +481,9 @@ function selectStore(){
   Object.assign(S.basic,meta);
   S.screen='start';
   frame(`<div class="card"><h2>${esc(meta.name)}</h2><div class="loading-notice">사고이력·기존 개선과제를 불러오는 중입니다...</div></div>`,`점검을 준비하고<br>있습니다.`);
-  Promise.all([gsRun('getStoreAccidentHistory',n),gsRun('getStoreOpenIssues',n)]).then(([acc,open])=>{
-    acc=acc||[];open=open||[];
+  /* 매장을 고를 때 미리 받아둔 결과가 있으면 즉시 넘어간다. */
+  getStorePrep(n).then(d=>{
+    const acc=d.accidents||[],open=d.openIssues||[];
     S.store.accidentRecords=acc;
     S.store.accidents=acc.map(a=>`${a.date} ${a.type}${a.approved==='Y'?'(산재승인)':''}: ${a.content}`);
     S.store.openIssues=open;
@@ -722,11 +772,61 @@ function openGuideModal(icon,title,lead,bodyHtml,closeFn){
   document.body.appendChild(m);
 }
 function closeGuideModal(){const m=document.getElementById('guideModal');if(m)m.remove()}
-/* 양호/미흡 목록 한 덩어리를 그린다. */
-function guideRows(good,bad,note){
-  var s='';
-  if((good||[]).length)s+='<div class="gd-row good"><span>양호</span><ul>'+good.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
-  if((bad||[]).length)s+='<div class="gd-row bad"><span>미흡</span><ul>'+bad.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
+/* ===== 가이드 사진 =====
+   양호 사진과 미흡 사진을 좌우로 나란히 놓고, 그 아래에 판단기준 문장을 붙인다.
+   현장에서 "이 정도면 양호인가?"를 사진으로 바로 비교할 수 있게 하는 것이 목적이다.
+
+   사진 파일은 webapp/img/guide/ 폴더에 아래 이름으로 넣으면 코드를 고치지 않아도 바로 표시된다.
+     작업점검   work-<작업유형번호>-<문항번호>-good.jpg  /  -bad.jpg
+                (예: 1번 작업유형의 2번 문항 → work-01-02-good.jpg)
+     공통·시설  common-<항목번호>-good.jpg  /  -bad.jpg
+     소방       fire-<항목번호>-good.jpg  /  -bad.jpg
+   번호는 가이드 화면에 표시되는 번호와 같다. 확장자를 png 등으로 쓰거나 다른 이름을
+   쓰고 싶으면 data.js의 D.guideImages 에 적어주면 그 값이 우선한다.
+   파일이 아직 없으면 "사진 준비 중"과 넣어야 할 파일명이 표시된다. */
+const GUIDE_IMG_BASE='img/guide/';
+function pad2(n){return String(n).padStart(2,'0')}
+function guideImgSrc(kind,idx,qi,which){
+  const map=(D.guideImages||{})[kind]||{};
+  const key=kind==='work'?(pad2(idx+1)+'-'+pad2(qi+1)):pad2(idx+1);
+  const e=map[key];
+  if(e&&e[which]){
+    /* 절대주소(https://...)나 루트경로(/...)면 그대로, 아니면 사진 폴더 기준으로 본다. */
+    return /^(https?:|\/)/.test(e[which])?e[which]:GUIDE_IMG_BASE+e[which];
+  }
+  const name=kind==='work'
+    ?'work-'+pad2(idx+1)+'-'+pad2(qi+1)+'-'+which+'.jpg'
+    :kind+'-'+pad2(idx+1)+'-'+which+'.jpg';
+  return GUIDE_IMG_BASE+name;
+}
+/* 사진 칸. 파일이 없으면 img가 스스로 사라지고 뒤의 "사진 준비 중" 안내가 보인다. */
+function guidePhoto(src){
+  const file=src.split('/').pop();
+  return '<figure class="gd-photo">'
+    +'<img src="'+esc(src)+'" alt="" loading="lazy"'
+      +' onload="this.parentNode.classList.add(\'has\')"'
+      +' onerror="this.remove()">'
+    +'<span class="gd-ph"><b>사진 준비 중</b><small>'+esc(file)+'</small></span>'
+    +'</figure>';
+}
+function guideSide(which,label,src,items){
+  var s='<div class="gd-side '+which+'">';
+  s+='<span class="gd-badge">'+label+'</span>';
+  s+=guidePhoto(src);
+  if((items||[]).length){
+    s+='<ul>'+items.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
+  }else{
+    s+='<p class="gd-empty">해당 없음</p>';
+  }
+  s+='</div>';
+  return s;
+}
+/* 양호 / 미흡 좌우 비교 블록 */
+function guideCompare(kind,idx,qi,good,bad,note){
+  var s='<div class="gd-compare">';
+  s+=guideSide('good','양호',guideImgSrc(kind,idx,qi,'good'),good);
+  s+=guideSide('bad','미흡',guideImgSrc(kind,idx,qi,'bad'),bad);
+  s+='</div>';
   if(note)s+='<div class="gd-note">'+esc(note)+'</div>';
   return s;
 }
@@ -742,14 +842,14 @@ function workGuide(){
     const badList=opts.filter(function(o,i){return risk.indexOf(i)>=0});
     const etcList=opts.filter(function(o,i){return good.indexOf(i)<0&&risk.indexOf(i)<0});
     var s='<div class="gd-item"><div class="gd-q"><i>'+(qi+1)+'</i><b>'+esc(q[0])+'</b></div>';
-    s+=guideRows(goodList,badList,'');
+    s+=guideCompare('work',S.wi,qi,goodList,badList,'');
     if(etcList.length)s+='<div class="gd-row etc"><span>참고</span><ul>'+etcList.map(function(o){return '<li>'+esc(o)+'</li>'}).join('')+'</ul></div>';
     if((q[2]||[]).length)s+='<div class="gd-haz">관련 재해유형 · '+(q[2]||[]).map(esc).join(' / ')+'</div>';
     s+='</div>';
     return s;
   }).join('');
   openGuideModal('👀',w[0]+' 점검 가이드',
-    '이 작업유형 문항의 <b>양호 기준</b>과 <b>미흡에 해당하는 경우</b>입니다. 현장이 미흡에 해당할 때만 답변을 바꿔 주세요.',
+    '사진으로 <b>양호</b>와 <b>미흡</b>을 비교해 보고, 현장이 미흡에 해당할 때만 답변을 바꿔 주세요.',
     body,'closeWorkGuide()');
 }
 /* 공통·시설 / 소방 가이드. TBM은 "실시했는지"를 묻는 항목이라 제외한다. */
@@ -760,16 +860,13 @@ function checklistGuide(k){
     const conditional=!!(item&&typeof item==='object'&&item.conditional);
     const g=map[name]||{};
     var s='<div class="gd-item"><div class="gd-q"><i>'+(i+1)+'</i><b>'+esc(name)+'</b></div>';
-    if(g.good||g.bad){
-      s+=guideRows(g.good,g.bad,g.note||(conditional?'해당 시설이 없으면 [해당 없음]을 선택하세요.':''));
-    }else{
-      s+='<div class="gd-note">판단기준이 아직 등록되지 않은 항목입니다. 현장 상태를 확인해 판단해 주세요.</div>';
-    }
+    s+=guideCompare(k,i,0,g.good,g.bad,
+      g.note||(conditional?'해당 시설이 없으면 [해당 없음]을 선택하세요.':''));
     s+='</div>';
     return s;
   }).join('');
   openGuideModal(k==='fire'?'🧯':'🏬',CHECKLIST_TITLE[k]+' 점검 가이드',
-    '항목별 <b>양호 기준</b>과 <b>미흡 예시</b>입니다. 현장이 미흡에 해당하는 항목만 [미흡]으로 바꿔 주세요.',
+    '사진으로 <b>양호</b>와 <b>미흡</b>을 비교해 보고, 현장이 미흡에 해당하는 항목만 [미흡]으로 바꿔 주세요.',
     body,'closeGuideModal()');
 }
 function closeWorkGuide(){S.guides.work=true;save();const m=document.getElementById('guideModal');if(m)m.remove()}
