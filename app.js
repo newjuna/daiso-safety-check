@@ -12,7 +12,7 @@
  */
 const $=s=>document.querySelector(s),root=$('#app'),KEY='daiso_safety_v9';
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const fresh=()=>({screen:'start',store:null,basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:''},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:''},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
+const fresh=()=>({screen:'start',store:null,basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:''},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:'',amTime:'08:00',pmTime:'13:45'},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
 let S=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}})();
 function normalizeState(){
   const f=fresh();
@@ -25,12 +25,14 @@ function normalizeState(){
   S.others=Array.isArray(S.others)?S.others:[];
   S.others.forEach(o=>{if(!o.id)o.id=uid()});
   S.tasks=Array.isArray(S.tasks)?S.tasks:[];
+  S.tasks.forEach(t=>{t.beforeFiles=Array.isArray(t.beforeFiles)?t.beforeFiles:[];t.afterFiles=Array.isArray(t.afterFiles)?t.afterFiles:[];t.currentState=t.currentState||'';t.actionText=t.actionText||''});
   S.inspectionId=S.inspectionId||'';
   /* 사고조사 탭 데이터 (과거 사고별 원인/재발방지 확인) */
   S.accidents=Array.isArray(S.accidents)?S.accidents:[];
   S.accidents.forEach(a=>{
+    a.beforeFiles=Array.isArray(a.beforeFiles)?a.beforeFiles:[];
     a.afterFiles=Array.isArray(a.afterFiles)?a.afterFiles:[];
-    delete a.beforeFiles;
+    a.actionText=a.actionText||'';
     delete a.files;
   });
   S.ladder=S.ladder||{};
@@ -223,7 +225,10 @@ function removePhotoAt(kind,arg,i){
     k==='ladder'?ladder():checklist(k);return
   }
   if(kind==='other'){S.others[Number(arg)].files.splice(i,1);save();other();return}
+  if(kind==='accidentBefore'){S.accidents[Number(arg)].beforeFiles.splice(i,1);save();accident();return}
   if(kind==='accidentAfter'){S.accidents[Number(arg)].afterFiles.splice(i,1);save();accident();return}
+  if(kind==='taskBefore'){S.tasks[Number(arg)].beforeFiles.splice(i,1);save();tasks();return}
+  if(kind==='taskAfter'){S.tasks[Number(arg)].afterFiles.splice(i,1);save();tasks();return}
 }
 async function attachPhotos(fileList){
   const compressed=await compressAll(fileList);
@@ -1380,8 +1385,8 @@ function syncTasks(){
   var map={};
   (S.store.openIssues||[]).forEach(function(x,i){
     var key='past|'+i;
-    map[key]={key:key,issueId:x.issueId||'',title:x.title,source:'지난 지적사항',date:x.date||'',
-              owner:'매장 자체조치',status:'조치대기',include:true};
+    map[key]={key:key,issueId:x.issueId||'',title:x.title,detail:x.detail||'',source:'지난 지적사항',date:x.date||'',
+              owner:'매장 자체조치',status:'조치대기',currentState:'',actionText:'',beforeFiles:[],afterFiles:[],confirmed:false,include:true};
   });
   /* 점검자가 이미 수정한 값(상태/책임구분/포함여부)은 그대로 유지 */
   var prev={};(S.tasks||[]).forEach(function(t){if(t.key)prev[t.key]=t});
@@ -1429,7 +1434,7 @@ function syncAccidents(){
     map[key]={key:key,date:a.date||'',type:a.type||'사고',content:a.content||'',source:a.source||'',
               approved:a.approved||'',lostDays:a.lostDays||'',
               hazardText:inferAccidentHazard(a),riskLevel:riskLevelForStatus('',a.approved||''),
-              currentState:'',status:'',afterFiles:[]};
+              currentState:'',actionText:'',status:'',beforeFiles:[],afterFiles:[]};
   });
   var prev={},prevBySignature={};(S.accidents||[]).forEach(function(t){
     if(t.key)prev[t.key]=t;
@@ -1441,8 +1446,9 @@ function syncAccidents(){
     /* 사고 원본정보는 항상 최신 사고DB 값을 사용한다. */
     ['date','type','content','source','approved','lostDays'].forEach(function(field){x[field]=base[field]});
     x.hazardText=x.hazardText||inferAccidentHazard(x);
+    x.beforeFiles=Array.isArray(x.beforeFiles)?x.beforeFiles:[];
     x.afterFiles=Array.isArray(x.afterFiles)?x.afterFiles:[];
-    delete x.beforeFiles;
+    x.actionText=x.actionText||'';
     if(x.status==='일부조치')x.status='개선 진행 중';
     x.riskLevel=riskLevelForStatus(x.status,x.approved);
     if(x.status&&!x.currentState)x.currentState=currentStateForStatus(x,x.status);
@@ -1470,7 +1476,7 @@ function tbmCrossCheckFlags(){
   });
   return flags;
 }
-function isAccidentDone(x){return !!(x.hazardText&&x.currentState&&x.status)}
+function isAccidentDone(x){return !!(x.hazardText&&x.currentState&&x.status&&x.actionText&&(x.status!=='조치완료'||(x.afterFiles||[]).length))}
 function currentStateForStatus(x,status){
   if(status==='조치완료')return (x.source||x.type||'유해위험요인')+' 제거 조치 완료';
   if(status==='개선 진행 중')return'개선 진행 중';
@@ -1509,35 +1515,30 @@ function accident(){
     h+='</div><div class="acc-content"><small>사고내용</small><p>'+esc(x.content||'등록된 사고내용이 없습니다.')+'</p></div>';
     h+='</div>';
 
-    /* 2) 규칙 기반 자동분석 + 현장 확인 */
+    /* 사고 당시 정보는 상단에 고정하고, 작성영역만 내부 아코디언으로 펼친다. */
     h+='<div class="acc-body">';
-    h+='<section class="acc-section"><div class="acc-section-title"><b>위험분석</b><span>자동 초안 · 수정 가능</span></div><div class="acc-analysis-grid"><div class="field"><label>유해위험요인</label><textarea onchange="setAccidentText('+i+',\u0027hazardText\u0027,this.value)">'+esc(x.hazardText)+'</textarea></div><div class="risk-level-box"><label>위험등급</label><div class="risk-levels">';
-    ['상','중','하'].forEach(function(level){h+='<span class="risk-'+level+(x.riskLevel===level?' selected':'')+'">'+level+'</span>'});
-    h+='</div><small>이행상태에 따라 자동 결정</small></div></div></section>';
-
-    h+='<section class="acc-section"><div class="acc-section-title"><b>이행상태 확인</b><span>현장 선택</span></div>';
-    h+='<div class="field"><label>이행상태</label><div class="form-status3">';
+    var subOpen=x.sectionOpen||'current';
+    h+='<section class="acc-sub '+(subOpen==='current'?'open':'')+'"><button class="acc-sub-head" onclick="toggleAccidentSection('+i+',\u0027current\u0027)"><span><i>1</i><b>현재 현장 확인</b></span><strong>⌄</strong></button>';
+    if(subOpen==='current'){
+      h+='<div class="acc-sub-body"><div class="field"><label>현재 남아 있는 위험요인 <small>자동 초안 · 수정 가능</small></label><textarea onchange="setAccidentText('+i+',\u0027hazardText\u0027,this.value)">'+esc(x.hazardText)+'</textarea></div>';
+      h+='<div class="field acc-state-field"><label>현재 상태</label><textarea onchange="setAccidentCurrentState('+i+',this.value)" placeholder="현장에서 확인한 현재 상태를 적어 주세요.">'+esc(x.currentState)+'</textarea></div>';
+      h+='<div class="acc-photo-box"><b>현재 상태 사진 <small>이번 점검의 조치 전 사진</small></b><div class="form-photos">'+renderPhotoList(x.beforeFiles,'accidentBefore',i)+'<label class="lad-cam" title="현재 상태 사진 추가">📷<input class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\u0027beforeFiles\u0027,this)"></label></div></div></div>';
+    }
+    h+='</section>';
+    h+='<section class="acc-sub '+(subOpen==='action'?'open':'')+'"><button class="acc-sub-head" onclick="toggleAccidentSection('+i+',\u0027action\u0027)"><span><i>2</i><b>재발방지 조치</b></span><strong>⌄</strong></button>';
+    if(subOpen==='action'){
+    h+='<div class="acc-sub-body"><div class="field"><label>이행상태</label><div class="form-status3">';
     for(j=0;j<D.accidentStatus.length;j++){
       var st=D.accidentStatus[j];
       var cls=st==='조치완료'?'status-done':(st==='개선 진행 중'?'status-progress':'status-none');
       h+='<button class="'+cls+(x.status===st?' sel':'')+'" onclick="setAccidentStatus('+i+',\u0027'+st+'\u0027)">'+st+'</button>';
     }
-    h+='</div></div>';
-    /* 현 상태: 이행상태를 고르면 자동으로 문구가 채워지지만, 현장 상황이 문구와 다를 수 있어
-       점검자가 직접 고칠 수 있게 열어둔다. 한 번 고치면 이행상태를 바꿔도 고친 문구를 유지하고,
-       [자동문구로 되돌리기]를 누르면 다시 자동 생성으로 돌아간다. */
-    if(x.status){
-      h+='<div class="field acc-state-field"><label>현 상태 <small>자동 생성 · 수정 가능</small></label>';
-      h+='<textarea onchange="setAccidentCurrentState('+i+',this.value)" placeholder="현장에서 확인한 현재 상태를 적어 주세요.">'+esc(x.currentState)+'</textarea>';
-      if(x.currentStateEdited){
-        h+='<div class="acc-state-foot"><span>점검자가 수정한 문구입니다.</span>';
-        h+='<button class="acc-state-reset" onclick="resetAccidentCurrentState('+i+')">자동문구로 되돌리기</button></div>';
-      }
-      h+='</div>';
+    h+='</div></div><div class="field"><label>조치내용 <span class="req">*</span></label><textarea onchange="setAccidentText('+i+',\u0027actionText\u0027,this.value)" placeholder="재발방지를 위해 실시한 조치를 적어 주세요.">'+esc(x.actionText)+'</textarea></div>';
+    if(x.status==='조치완료')h+='<div class="acc-photo-box acc-after-only"><b>조치 후 사진 <small>조치완료 시 필수</small></b><div class="form-photos">'+renderPhotoList(x.afterFiles,'accidentAfter',i)+'<label class="lad-cam" title="조치 후 사진 추가">📷<input class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\u0027afterFiles\u0027,this)"></label></div></div>';
+    h+='</div>';
     }
-    if(x.status==='조치완료')h+='<div class="acc-photo-box acc-after-only"><b>조치 후 사진</b><div class="form-photos">'+renderPhotoList(x.afterFiles,'accidentAfter',i)+'<label class="lad-cam" title="조치 후 사진 추가">📷<input class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\u0027afterFiles\u0027,this)"></label></div></div>';
     h+='</section>';
-    h+='</div></div>';
+    h+='<button class="acc-complete" onclick="completeAccident('+i+')">조사 완료 · 목록으로</button></div></div>';
   }
 
   h+='<div class="navrow">';
@@ -1575,6 +1576,18 @@ function toggleAccidentCard(i){
       });
     });
   }
+}
+function toggleAccidentSection(i,key){
+  if(!S.accidents[i])return;
+  S.accidents[i].sectionOpen=S.accidents[i].sectionOpen===key?'':key;
+  save();accident();
+}
+function completeAccident(i){
+  var x=S.accidents[i];if(!x)return;
+  if(!x.hazardText||!x.currentState)return toast('현재 현장 확인 내용을 입력해 주세요.');
+  if(!x.status||!x.actionText)return toast('이행상태와 조치내용을 입력해 주세요.');
+  if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return toast('조치완료 사진을 등록해 주세요.');
+  S.accidentOpenKey='';x.sectionOpen='';save();accident();toast('사고조사를 완료했습니다.');
 }
 function setAccidentText(i,field,value){
   if(!S.accidents[i])return;
@@ -1625,30 +1638,39 @@ function tasks(){
   h+='<div class="card"><h2>지난 지적사항 조치 확인</h2>';
   h+='<p class="muted">지난 점검에서 지적됐지만 아직 조치되지 않은 사항입니다. 이번에 조치가 끝났으면 조치완료로 바꿔 주세요. 이번 점검에서 새로 발견한 미흡사항은 결과보고서에서 확인할 수 있습니다.</p>';
 
+  if(S.taskOpenKey===undefined)S.taskOpenKey='';
   if(!S.tasks.length){
     h+='<div class="notice">지난 점검에서 남은 미조치 지적사항이 없습니다.</div>';
   }else{
     for(i=0;i<S.tasks.length;i++){
       var x=S.tasks[i];
-      h+='<div class="q">';
-      h+='<div class="summary"><b>'+esc(x.title)+'</b>';
-      h+='<span class="pill'+(x.source==='사고이력'?' bad':'')+'">'+esc(x.source)+'</span></div>';
-      if(x.date)h+='<div class="muted">'+esc(x.date)+(x.approved==='Y'?' · 산재승인':'')+'</div>';
-      if(x.detail)h+='<div class="muted" style="margin-top:5px">'+esc(x.detail)+'</div>';
-      h+='<div class="grid" style="margin-top:9px">';
-      h+='<div class="field"><label>책임구분</label><select onchange="setTaskField('+i+',\'owner\',this.value)">';
+      var expanded=S.taskOpenKey===x.key;
+      h+='<div class="task-review-card '+(x.confirmed?'done':'')+(expanded?' expanded':'')+'">';
+      h+='<button class="task-review-head" onclick="toggleTaskCard('+i+')"><span><small>'+esc(x.date||'-')+' · 이전 점검</small><b>'+esc(x.title)+'</b></span><span><i>'+esc(x.status||'조치대기')+'</i><strong>⌄</strong></span></button>';
+      if(!expanded){h+='</div>';continue}
+      h+='<div class="task-readonly"><b>이전 지적내용 <small>읽기 전용</small></b><p>'+esc(x.detail||x.title)+'</p></div>';
+      var sub=x.sectionOpen||'current';
+      h+='<section class="acc-sub '+(sub==='current'?'open':'')+'"><button class="acc-sub-head" onclick="toggleTaskSection('+i+',\'current\')"><span><i>1</i><b>현재 상태 확인</b></span><strong>⌄</strong></button>';
+      if(sub==='current')h+='<div class="acc-sub-body"><div class="field"><label>현재 상태 <span class="req">*</span></label><textarea onchange="setTaskField('+i+',\'currentState\',this.value)" placeholder="이번 재점검에서 확인한 상태를 적어 주세요.">'+esc(x.currentState)+'</textarea></div><div class="acc-photo-box"><b>조치 전 사진 <small>이번 재점검의 현재 상태</small></b><div class="form-photos">'+renderPhotoList(x.beforeFiles,'taskBefore',i)+'<label class="lad-cam">📷<input class="photo-input" type="file" accept="image/*" multiple onchange="attachTaskPhotos('+i+',\'beforeFiles\',this)"></label></div></div></div>';
+      h+='</section>';
+      h+='<section class="acc-sub '+(sub==='action'?'open':'')+'"><button class="acc-sub-head" onclick="toggleTaskSection('+i+',\'action\')"><span><i>2</i><b>조치 결과</b></span><strong>⌄</strong></button>';
+      if(sub==='action'){
+      h+='<div class="acc-sub-body"><div class="grid"><div class="field"><label>책임구분</label><select onchange="setTaskField('+i+',\'owner\',this.value)">';
       var owners=['매장 자체조치','타부서 조치','공동조치'];
       for(j=0;j<owners.length;j++){
         h+='<option'+(x.owner===owners[j]?' selected':'')+'>'+owners[j]+'</option>';
       }
       h+='</select></div>';
       h+='<div class="field"><label>조치 상태</label><select onchange="setTaskField('+i+',\'status\',this.value)">';
-      var statuses=['조치대기','조치완료'];
+      var statuses=['조치대기','개선 진행 중','조치완료'];
       for(j=0;j<statuses.length;j++){
         h+='<option'+(x.status===statuses[j]?' selected':'')+'>'+statuses[j]+'</option>';
       }
-      h+='</select></div>';
-      h+='</div></div>';
+      h+='</select></div></div><div class="field"><label>조치내용 <span class="req">*</span></label><textarea onchange="setTaskField('+i+',\'actionText\',this.value)" placeholder="확인하거나 실시한 조치를 적어 주세요.">'+esc(x.actionText)+'</textarea></div>';
+      if(x.status==='조치완료')h+='<div class="acc-photo-box acc-after-only"><b>조치 후 사진 <small>조치완료 시 필수</small></b><div class="form-photos">'+renderPhotoList(x.afterFiles,'taskAfter',i)+'<label class="lad-cam">📷<input class="photo-input" type="file" accept="image/*" multiple onchange="attachTaskPhotos('+i+',\'afterFiles\',this)"></label></div></div>';
+      h+='</div>';
+      }
+      h+='</section><button class="acc-complete" onclick="completeTask('+i+')">확인 완료 · 목록으로</button></div>';
     }
   }
 
@@ -1661,7 +1683,17 @@ function tasks(){
 
   frame(h,'지난 지적사항<br>조치 확인','재점검 시 조치 여부를 확인하는 탭입니다.');
 }
-function setTaskField(i,field,value){S.tasks[i][field]=value;save()}
+function setTaskField(i,field,value){S.tasks[i][field]=value;S.tasks[i].confirmed=false;save();tasks()}
+function toggleTaskCard(i){var x=S.tasks[i];if(!x)return;S.taskOpenKey=S.taskOpenKey===x.key?'':x.key;save();tasks()}
+function toggleTaskSection(i,key){var x=S.tasks[i];if(!x)return;x.sectionOpen=x.sectionOpen===key?'':key;save();tasks()}
+async function attachTaskPhotos(i,field,input){const n=input.files.length;toast('사진 압축 중...');const added=await attachPhotos(input.files);S.tasks[i][field]=[...(S.tasks[i][field]||[]),...added];S.tasks[i].confirmed=false;save();toast(`${n}개 사진 선택됨`);tasks()}
+function completeTask(i){
+  var x=S.tasks[i];if(!x)return;
+  if(!x.currentState)return toast('현재 상태를 입력해 주세요.');
+  if(!x.actionText)return toast('조치내용을 입력해 주세요.');
+  if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return toast('조치 후 사진을 등록해 주세요.');
+  x.confirmed=true;x.sectionOpen='';S.taskOpenKey='';save();tasks();toast('조치 확인을 완료했습니다.');
+}
 
 function completionState(){
   const missing=[];
@@ -1682,6 +1714,11 @@ function completionState(){
     const un=(S.accidents||[]).filter(function(x){return !isAccidentDone(x)});
     if(un.length)missing.push({kind:'accident',label:`사고조사 · 미작성 ${un.length}건`});
   }
+  if(hasOpenIssues()){
+    syncTasks();
+    const un=(S.tasks||[]).filter(function(x){return !x.confirmed});
+    if(un.length)missing.push({kind:'tasks',label:`이전 미조치사항 재확인 · 미작성 ${un.length}건`});
+  }
   return missing;
 }
 function jumpToMissing(m){
@@ -1693,6 +1730,7 @@ function jumpToMissing(m){
   if(m.kind==='tbm'){checklist('tbm');return}
   if(m.kind==='voice'){voice();return}
   if(m.kind==='accident'){accident();return}
+  if(m.kind==='tasks'){tasks();return}
 }
 
 /* ============ 누락 보완 모드 ============
@@ -1756,11 +1794,19 @@ function buildSubmitPayload(){
   S.others.forEach(x=>{
     issues.push({issueId:S.inspectionId+'-other-'+x.id,category:'기타사항',itemName:x.text||'기타사항',note:'',hazard:'기타',photos:resolvePhotos(x.files)});
   });
-  /* 사고조사는 조치완료 건의 조치 후 사진을 보관하되, 완료 건은 조치대기로 만들지 않는다. */
+  /* 사고조사는 현재 상태(조치 전)와 조치 후 사진을 한 이슈 폴더에 함께 보관한다. */
   (S.accidents||[]).forEach(x=>{
+    const before=resolvePhotos(x.beforeFiles).map(p=>({name:'조치전_'+p.name,dataUrl:p.dataUrl}));
     const after=(x.status==='조치완료'?resolvePhotos(x.afterFiles):[]).map(p=>({name:'조치후_'+p.name,dataUrl:p.dataUrl}));
-    const memo=[x.status,x.source?'기인물: '+x.source:'',x.currentState?'현 상태: '+x.currentState:'',x.hazardText?'유해위험요인: '+x.hazardText:'','위험등급: '+x.riskLevel].filter(Boolean).join(' · ');
-    issues.push({issueId:S.inspectionId+'-accident-'+x.key.replace(/[^a-zA-Z0-9_-]/g,'-'),category:'사고조사',itemName:`${x.date} ${x.type}`.trim(),note:memo,hazard:x.hazardText||x.type||'사고',status:x.status==='조치완료'?'조치완료':'조치대기',photos:after});
+    const memo=[x.status,x.source?'기인물: '+x.source:'',x.currentState?'현 상태: '+x.currentState:'',x.actionText?'조치내용: '+x.actionText:'',x.hazardText?'유해위험요인: '+x.hazardText:'','위험등급: '+x.riskLevel].filter(Boolean).join(' · ');
+    issues.push({issueId:S.inspectionId+'-accident-'+x.key.replace(/[^a-zA-Z0-9_-]/g,'-'),category:'사고조사',itemName:`${x.date} ${x.type}`.trim(),note:memo,hazard:x.hazardText||x.type||'사고',status:x.status==='조치완료'?'조치완료':'조치대기',photos:before.concat(after)});
+  });
+  /* 이전 지적사항 재확인 증빙. 원본 이슈의 상태 갱신은 tasks로, 사진 저장은 별도 증빙 이슈로 처리한다. */
+  (S.tasks||[]).filter(x=>x.include).forEach(x=>{
+    const before=resolvePhotos(x.beforeFiles).map(p=>({name:'조치전_'+p.name,dataUrl:p.dataUrl}));
+    const after=resolvePhotos(x.afterFiles).map(p=>({name:'조치후_'+p.name,dataUrl:p.dataUrl}));
+    if(!before.length&&!after.length)return;
+    issues.push({issueId:S.inspectionId+'-followup-'+String(x.issueId||x.key).replace(/[^a-zA-Z0-9_-]/g,'-'),category:'조치확인',itemName:x.title,note:['현재 상태: '+(x.currentState||''),'조치내용: '+(x.actionText||''),'책임구분: '+(x.owner||'')].join(' · '),hazard:'재발방지',status:'재확인',photos:before.concat(after)});
   });
 
   const c=calc(),summary=scoreSummary(),labor=calcInboundLabor(),stretchGap=calcTbmStretchGap();
@@ -1777,12 +1823,12 @@ function buildSubmitPayload(){
     tbmConfirmMethod:S.tbm.confirmMethod||'직접참관', tbmCrossCheckFlags:tbmCrossCheckFlags(),
     tbmAmTime:S.tbm.amTime||'', tbmPmTime:S.tbm.pmTime||'',
     tbmStretchGapLevel:stretchGap?stretchGap.level:'', tbmStretchGapMinutes:stretchGap?stretchGap.gapMinutes:'',
-    tasks:S.tasks.filter(x=>x.include),
+    tasks:S.tasks.filter(x=>x.include).map(x=>({key:x.key,issueId:x.issueId,title:x.title,detail:x.detail||'',source:x.source,date:x.date,owner:x.owner,status:x.status,currentState:x.currentState||'',actionText:x.actionText||'',confirmed:!!x.confirmed,include:true})),
     /* 사고조사 결과 (사진은 위 issues에 이미 담겨 있으므로 여기서는 제외) */
     accidents:(S.accidents||[]).map(x=>({
       date:x.date,type:x.type,content:x.content||'',approved:x.approved||'',
       source:x.source||'',hazardText:x.hazardText||'',riskLevel:x.riskLevel||'',
-      currentState:x.currentState||'',status:x.status||''
+      currentState:x.currentState||'',actionText:x.actionText||'',status:x.status||''
     })),
     resultNote:S.resultNote||'', issues
   };
@@ -1814,7 +1860,7 @@ function getLandscapeReportSnapshot(){
   const accidents=(S.accidents||[]).map(x=>({
     date:x.date||'',type:x.type||'',content:x.content||'',source:x.source||'',approved:x.approved||'',
     hazardText:x.hazardText||'',status:x.status||'',currentState:x.currentState||'',riskLevel:x.riskLevel||'',
-    photos:resolvePhotos(x.afterFiles)
+    actionText:x.actionText||'',beforePhotos:resolvePhotos(x.beforeFiles),afterPhotos:resolvePhotos(x.afterFiles),photos:resolvePhotos(x.afterFiles)
   }));
   const workerOpinions=[];
   const qs=voiceQuestions();
@@ -1830,7 +1876,7 @@ function getLandscapeReportSnapshot(){
     work,findings,hazards:Object.entries(hazards).sort((a,b)=>b[1]-a[1]),accidents,workerOpinions,
     sections:{common:(S.common.issues||[]).length,fire:(S.fire.issues||[]).length,tbm:(S.tbm.issues||[]).length,ladder:(S.ladder.issues||[]).length},
     ladder:{counts:{...(S.ladder.counts||{})},typeStatus:{...(S.ladder.typeStatus||{})}},
-    tasks:(S.tasks||[]).filter(x=>x.include),resultNote:S.resultNote||'',
+    tasks:(S.tasks||[]).filter(x=>x.include).map(x=>({title:x.title,date:x.date,owner:x.owner,status:x.status,currentState:x.currentState||'',actionText:x.actionText||'',beforePhotos:resolvePhotos(x.beforeFiles),afterPhotos:resolvePhotos(x.afterFiles)})),resultNote:S.resultNote||'',
     score:summary.score,grade:summary.grade,scoreParts:summary.parts,hasAccidentScore:summary.hasAccident,
     inboundLabor:labor?{level:labor.level,avgPeople:Math.round(labor.avgPeople*10)/10,gapRatioPct:Math.round(labor.gapRatio*100)}:null,
     tbmConfirmMethod:S.tbm.confirmMethod||'직접참관',tbmCrossCheckFlags:tbmCrossCheckFlags(),
@@ -1844,7 +1890,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=5','_blank');
+  const win=window.open('report.html?v=6','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
