@@ -328,6 +328,26 @@ function makeIssuePages(s,startNo){
   return pages.join("");
 }
 
+/* 사고조사·이전 지적사항의 조치 전/후 사진은 입력 화면에서 접어 보여도 보고서에는 전부 싣는다. */
+function makeEvidencePages(s,startNo){
+  const photos=[];
+  (s.accidents||[]).forEach(function(a,ai){
+    (a.beforePhotos||[]).forEach(function(p,i){photos.push({p,label:"사고조사 · 조치 전 "+(i+1)+"/"+a.beforePhotos.length,title:(a.date||"")+" "+(a.type||"사고")})});
+    (a.afterPhotos||[]).forEach(function(p,i){photos.push({p,label:"사고조사 · 조치 후 "+(i+1)+"/"+a.afterPhotos.length,title:(a.date||"")+" "+(a.type||"사고")})});
+  });
+  (s.tasks||[]).forEach(function(t){
+    (t.beforePhotos||[]).forEach(function(p,i){photos.push({p,label:"이전 지적사항 · 조치 전 "+(i+1)+"/"+t.beforePhotos.length,title:t.title||"조치확인"})});
+    (t.afterPhotos||[]).forEach(function(p,i){photos.push({p,label:"이전 지적사항 · 조치 후 "+(i+1)+"/"+t.afterPhotos.length,title:t.title||"조치확인"})});
+  });
+  if(!photos.length)return {html:"",count:0};
+  const per=4,pages=[];
+  for(let i=0;i<photos.length;i+=per){
+    const chunk=photos.slice(i,i+per),n=startNo+pages.length;
+    pages.push(`<section class="page"><div class="kicker">BEFORE · AFTER EVIDENCE</div><div class="section-head"><div><h2>조치 전·후 사진 증빙</h2></div><div class="meta">${i+1}–${Math.min(i+per,photos.length)} / ${photos.length}</div></div><div class="evidence-report-grid">${chunk.map(function(x){return `<figure class="evidence-report-item"><div>${x.p&&x.p.dataUrl?`<img src="${x.p.dataUrl}" alt="${esc(x.label)}">`:"사진 없음"}</div><figcaption><b>${esc(x.label)}</b><span>${esc(x.title)}</span></figcaption></figure>`}).join("")}</div>${pageNo(n)}</section>`);
+  }
+  return {html:pages.join(""),count:pages.length};
+}
+
 /* ============ 페이지 HTML 생성 (app.js의 PDF 캡처에서도 재사용) ============ */
 function buildReportPages(s){
   if(!s || !s.store) return "";
@@ -336,6 +356,7 @@ function buildReportPages(s){
   html += makeWorkPage(s,n++);
   html += makeAreaPage(s,n++);
   html += makeOpinionPage(s,n++);
+  var evidence=makeEvidencePages(s,n);html+=evidence.html;n+=evidence.count;
   html += makeIssuePages(s,n);
   return html;
 }
