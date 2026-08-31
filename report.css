@@ -1,7 +1,7 @@
 /* ============================================================
-   안전보건 현장진단 결과보고서 (시안C 레이아웃)
-   - GPT 시안(안전보건_결과보고서_시안C_최종본.html)의 스타일을 그대로 옮긴 것.
-   - 실제 데이터 연결을 위해 사진(placeholder → 실제 img) 관련 규칙만 추가했다.
+   안전보건 현장진단 결과보고서 (동선형 레이아웃)
+   - 1~2페이지는 매장 하루 동선과 위험지점 중심으로 구성한다.
+   - 이후 페이지는 실제 데이터·사진 증빙 구조를 유지한다.
    ============================================================ */
 *{box-sizing:border-box}
 :root{
@@ -68,6 +68,25 @@ h1,h2,h3,p{margin-top:0} h1{font-size:33px;margin-bottom:8px} h2{font-size:25px;
 .issue-card h3{font-size:18px;margin-top:8px}
 .issue-copy{display:flex;flex-direction:column;justify-content:center;padding-right:6px}
 .footer-note{font-size:10px;color:#9aa1ad;position:absolute;left:40px;bottom:18px}
+
+/* ===== 동선형 결과보고서: 1~2페이지 ===== */
+.route-cover-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px;margin-top:16px;height:520px}
+.route-statement{background:var(--navy);color:#fff;border-radius:10px;padding:24px 26px;min-height:220px;display:flex;flex-direction:column;gap:18px;justify-content:center}
+.route-statement small{font-size:12px;opacity:.72;font-weight:800}
+.route-statement>div{font-size:27px;line-height:1.45;font-weight:850}.route-statement .hero-highlight{color:#ffdf62}
+.route-journey{margin-top:16px;border:1px solid var(--line);border-radius:10px;padding:16px;background:#fffdf8}
+.route-journey h2{font-size:16px;color:var(--navy);margin-bottom:12px}
+.route-strip{display:grid;grid-template-columns:repeat(11,1fr);gap:5px}
+.route-stop{min-width:0;min-height:82px;padding:8px 6px;border:1px solid #e2ddd4;border-radius:8px;background:#fff;display:flex;flex-direction:column;gap:7px}
+.route-stop:before{content:"";width:10px;height:10px;border-radius:50%;background:var(--good)}
+.route-stop.watch:before,.route-stop.risk:before{background:var(--red)}.route-stop.none:before{background:#98a2b3}
+.route-stop span{font-size:10px;color:var(--muted);font-weight:900}.route-stop b{font-size:10px;line-height:1.25;color:var(--navy);word-break:keep-all}
+.route-side{display:grid;gap:12px;align-content:start}.route-panel{border:1px solid var(--line);border-radius:10px;padding:15px;background:#fff}.route-panel h3{color:var(--navy);margin-bottom:10px}
+.route-rank{display:grid;grid-template-columns:46px 1fr auto;gap:7px;align-items:center;padding:7px 8px;border-radius:7px;background:#fffaf3;margin-top:7px;font-size:12px}.route-rank>b{color:var(--red)}
+.route-badge{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:850;white-space:nowrap}.route-badge.good{background:var(--good-bg);color:var(--good)}.route-badge.watch{background:var(--warn-bg);color:var(--warn)}.route-badge.risk{background:var(--danger-bg);color:var(--danger)}.route-badge.none,.route-badge.info{background:#eceff3;color:#667085}
+.route-layout{display:grid;grid-template-columns:.72fr 1.28fr;gap:18px;height:530px;margin-top:8px}.route-rail{display:grid;grid-template-rows:repeat(11,1fr);gap:5px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#f3f5f8}
+.route-rail-row{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;padding:5px 8px;border:1px solid #e2e5ea;border-radius:7px;background:#fff;font-size:11px}.route-rail-row>span:first-child{color:var(--red);font-weight:900}.route-rail-row.watch,.route-rail-row.risk{border-color:#e6003366;background:#fff7f8}.route-rail-row.none{opacity:.68}
+.route-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start}.route-action{min-height:174px;border:1px solid var(--line);border-left:5px solid var(--red);border-radius:9px;padding:14px;background:#fff}.route-action>div:first-child{display:flex;justify-content:space-between}.route-action h3{font-size:15px;color:var(--navy);margin:10px 0 7px}.route-action p{font-size:12px;line-height:1.45;color:#4b5565;margin-bottom:9px}.route-code{font-size:11px;color:var(--muted);font-weight:900}.route-empty{grid-column:1/-1;border:1px dashed var(--line);border-radius:10px;padding:32px;text-align:center;color:var(--muted)}
 
 /* ===== 실제 데이터 연결용 추가 규칙 ===== */
 /* 사진/박스를 감싸는 칸. 카드(그리드)의 높이를 그대로 물려받아야 사진이 박스에 꽉 찬다.
@@ -146,6 +165,7 @@ h1,h2,h3,p{margin-top:0} h1{font-size:33px;margin-bottom:8px} h2{font-size:25px;
 .rpt-capture .work-row{display:contents}
 .rpt-capture .work-cell{padding:8px 0;border-bottom:1px solid #edf0f4}
 .rpt-capture .work-cell-note{white-space:nowrap}
+.rpt-capture .route-cover-grid{grid-template-columns:1.2fr .8fr}.rpt-capture .route-layout{grid-template-columns:.72fr 1.28fr}.rpt-capture .route-strip{grid-template-columns:repeat(11,1fr)}.rpt-capture .route-actions{grid-template-columns:1fr 1fr}
 /* ===== 인쇄 / PDF 저장 =====
    화면과 똑같은 결과물이 나오도록 아래 3가지를 반드시 지정한다.
    1) @page size: 브라우저 기본 용지(A4 세로)를 쓰면 16:9 화면이 잘리거나 찌그러진다.

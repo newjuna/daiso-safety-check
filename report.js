@@ -1,8 +1,8 @@
 /* ============================================================
-   안전보건 현장진단 결과보고서 (시안C 레이아웃 · 실제 데이터 연결본)
+   안전보건 현장진단 결과보고서 (동선형 레이아웃 · 실제 데이터 연결본)
 
-   레이아웃/함수 구조는 GPT 시안(안전보건_결과보고서_시안C_최종본.html)을 그대로 따랐다.
-   시안과 달라진 점은 아래 3가지뿐이다.
+   동선형 시안의 핵심 구조를 실제 점검 데이터와 PDF 캡처 흐름에 연결한다.
+   실제 데이터 연결 원칙은 아래와 같다.
      1) 하드코딩된 SNAPSHOT 상수 대신, 실제 점검 데이터를 읽어온다.
         (부모창 getLandscapeReportSnapshot() → 없으면 localStorage 캐시)
      2) 사진 placeholder를 실제 사진이 있으면 <img>로 바꿔 표시한다.
@@ -34,6 +34,22 @@ function esc(v){ return String(v ?? "").replace(/[&<>"']/g, s => ({"&":"&amp;","
 function pageNo(n){ return `<div class="page-no">${String(n).padStart(2,"0")}</div>`; }
 function tag(label, level){ return `<span class="tag ${level}">${esc(label)}</span>`; }
 function hazardPills(arr){ return (arr||[]).map(x=>`<span class="hazard">${esc(x)}</span>`).join(""); }
+
+function routeBadge(label, level){ return `<span class="route-badge ${level}">${esc(label)}</span>`; }
+function workDisplayState(w){
+  if(!w || w.status==="na") return ["해당없음","none"];
+  if(+w.risk>0) return ["관리필요","watch"];
+  return ["양호","good"];
+}
+function workFindingMap(s){
+  const map={};
+  (s.findings||[]).forEach(function(f){
+    const key=f.area||"";
+    if(!map[key]) map[key]=[];
+    map[key].push(f);
+  });
+  return map;
+}
 
 /* 점수(내부값)를 화면 표시용 상태로 변환. 숫자는 노출하지 않는다. */
 function scoreState(v){ if(v==null) return ["확인필요","info"]; if(v>=75) return ["양호","good"]; if(v>=60) return ["관리필요","warn"]; return ["위험","danger"]; }
@@ -107,55 +123,33 @@ function areaPhotos(s, category){
 /* ============ 1페이지: 갑지 ============ */
 function makeCover(s,n){
   const st=categoryStates(s);
-  const previews=previewFindings(s,2);
   const gap=s.tbmStretchGap;
   const gapText = !gap ? "미측정" : (gap.gapMinutes>0 ? gap.gapMinutes+"분 지연" : "양호");
+  const works=(s.work||[]).slice(0,11);
+  const statusRows=[
+    ["작업",(s.work||[]).filter(w=>w.risk>0).length+"개 동선 확인",(s.work||[]).some(w=>w.risk>0)?["위험신호","danger"]:st.work],
+    ["사다리","사다리 점검",st.ladder],
+    ["시설","공통·시설 점검",st.common],
+    ["소방","소방설비 점검",st.fire],
+    ["TBM","입고 간격 "+gapText,st.tbm]
+  ];
   return `<section class="page">
     <div class="kicker">SAFETY &amp; HEALTH FIELD DIAGNOSIS</div>
     <h1>${esc(s.store.name)} 안전보건 현장진단 결과보고서</h1>
     <div class="meta">${esc(s.store.hq)} · ${esc(s.store.dept)} · ${esc(s.store.team)}　|　${esc(s.store.date)}　|　점검자 ${esc(s.store.inspector)}</div>
-    <div class="hero">
+    <div class="route-cover-grid">
       <div>
-        <div style="font-size:11px;opacity:.68;margin-bottom:6px">종합진단</div>
-        <div style="font-size:22px;line-height:1.55;font-weight:780">
-          ${coverSummaryText(s,st)}
-        </div>
+        <div class="route-statement"><small>오늘 이 매장에서 먼저 손볼 흐름</small><div>${coverSummaryText(s,st)}</div></div>
+        <div class="route-journey"><h2>매장 하루 동선 요약</h2><div class="route-strip">
+          ${works.map(function(w,i){const ws=workDisplayState(w);return `<div class="route-stop ${ws[1]}"><span>${String(i+1).padStart(2,"0")}</span><b>${esc(w.name)}</b></div>`;}).join("")}
+        </div></div>
       </div>
-      <div>
-        <div style="font-size:11px;opacity:.68;margin-bottom:6px">이번 점검 핵심 신호</div>
-        <div style="line-height:1.7;font-size:13px">
-          · 위험신호 작업유형 <b>${(s.work||[]).filter(w=>w.risk>0).length}개</b><br>
-          · 미흡사항 전체 <b>${(s.findings||[]).length}건</b><br>
-          · 미조치 과거사고 <b>${(s.accidents||[]).filter(a=>a.status==="미조치").length}건</b><br>
-          · TBM-입고 간격 <b>${esc(gapText)}</b>
-        </div>
-      </div>
+      <aside class="route-side">
+        <div class="route-panel"><h3>상태 판정</h3>${statusRows.map(function(r){return `<div class="route-rank"><b>${r[0]}</b><span>${esc(r[1])}</span>${routeBadge(r[2][0],r[2][1]==="danger"?"risk":r[2][1]==="warn"?"watch":r[2][1])}</div>`;}).join("")}</div>
+        <div class="route-panel"><h3>이번 점검 핵심 신호</h3><p>미흡사항 <b>${(s.findings||[]).length}건</b> · 미조치 과거사고 <b>${(s.accidents||[]).filter(a=>a.status==="미조치").length}건</b></p><p class="meta">먼저 작업 동선을 보고, 이어 사고·시설·근로자 의견과 상세 증빙을 확인합니다.</p></div>
+      </aside>
     </div>
-    <div class="statusrow">
-      <div class="statusbox"><b>작업점검</b>${tag(st.work[0],st.work[1])}</div>
-      <div class="statusbox"><b>사다리</b>${tag(st.ladder[0],st.ladder[1])}</div>
-      <div class="statusbox"><b>공통·시설</b>${tag(st.common[0],st.common[1])}</div>
-      <div class="statusbox"><b>소방</b>${tag(st.fire[0],st.fire[1])}</div>
-      <div class="statusbox"><b>TBM</b>${tag(st.tbm[0],st.tbm[1])}</div>
-    </div>
-    <div class="section-head" style="margin-top:14px">
-      <div><h2 style="font-size:20px;margin-bottom:4px">주요 현장 미흡사항</h2></div>
-    </div>
-    <div class="issue-preview-wrap">
-      ${previews.length?previews.map(f=>`
-        <div class="issue-preview">
-          <div class="photo-cell">${photoBox(f.photos,"이미지 첨부 박스","tall")}</div>
-          <div class="text">
-            <div>${tag(f.category,"info")} ${tag(findingState(f)[0],findingState(f)[1])}</div>
-            <h3>${esc(f.area)} · ${esc(f.title)}</h3>
-            <div class="label">관련 위험</div>
-            <div class="hazards">${hazardPills(f.hazards||[])}</div>
-            <div class="label" style="margin-top:8px">주요 내용</div>
-            <p class="meta">${esc(f.question || f.note || "현장 확인사항")}</p>
-          </div>
-        </div>`).join(""):'<div class="card"><h3>이번 점검 미흡사항 없음</h3><p class="meta">확인된 미흡사항이 없습니다.</p></div>'}
-    </div>
-    <div class="footer-note">※ 갑지는 긴 서술문 대신 키워드와 대표 미흡사항 카드 중심으로 구성</div>
+    <div class="footer-note">※ 위험신호가 있는 동선을 먼저 펼쳐 보여주는 구조</div>
     ${pageNo(n)}
   </section>`;
 }
@@ -183,47 +177,17 @@ function workRows(s){
   }).join("");
 }
 function makeWorkPage(s,n){
-  const riskWorks=(s.work||[]).filter(w=>w.risk>0).map(w=>esc(w.name));
-  const labor=s.inboundLabor;
-  /* 입고 인력부담은 시간·인원을 다 입력하지 않으면 측정되지 않는다(null). 그 경우를 구분해서 표시한다. */
-  const laborTag = !labor
-      ? tag("미측정","info")
-      : tag(labor.level==="severe"?"위험":labor.level==="minor"?"관리필요":"양호",
-            labor.level==="severe"?"danger":labor.level==="minor"?"warn":"good");
-  const laborBody = !labor
-      ? '<p class="meta">입고 시작·종료시간과 투입인원을 모두 입력하면 인력부담이 자동 계산됩니다.</p>'
-      : `<p>평균 투입인원 <b>${esc(labor.avgPeople)}명</b> · 도우미 공백비율 <b>${esc(labor.gapRatioPct)}%</b></p>
-         <p class="meta">입고·하차 관련 위험신호와 함께 보면 작업부담 판단이 더 쉬워집니다.</p>`;
+  const works=(s.work||[]).slice(0,11);
+  const fmap=workFindingMap(s);
+  const actionWorks=works.filter(w=>+w.risk>0 || (fmap[w.name]||[]).length).slice(0,4);
   return `<section class="page">
-    <div class="kicker">WORK PROCESS REVIEW</div>
-    <div class="section-head"><div><h2>작업유형별 분석</h2></div></div>
-    <div class="rule"></div>
-    <div class="grid2">
-      <div class="card">
-        <h3>작업유형 상세</h3>
-        <div class="work-table">
-          <div class="work-head"><div>작업유형</div></div>
-          <div class="work-head"><div>상태</div></div>
-          <div class="work-head"><div>주요 내용</div></div>
-          ${workRows(s)}
-        </div>
-      </div>
-      <div>
-        <div class="card">
-          <h3>분석 피드백</h3>
-          ${riskWorks.length
-            ? `<p style="font-size:18px;line-height:1.65">이번 점검에서는 <b>${riskWorks.join(", ")}</b> 작업에서 위험신호가 확인되었습니다.</p>
-               <p class="meta">재해유형만 보이는 구조가 아니라, 실제로 어떤 작업 내용에서 위험신호가 발견됐는지를 함께 확인할 수 있습니다.</p>`
-            : `<p style="font-size:18px;line-height:1.65">전체 작업유형에서 <b>위험신호가 확인되지 않았습니다.</b></p>
-               <p class="meta">현재 작업방법과 관리상태를 지속 유지해 주세요.</p>`}
-        </div>
-        <div class="card" style="margin-top:12px">
-          <h3>입고 인력부담</h3>
-          <div style="margin-bottom:9px">${laborTag}</div>
-          ${laborBody}
-        </div>
-      </div>
+    <div class="kicker">WORKDAY ROUTE</div>
+    <div class="section-head"><div><h2>작업점검은 하루 동선으로 읽습니다</h2><p class="meta">전체 흐름을 보이고, 이상 있는 지점만 조치 카드로 펼칩니다.</p></div></div>
+    <div class="route-layout">
+      <div class="route-rail">${works.map(function(w,i){const ws=workDisplayState(w);return `<div class="route-rail-row ${ws[1]}"><span>${String(i+1).padStart(2,"0")}</span><b>${esc(w.name)}</b>${routeBadge(ws[0],ws[1])}</div>`;}).join("")}</div>
+      <div class="route-actions">${actionWorks.length?actionWorks.map(function(w){const fs=fmap[w.name]||[];const f=fs[0]||{};return `<article class="route-action"><div>${routeBadge(+w.risk>0?"우선조치":"관리필요",+w.risk>0?"risk":"watch")}<span class="route-code">${String(works.indexOf(w)+1).padStart(2,"0")}</span></div><h3>${esc(f.title||w.name+" 위험신호")}</h3><p>${esc(f.question||f.note||"현장 확인 결과 관리가 필요한 작업입니다.")}</p><div class="hazards">${hazardPills(f.hazards||[])}</div></article>`;}).join(""):'<div class="route-empty"><h3>펼쳐 볼 위험신호가 없습니다</h3><p>현재 작업방법과 관리상태를 유지해 주세요.</p></div>'}</div>
     </div>
+    <div class="footer-note">※ 이상 없는 지점은 접고, 상세 사진은 현장 개선사항 페이지에서 전체 표시</div>
     ${pageNo(n)}
   </section>`;
 }
