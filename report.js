@@ -207,13 +207,13 @@ function makeAreaPage(s,n){
     <div class="section-head"><div><h2>분야별 핵심 현황</h2></div></div>
     <div class="grid2">
       <div class="area-card">
-        <div class="photo-cell">${photoBox(acc?acc.photos:[], "사고조사 / 조치 후 이미지 첨부 박스","tall")}</div>
+        <div class="photo-cell">${photoBox(acc?(acc.afterPhotos&&acc.afterPhotos.length?acc.afterPhotos:acc.beforePhotos):[], acc&&acc.afterPhotos&&acc.afterPhotos.length?"사고조사 조치 후 사진":"사고조사 현재 상태 사진","tall")}</div>
         <div class="body">
           <div>${tag("사고 재발방지","info")} ${acc?tag(st.accident[0],st.accident[1]):tag("해당없음","info")}</div>
           <h3>${acc?esc(acc.type)+" 사고":"사고이력 없음"}</h3>
           <p>${acc?esc(acc.content):"과거 사고 이력이 없습니다."}</p>
           <div class="label">유해위험요인 / 현 상태</div>
-          <p class="meta">${acc?esc(acc.hazardText)+" / "+esc(acc.status||"확인 전"):"특이사항 없음"}</p>
+          <p class="meta">${acc?esc(acc.hazardText)+" / "+esc(acc.status||"확인 전")+(acc.actionText?" / "+esc(acc.actionText):""):"특이사항 없음"}</p>
         </div>
       </div>
       <div class="area-card">
@@ -271,12 +271,12 @@ function makeOpinionPage(s,n){
             <div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(t.title)}</b>${tag(t.status, t.status==="조치완료"?"good":"warn")}</div>
             <p class="meta" style="margin:7px 0 0">${esc(t.date)} · ${esc(t.owner)}</p>
             <div class="beforeafter">
-              <div class="photo-cell">${photoBox([], "조치 전 이미지 첨부 박스","small")}</div>
-              <div class="photo-cell">${photoBox([], "조치 후 이미지 첨부 박스","small")}</div>
+              <div class="photo-cell">${photoBox(t.beforePhotos, "조치 전 사진","small")}</div>
+              <div class="photo-cell">${photoBox(t.afterPhotos, "조치 후 사진","small")}</div>
             </div>
+            <p class="meta" style="margin:8px 0 0">현재 상태: ${esc(t.currentState||"-")}<br>조치내용: ${esc(t.actionText||"-")}</p>
           </div>
         `).join("") || "<p class='meta'>지난 지적사항 없음</p>"}
-        ${(s.tasks||[]).length?'<div class="note">현재 데이터 구조상 지난 지적사항의 조치 전/후 사진 필드는 존재하지 않으므로, 이 영역은 우선 디자인용 박스로 반영했습니다.</div>':''}
       </div>
     </div>
     ${pageNo(n)}
