@@ -195,11 +195,28 @@ async function compressAll(fileList){
   }
   return out;
 }
-/* 압축된 사진의 실제 데이터(dataUrl)는 localStorage 용량 제한(5~10MB) 때문에 */
-/* 저장하지 않고 브라우저 메모리(PHOTO_STORE)에만 둔다. S(localStorage에 저장되는 상태)에는 */
-/* 표시용 이름과 이 Map을 찾아갈 id만 넣는다. 페이지를 새로고침하면 사진은 다시 선택해야 하지만, */
-/* 다른 점검 답변 데이터는 그대로 보존된다. */
+/* 사진 메타데이터는 localStorage 상태에, 압축한 실제 이미지는 용량이 큰 IndexedDB에 저장한다.
+   같은 모바일 브라우저에서 페이지를 닫았다 다시 열어도 답변과 사진이 함께 복원된다. */
 const PHOTO_STORE=new Map(); // id -> {name, dataUrl}
+const PHOTO_DB_NAME='daiso_safety_photos_v1',PHOTO_DB_STORE='photos';
+function photoDb(){
+  return new Promise(function(resolve,reject){
+    if(!window.indexedDB){reject(new Error('IndexedDB를 지원하지 않는 브라우저입니다.'));return}
+    var req=indexedDB.open(PHOTO_DB_NAME,1);
+    req.onupgradeneeded=function(){var db=req.result;if(!db.objectStoreNames.contains(PHOTO_DB_STORE))db.createObjectStore(PHOTO_DB_STORE,{keyPath:'id'})};
+    req.onsuccess=function(){resolve(req.result)};req.onerror=function(){reject(req.error)};
+  });
+}
+async function persistPhoto(id,p){
+  try{var db=await photoDb();await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readwrite');tx.objectStore(PHOTO_DB_STORE).put({id:id,name:p.name,dataUrl:p.dataUrl});tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)}});db.close()}catch(e){console.warn('사진 영구저장 실패',e)}
+}
+async function deletePersistedPhoto(id){
+  if(!id)return;PHOTO_STORE.delete(id);
+  try{var db=await photoDb();await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readwrite');tx.objectStore(PHOTO_DB_STORE).delete(id);tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)}});db.close()}catch(e){}
+}
+async function restorePersistedPhotos(){
+  try{var db=await photoDb();var rows=await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readonly'),req=tx.objectStore(PHOTO_DB_STORE).getAll();req.onsuccess=function(){resolve(req.result||[])};req.onerror=function(){reject(req.error)}});rows.forEach(function(p){PHOTO_STORE.set(p.id,{name:p.name,dataUrl:p.dataUrl})});db.close();if(rows.length)render(S.screen||'start')}catch(e){console.warn('저장 사진 복원 실패',e)}
+}
 /* 사진 목록을 작은 썸네일 그리드로 보여준다. PHOTO_STORE에 실제 데이터가 있으면 */
 /* 미리보기 이미지를, 없으면(예: 새로고침 후 유실) 카메라 배지로 대체 표시한다. */
 /* 백틱 문자열 중첩으로 파서가 깨졌던 적이 있어, 문자열 연결(+)만 사용한다. */
@@ -252,6 +269,15 @@ function openEvidenceGallery(kind,arg){
   box.onclick=function(e){if(e.target===box)box.remove()};document.body.appendChild(box);
 }
 function removePhotoAt(kind,arg,i){
+  var list=null;
+  if(kind==='work')list=getObj('work',arg).files;
+  else if(kind==='issue'){const parts=arg.split('|');list=S[parts[0]].issues[Number(parts[1])].files}
+  else if(kind==='other')list=S.others[Number(arg)].files;
+  else if(kind==='accidentBefore')list=S.accidents[Number(arg)].beforeFiles;
+  else if(kind==='accidentAfter')list=S.accidents[Number(arg)].afterFiles;
+  else if(kind==='taskBefore')list=S.tasks[Number(arg)].beforeFiles;
+  else if(kind==='taskAfter')list=S.tasks[Number(arg)].afterFiles;
+  var removed=list&&list[i];if(removed)deletePersistedPhoto(removed.id);
   if(kind==='work'){const o=getObj('work',arg);o.files.splice(i,1);save();work();return}
   if(kind==='issue'){
     const parts=arg.split('|');const k=parts[0],idx=Number(parts[1]);
@@ -266,11 +292,14 @@ function removePhotoAt(kind,arg,i){
 }
 async function attachPhotos(fileList){
   const compressed=await compressAll(fileList);
-  return compressed.map(p=>{
+  const refs=[];
+  for(const p of compressed){
     const id=uid();
     PHOTO_STORE.set(id,p);
-    return {id,name:p.name};
-  });
+    await persistPhoto(id,p);
+    refs.push({id,name:p.name});
+  }
+  return refs;
 }
 
 /* 마지막으로 그린 화면의 식별자. 같은 화면을 다시 그리는 경우(예: 사다리 유형 선택,
@@ -341,10 +370,15 @@ function field(label,id,value='',type='text',extra=''){return `<div class="field
 /* ============ 매장 선택 (서버에서 실시간 조회) ============ */
 let STORE_LIST=null,STORE_LOADING=false; // 매장 목록 메모리 캐시
 const STORE_CACHE_KEY='daiso_store_list_compact_v1';
+const PREP_CACHE_KEY='daiso_store_prep_v2'; /* v2부터 출퇴근 재해를 화면에서도 이중 제외 */
 
 function normalizeStoreRows(list){return (list||[]).map(function(row){if(Array.isArray(row))return {division:row[0]||'',dept:row[1]||'',team:row[2]||'',store:row[3]||''};return row})}
 function readStoreCache(){try{var x=JSON.parse(localStorage.getItem(STORE_CACHE_KEY)||'null');return x&&Array.isArray(x.rows)&&x.rows.length?normalizeStoreRows(x.rows):null}catch(e){return null}}
 function writeStoreCache(list){try{localStorage.setItem(STORE_CACHE_KEY,JSON.stringify({savedAt:Date.now(),rows:(list||[]).map(function(r){return [r.division,r.dept,r.team,r.store]} )}))}catch(e){}}
+function readPrepCache(store){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}'),x=all[store];return x&&Date.now()-x.at<PREP_TTL?x.data:null}catch(e){return null}}
+function writePrepCache(store,data){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}');all[store]={at:Date.now(),data:data};localStorage.setItem(PREP_CACHE_KEY,JSON.stringify(all))}catch(e){}}
+function isCommuteAccident(a){var text=[a&&a.category,a&&a.type,a&&a.content].filter(Boolean).join('').replace(/\s+/g,'');return /출퇴근재해|출근재해|퇴근재해/.test(text)}
+function inspectionAccidents(list){return (list||[]).filter(function(a){return !isCommuteAccident(a)})}
 
 function start(){
   S.screen='start';
@@ -432,18 +466,19 @@ function onOrgChange(field,value){
    그래서 (1) 서버 함수를 하나로 합치고, (2) 매장을 고른 순간 미리 받아오고,
    (3) 받아온 결과를 매장별로 기억해 두었다. */
 var STORE_PREP={};              /* 매장명 -> {at:시각, promise} */
-const PREP_TTL=5*60*1000;       /* 5분 안에 다시 고르면 이미 받아둔 결과를 그대로 쓴다 */
+const PREP_TTL=30*60*1000;      /* 서버 캐시와 동일하게 30분 동안 매장 준비데이터를 재사용한다 */
 
 function fetchStorePrep(store){
+  var cached=readPrepCache(store);if(cached)return Promise.resolve(cached);
   return gsRun('getStorePrepData',store).then(function(d){
     d=d||{};
-    return {accidents:d.accidents||[],openIssues:d.openIssues||[]};
+    var out={accidents:inspectionAccidents(d.accidents),openIssues:d.openIssues||[]};writePrepCache(store,out);return out;
   }).catch(function(err){
     var msg=err&&err.message?err.message:String(err);
     /* Apps Script가 아직 옛 버전이면(합친 함수가 없으면) 기존 두 함수로 대체한다. */
     if(/허용되지 않은 요청|함수를 찾을 수 없습니다/.test(msg)){
       return Promise.all([gsRun('getStoreAccidentHistory',store),gsRun('getStoreOpenIssues',store)])
-        .then(function(r){return {accidents:r[0]||[],openIssues:r[1]||[]}});
+        .then(function(r){return {accidents:inspectionAccidents(r[0]),openIssues:r[1]||[]}});
     }
     throw err;
   });
@@ -502,9 +537,6 @@ function renderStart(){
   h+='</div>';
 
   h+='<button class="primary wide" style="margin-top:6px" onclick="selectStore()">점검 시작 →</button>';
-  if(localStorage.getItem(KEY)&&S.store){
-    h+='<button class="secondary wide" style="margin-top:8px" onclick="resume()">저장된 '+esc(S.store.name)+' 점검 이어하기</button>';
-  }
   h+='</div>';
 
   frame(h,'안전보건 현장진단을<br>시작합니다.','점검자와 조직을 선택하면 사고이력·기존과제를 자동으로 불러옵니다.');
@@ -518,8 +550,14 @@ function selectStore(){
   S=fresh();
   S.store={...meta,accidentRecords:[],accidents:[],openIssues:[],tasks:[]};
   Object.assign(S.basic,meta);
-  S.screen='start';
-  frame(`<div class="card"><h2>${esc(meta.name)}</h2><div class="loading-notice">사고이력·기존 개선과제를 불러오는 중입니다...</div></div>`,`점검을 준비하고<br>있습니다.`);
+  S.screen='preparing';save();
+  prepareSelectedStore();
+}
+/* 준비 중에 앱을 닫아도 screen='preparing'이 저장되므로, 다시 열면 같은 매장 조회부터 자동 재개한다. */
+function prepareSelectedStore(){
+  if(!S.store||!S.store.name){start();return}
+  var n=S.store.name;
+  frame(`<div class="card"><h2>${esc(n)}</h2><div class="loading-notice">사고이력·기존 개선과제를 불러오는 중입니다...</div></div>`,`점검을 준비하고<br>있습니다.`);
   /* 매장을 고를 때 미리 받아둔 결과가 있으면 즉시 넘어간다. */
   getStorePrep(n).then(d=>{
     const acc=d.accidents||[],open=d.openIssues||[];
@@ -527,6 +565,7 @@ function selectStore(){
     S.store.accidents=acc.map(a=>`${a.date} ${a.type}${a.approved==='Y'?'(산재승인)':''}: ${a.content}`);
     S.store.openIssues=open;
     S.store.tasks=open.map(x=>x.title);
+    save();
     enterInspection();
   }).catch(err=>{
     toast('사고이력 조회 실패: '+(err&&err.message?err.message:String(err)));
@@ -2394,9 +2433,10 @@ function loadDashStoreHistory(name){
     if(el)el.innerHTML='<div class="notice">이력을 불러오지 못했습니다: '+esc(err&&err.message?err.message:String(err))+'</div>';
   });
 }
-function render(x){({start,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,result:report}[x]||start)()}
+function render(x){({start,preparing:prepareSelectedStore,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,result:report}[x]||start)()}
 try{
   render(S.screen);
+  restorePersistedPhotos();
 }catch(err){
   console.error(err);
   root.innerHTML=`<div class="app"><header class="hero"><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div><h1>실행 오류를 확인했습니다.</h1><p>저장된 테스트 데이터 또는 브라우저 상태를 초기화할 수 있습니다.</p></header><main class="content"><div class="card"><h2>로컬 실행 오류</h2><div class="notice">${esc(err&&err.message?err.message:String(err))}</div><button class="primary wide" onclick="localStorage.removeItem(KEY);S=fresh();normalizeState();STORE_LIST=null;start()">테스트 데이터 초기화 후 시작</button></div></main></div>`;
