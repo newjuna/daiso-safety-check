@@ -554,22 +554,37 @@ function selectStore(){
   prepareSelectedStore();
 }
 /* 준비 중에 앱을 닫아도 screen='preparing'이 저장되므로, 다시 열면 같은 매장 조회부터 자동 재개한다. */
+var PREPARING_TOKEN=0;
+function renderStorePrepOverlay(mode,title,message,sub){
+  var icon=mode==='loading'?'<span class="prep-spinner" aria-hidden="true"></span>':(mode==='accident'?'!':'✓');
+  var h='<div class="store-prep-overlay"><div class="store-prep-dialog '+mode+'"><div class="store-prep-icon">'+icon+'</div><small>'+(mode==='loading'?'STORE CHECK':'CHECK COMPLETE')+'</small><h2>'+esc(title)+'</h2><p>'+esc(message)+'</p>'+(sub?'<div class="store-prep-sub">'+esc(sub)+'</div>':'')+'<div class="store-prep-progress"><i></i></div></div></div>';
+  frame(h,'매장 정보를<br>확인하고 있습니다.','잠시만 기다려 주세요.');
+}
 function prepareSelectedStore(){
   if(!S.store||!S.store.name){start();return}
   var n=S.store.name;
-  frame(`<div class="card"><h2>${esc(n)}</h2><div class="loading-notice">사고이력·기존 개선과제를 불러오는 중입니다...</div></div>`,`점검을 준비하고<br>있습니다.`);
+  var token=++PREPARING_TOKEN;
+  renderStorePrepOverlay('loading',n+' 조회 중','사고이력과 지난 지적사항을 확인하고 있습니다.','조회가 끝나면 자동으로 다음 화면으로 이동합니다.');
   /* 매장을 고를 때 미리 받아둔 결과가 있으면 즉시 넘어간다. */
   getStorePrep(n).then(d=>{
+    if(token!==PREPARING_TOKEN)return;
     const acc=d.accidents||[],open=d.openIssues||[];
     S.store.accidentRecords=acc;
     S.store.accidents=acc.map(a=>`${a.date} ${a.type}${a.approved==='Y'?'(산재승인)':''}: ${a.content}`);
     S.store.openIssues=open;
     S.store.tasks=open.map(x=>x.title);
     save();
-    enterInspection();
+    if(acc.length){
+      renderStorePrepOverlay('accident',acc.length+'건의 사고이력 확인','사고가 발생한 매장입니다. 사고조사를 먼저 진행합니다.',open.length?'지난 미조치 지적사항 '+open.length+'건도 함께 확인합니다.':'사고조사 화면으로 자동 이동합니다.');
+    }else{
+      renderStorePrepOverlay('clear','등록된 사고이력이 없습니다','해당 매장은 사고조사 대상이 없어 작업점검으로 이동합니다.',open.length?'지난 미조치 지적사항 '+open.length+'건은 점검 후 확인합니다.':'작업점검 화면으로 자동 이동합니다.');
+    }
+    setTimeout(function(){if(token===PREPARING_TOKEN)enterInspection()},950);
   }).catch(err=>{
+    if(token!==PREPARING_TOKEN)return;
     toast('사고이력 조회 실패: '+(err&&err.message?err.message:String(err)));
-    enterInspection();
+    renderStorePrepOverlay('warning','매장 이력을 확인하지 못했습니다','네트워크 상태를 확인해 주세요. 점검은 계속 진행할 수 있습니다.','작업점검 화면으로 자동 이동합니다.');
+    setTimeout(function(){if(token===PREPARING_TOKEN)enterInspection()},1200);
   });
 }
 function uiError(msg){const card=$('.card');if(card){card.classList.remove('shake-strong','validation-error');void card.offsetWidth;card.classList.add('shake-strong','validation-error');setTimeout(()=>card.classList.remove('shake-strong'),420);setTimeout(()=>card.classList.remove('validation-error'),900)}toast(msg)}
