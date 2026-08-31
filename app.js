@@ -1910,7 +1910,12 @@ function getLandscapeReportSnapshot(){
   const addIssues=(list,category,hazard)=>{
     (list||[]).forEach(x=>findings.push({category,area:category,title:x.item||x.text||'미흡사항',note:x.note||'',hazards:[hazard],photos:resolvePhotos(x.files)}));
   };
-  addIssues(S.ladder.issues,'사다리','떨어짐');
+  /* 사다리는 어떤 유형의 이상인지가 중요하므로 area에 유형명을 넣는다.
+     (보고서에서 "구형 사다리(검정) 외관상태 미흡"처럼 유형까지 함께 보여주기 위함) */
+  (S.ladder.issues||[]).forEach(x=>findings.push({
+    category:'사다리',area:x.type||x.typeKey||'사다리',title:x.item||'이상사항',
+    note:x.note||'',hazards:['떨어짐'],photos:resolvePhotos(x.files)
+  }));
   addIssues(S.common.issues,'공통·시설','시설');
   addIssues(S.fire.issues,'소방','화재');
   addIssues(S.tbm.issues,'TBM','안전관리');
@@ -1942,7 +1947,10 @@ function getLandscapeReportSnapshot(){
     tasks:(S.tasks||[]).filter(x=>x.include).map(x=>({title:x.title,date:x.date,owner:x.owner,status:x.status,currentState:x.currentState||'',actionText:x.actionText||'',beforePhotos:resolvePhotos(x.beforeFiles),afterPhotos:resolvePhotos(x.afterFiles)})),resultNote:S.resultNote||'',
     score:summary.score,grade:summary.grade,scoreParts:summary.parts,hasAccidentScore:summary.hasAccident,
     inboundLabor:labor?{level:labor.level,avgPeople:Math.round(labor.avgPeople*10)/10,gapRatioPct:Math.round(labor.gapRatio*100)}:null,
+    /* 계산 결과뿐 아니라 보고서 판정 근거가 되는 원본 입력값도 함께 넘긴다. */
+    inbound:{delivery:S.basic.delivery||'',start:S.basic.inboundStart||'',end:S.basic.inboundEnd||'',staff:Number(S.basic.inboundStaff)||0,helpers:Number(S.basic.inboundHelpers)||0,helperOutAt:S.basic.inboundHelperOutAt||''},
     tbmConfirmMethod:S.tbm.confirmMethod||'직접참관',tbmCrossCheckFlags:tbmCrossCheckFlags(),
+    tbmTimes:{am:S.tbm.amTime||'',pm:S.tbm.pmTime||''},
     tbmStretchGap:stretchGap?{level:stretchGap.level,gapMinutes:stretchGap.gapMinutes}:null
   };
 }
@@ -1953,7 +1961,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=7','_blank');
+  const win=window.open('report.html?v=9','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2068,15 +2076,14 @@ function loadLibrary(isReady,candidates){
   ).catch(()=>{ throw new Error('PDF 변환 라이브러리를 불러오지 못했습니다. 네트워크(또는 vendor 폴더)를 확인해 주세요.') });
 }
 /* 결과보고서 전용 CSS를 이 문서에 잠깐 붙인다(캡처할 화면에 스타일이 필요하므로).
-   주의: report.css와 style.css는 .hero / .card / .meta / .label 같은 클래스명을 공유한다.
-   그래서 이 CSS가 문서에 붙어 있는 동안에는 앱 화면(붉은 헤더 등)이 결과보고서 스타일로
-   덮여 모양이 바뀐다. 캡처가 끝나면 반드시 removeReportCss()로 떼어내야 한다.
-   캡처하는 동안에는 제출 진행률 오버레이가 화면 전체를 덮으므로 사용자 눈에는 보이지 않는다. */
+   report.css의 모든 선택자는 .sr-report 아래로 한정되고 클래스명도 sr- 접두어만 쓰므로
+   앱 화면(style.css의 .hero / .card 등)과 충돌하지 않는다.
+   그래도 캡처가 끝나면 removeReportCss()로 떼어내 문서를 깨끗하게 되돌린다. */
 function loadReportCssOnce(){
   return new Promise((resolve)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report.css?v=7';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report.css?v=9';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();el.onerror=()=>resolve(); /* 실패해도 진행(모양만 달라짐) */
     document.head.appendChild(el);
   });
@@ -2101,21 +2108,24 @@ async function buildReportPdfBase64(snapshot,onProgress){
   const jsPDFCtorFn=jsPDFCtor();
 
   /* 캡처용 화면: 화면 밖에 두되 display:none은 쓰지 않는다(none이면 렌더링이 안 돼 캡처가 빈다). */
-  const PAGE_W=1280, PAGE_H=720; /* 16:9 */
+  const PAGE_W=1240, PAGE_H=880; /* A4 가로와 같은 비율. report.css의 .sr-sheet와 같은 값이어야 한다. */
   const holder=document.createElement('div');
   holder.style.cssText='position:fixed;left:-20000px;top:0;width:'+PAGE_W+'px;z-index:-1;background:#fff';
-  /* rpt-capture 클래스가 핵심이다.
-     report.css의 모바일 규칙은 "화면 너비" 기준(@media max-width:850px)이라
-     휴대폰에서 제출하면 이 캡처 화면에도 모바일 레이아웃이 적용돼 세로로 길어진 PDF가 나온다.
-     이 클래스가 붙으면 report.css의 .rpt-capture 블록이 데스크톱 레이아웃(16:9)을 강제한다. */
-  holder.innerHTML='<div class="deck rpt-capture" style="padding:0">'+window.buildReportPages(snapshot)+'</div>';
+  /* sr-capture 클래스가 핵심이다. 두 가지를 해결한다.
+     1) report.css의 모바일 규칙은 "화면 너비" 기준(@media max-width:900px)이라
+        휴대폰에서 제출하면 이 캡처 화면에도 모바일 레이아웃이 적용돼 세로로 길어진 PDF가 나온다.
+     2) 화면에서는 .sr-sheet가 .active 한 장만 보이지만, 캡처에서는 전부 펼쳐야 한다.
+     .sr-capture 자손 선택자가 미디어쿼리를 이기고 데스크톱 레이아웃을 강제한다. */
+  holder.innerHTML='<div class="sr-report sr-capture">'+window.buildReportPages(snapshot)+'</div>';
   document.body.appendChild(holder);
-  /* 캡처 대상은 화면과 동일한 16:9 고정 크기로 맞춘다.
+  /* 캡처 대상은 화면과 동일한 고정 크기로 맞춘다.
      setProperty의 'important'를 쓰는 이유: CSS의 min-height가 인라인 height를 이겨버리기 때문에
-     (모바일 규칙의 min-height:760px) 크기를 확실히 고정하려면 우선순위를 올려야 한다. */
-  const pages=[...holder.querySelectorAll('.page')];
+     크기를 확실히 고정하려면 우선순위를 올려야 한다. */
+  const pages=[...holder.querySelectorAll('.sr-sheet')];
   pages.forEach(p=>{
+    p.style.setProperty('display','block','important');
     p.style.setProperty('width',PAGE_W+'px','important');
+    p.style.setProperty('max-width','none','important');
     p.style.setProperty('height',PAGE_H+'px','important');
     p.style.setProperty('min-height','0','important');
     p.style.setProperty('max-height',PAGE_H+'px','important');
