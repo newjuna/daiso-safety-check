@@ -270,13 +270,58 @@ function footer(left,noHolder){
 var NO="__SR_PAGE_NO__";
 
 /* ---------- 01 표지 ---------- */
+function coverPriorityPhotos(s,p){
+  var acc=s.accidents||[],findings=s.findings||[],list=[];
+  if(p.w===10){
+    acc.some(function(a){
+      if(a.status==="미조치"||a.riskLevel==="상"){
+        list=(a.beforePhotos||[]).concat(a.afterPhotos||[]); return list.length>0;
+      }
+      return false;
+    });
+  }else if(p.w===50){
+    findings.some(function(f){if(f.category==="사다리"&&(f.photos||[]).length){list=f.photos;return true}return false});
+  }else if(p.w===20||p.w===30){
+    findings.some(function(f){if(f.category==="작업점검"&&/입고|하차/.test(f.area||"")&&(f.photos||[]).length){list=f.photos;return true}return false});
+  }else if(p.w===40){
+    findings.some(function(f){if(f.category==="TBM"&&(f.photos||[]).length){list=f.photos;return true}return false});
+  }
+  if(!list.length)findings.some(function(f){if((f.photos||[]).length){list=f.photos;return true}return false});
+  return list;
+}
+function coverRouteStates(s){
+  var st=categoryStates(s),acc=s.accidents||[],opinions=s.workerOpinions||[];
+  function cls(x){return !x?"good":(x[1]==="risk"?"":(x[1]==="warn"?"watch":"good"))}
+  return [
+    ["사고",acc.length?(acc.some(function(a){return a.status==="미조치"})?"":"good"):"good",acc.length?acc.length+"건":"없음"],
+    ["작업",cls(st.work),st.work[0]], ["사다리",cls(st.ladder),st.ladder[0]],
+    ["시설",cls(st.common),st.common[0]], ["소방",cls(st.fire),st.fire[0]],
+    ["TBM",cls(st.tbm),st.tbm[0]], ["의견",opinions.length?"":"good",opinions.length?opinions.length+"건":"양호"]
+  ];
+}
+function coverFieldRows(s){
+  var acc=s.accidents||[],open=acc.filter(function(a){return a.status==="미조치"}).length;
+  function row(label,list,empty){
+    var first=list[0],text=list.length?(list.length+"건 · "+(first.title||first.answer||"확인 필요")):(empty||"양호");
+    return [label,text,list.length?"":"good"];
+  }
+  var rows=[];
+  rows.push(["사고조사",acc.length?(acc.length+"건 중 "+(open?open+"건 미조치":"전 건 조치완료")):"사고이력 없음",open?"": "good"]);
+  rows.push(row("작업점검",findingsOf(s,"작업점검"),"특이사항 없음"));
+  rows.push(row("사다리",findingsOf(s,"사다리"),"이상항목 없음"));
+  rows.push(row("공통·시설",findingsOf(s,"공통·시설"),"시설상태 양호"));
+  rows.push(row("소방",findingsOf(s,"소방"),"소방상태 양호"));
+  var tbm=findingsOf(s,"TBM"),cross=s.tbmCrossCheckFlags||[];
+  rows.push(["TBM",tbm.length?tbm.length+"건 미흡":(cross.length?"응답 교차확인 필요":"운영상태 양호"),(tbm.length||cross.length)?"watch":"good"]);
+  rows.push(row("근로자 의견",s.workerOpinions||[],"특이의견 없음"));
+  return rows;
+}
 function sheetCover(s){
   var pr=buildPriorities(s);
   var dg=diagnosisLabel(s,pr);
   var acc=s.accidents||[];
   var open=acc.filter(function(a){return a.status==="미조치"}).length;
-  var shown=pr.slice(0,5);
-  var rest=pr.length-shown.length;
+  var shown=pr.slice(0,3),route=coverRouteStates(s),fields=coverFieldRows(s);
 
   var h='<header class="sr-cover-head">'
     +'<div class="sr-kicker">ASUNG DAISO · SAFETY &amp; HEALTH</div>'
@@ -287,33 +332,34 @@ function sheetCover(s){
     +'<span>'+[s.store.hq,s.store.dept,s.store.team].filter(Boolean).map(esc).join(" · ")+'</span></div>'
     +'</header>';
 
-  h+='<div class="sr-body">'
-    +'<div class="sr-score-row">'
-    +'<div class="sr-score"><span>종합 진단결과</span><b>'+dg.label+'</b><em>'+esc(dg.sub)+'</em></div>'
-    +'<div class="sr-verdict"><small>EXECUTIVE SUMMARY</small><h2>'+verdictHeadline(pr)+'</h2><p>'+esc(verdictBody(s))+'</p></div>'
-    +'</div>';
+  h+='<div class="sr-body"><div class="sr-dash-summary">'
+    +'<div class="sr-dash-score"><small>종합 진단결과</small><b>'+dg.label+'</b><span>'+esc(dg.sub)+'</span></div>'
+    +'<div class="sr-dash-verdict"><small>EXECUTIVE SUMMARY</small><b>'+verdictHeadline(pr)+'</b><p>'+esc(verdictBody(s))+'</p></div>'
+    +'<div class="sr-dash-metric'+((s.findings||[]).length?' bad':'')+'"><small>점검 미흡</small><b>'+(s.findings||[]).length+'</b><span>건</span></div>'
+    +'<div class="sr-dash-metric"><small>사고이력</small><b>'+acc.length+'</b><span>건</span></div>'
+    +'<div class="sr-dash-metric'+(open?' bad':'')+'"><small>미조치 사고</small><b>'+open+'</b><span>건</span></div>'
+    +'<div class="sr-dash-metric"><small>근로자 의견</small><b>'+(s.workerOpinions||[]).length+'</b><span>건</span></div></div>';
 
-  h+='<div class="sr-metrics">'
-    +'<div class="sr-metric'+((s.findings||[]).length?' warn':'')+'"><span>이번 점검 미흡사항</span><b>'+(s.findings||[]).length+'</b> <i>건</i></div>'
-    +'<div class="sr-metric"><span>과거 사고이력</span><b>'+acc.length+'</b> <i>건</i></div>'
-    +'<div class="sr-metric'+(open?' warn':'')+'"><span>미조치 사고</span><b>'+open+'</b> <i>건</i></div>'
-    +'<div class="sr-metric"><span>근로자 의견</span><b>'+(s.workerOpinions||[]).length+'</b> <i>건</i></div>'
-    +'</div>';
-
-  h+='<div class="sr-section-title"><div><small>TOP PRIORITIES</small><h2>우선 조치사항</h2></div>'
-    +'<span>위험도·사고연계·근로자 의견 종합</span></div>';
-
-  if(!shown.length){
-    h+='<div class="sr-note info">우선 조치가 필요한 항목이 확인되지 않았습니다. 현재 작업방법과 관리상태를 유지해 주세요.</div>';
-  }else{
-    shown.forEach(function(p,i){
-      h+='<div class="sr-priority"><i>'+pad2(i+1)+'</i><div><b>'+p.title+'</b><small>'+p.detail+'</small></div>'
-        +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span></div>';
-    });
-    if(rest>0)h+='<div class="sr-note info">그 밖의 조치사항 '+rest+'건은 «상세결과»와 «개선조치 계획»에서 전부 확인할 수 있습니다.</div>';
-  }
-
-  h+=footer("CONFIDENTIAL · INTERNAL USE ONLY",NO)+'</div>';
+  h+='<div class="sr-dashboard-grid"><div class="sr-dashboard-panel">'
+    +'<div class="sr-dashboard-title"><div><small>INSPECTION JOURNEY</small><b>점검동선</b></div><span>분야별 핵심상태</span></div><div class="sr-mini-route">';
+  route.forEach(function(r){h+='<div class="sr-mini-step '+r[1]+'"><b>'+esc(r[0])+'</b><small>'+esc(r[2])+'</small></div>'});
+  h+='</div><div class="sr-dashboard-title"><div><small>WORK TYPE STATUS</small><b>작업유형</b></div><span>'+((s.work||[]).length)+'개 유형</span></div><div class="sr-work-grid">';
+  (s.work||[]).forEach(function(w,i){
+    var c=w.status==="na"?"na":(+w.risk>0?"bad":""),state=w.status==="na"?"해당없음":(+w.risk>0?"관리필요":"양호");
+    h+='<div class="sr-work-row '+c+'"><i>'+pad2(i+1)+'</i><b>'+esc(w.name)+'</b><span>'+state+'</span></div>';
+  });
+  h+='</div><div class="sr-dashboard-title sr-priority-title"><div><small>TOP PRIORITIES</small><b>우선 조치사항 · 미흡사진</b></div><span>상세사진은 뒤 페이지 참조</span></div><div class="sr-priority-photo-list">';
+  if(!shown.length)h+='<div class="sr-note info">우선 조치가 필요한 항목이 없습니다.</div>';
+  shown.forEach(function(p,i){
+    h+='<div class="sr-priority-photo">'+photoBox(coverPriorityPhotos(s,p),pad2(i+1)+" · 미흡사진","첨부된 미흡사진 없음")
+      +'<div><b>'+p.title+'</b><small>'+p.detail+'</small></div><span class="sr-status '+p.cls+'">'+esc(p.status)+'</span></div>';
+  });
+  h+='</div></div><div class="sr-dashboard-panel"><div class="sr-dashboard-title"><div><small>RISK &amp; FIELD SUMMARY</small><b>위험분석 · 분야별 상세결과</b></div><span>핵심 미흡사항 요약</span></div>'
+    +'<div class="sr-field-summary">';
+  fields.forEach(function(r){h+='<div class="sr-field-row '+r[2]+'"><b>'+esc(r[0])+'</b><span>'+esc(r[1])+'</span></div>'});
+  h+='</div><div class="sr-cover-risk-note"><small>위험관리 방향</small><b>'+verdictHeadline(pr)+'</b><p>'+esc(verdictBody(s))+'</p></div>'
+    +'<div class="sr-cover-facts"><b>현장 확인정보</b><span>'+esc(inboundFacts(s)||"작업시간 입력 없음")+'</span><span>TBM '+esc(activeTbmTime(s)||"시간 미입력")+' · '+esc(s.tbmConfirmMethod||"확인방법 미입력")+'</span></div>'
+    +'</div></div>'+footer("CONFIDENTIAL · INTERNAL USE ONLY",NO)+'</div>';
   return sheet("표지",h);
 }
 
@@ -771,7 +817,7 @@ window.buildReportSheets=function(s){ return (!s||!s.store)?[]:buildSheets(s); }
 function buildReportPages(s){
   if(!s||!s.store)return "";
   return buildSheets(s).map(function(x){
-    return '<section class="sr-sheet" data-sheet="'+x.no+'">'+x.html+'</section>';
+    return '<section class="sr-sheet'+(x.no===1?' sr-cover-dashboard':'')+'" data-sheet="'+x.no+'">'+x.html+'</section>';
   }).join("");
 }
 window.buildReportPages=buildReportPages;
@@ -800,7 +846,7 @@ function render(){
     +'</div></div>';
 
   deck.innerHTML=nav+sheets.map(function(x,i){
-    return '<section class="sr-sheet'+(i===0?" active":"")+'" data-sheet="'+x.no+'">'+x.html+'</section>';
+    return '<section class="sr-sheet'+(i===0?" active sr-cover-dashboard":"")+'" data-sheet="'+x.no+'">'+x.html+'</section>';
   }).join("");
 
   var buttons=[].slice.call(deck.querySelectorAll(".sr-page-btn"));
