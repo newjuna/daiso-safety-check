@@ -808,13 +808,16 @@ function guidePhoto(src){
     +'</figure>';
 }
 function guideSide(which,label,src,items){
+  var has=(items||[]).length>0;
   var s='<div class="gd-side '+which+'">';
   s+='<span class="gd-badge">'+label+'</span>';
-  s+=guidePhoto(src);
-  if((items||[]).length){
+  /* 해당하는 보기가 아예 없는 문항(예: 미흡 보기가 없는 문항)은 사진칸을 만들지 않는다.
+     넣을 사진이 없는데 "사진 준비 중" 안내가 영구히 남으면 오해를 부른다. */
+  if(has){
+    s+=guidePhoto(src);
     s+='<ul>'+items.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
   }else{
-    s+='<p class="gd-empty">해당 없음</p>';
+    s+='<p class="gd-empty">이 문항에는 해당 보기가 없습니다.</p>';
   }
   s+='</div>';
   return s;
