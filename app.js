@@ -1961,7 +1961,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=10','_blank');
+  const win=window.open('report.html?v=11','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2083,13 +2083,13 @@ function loadReportCssOnce(){
   return new Promise((resolve,reject)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report-v10.css';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report-v11.css';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();
     el.onerror=()=>{
       /* 배포 누락·캐시 문제에 대비해 기존 이름을 한 번 더 시도한다.
          둘 다 실패하면 무스타일 PDF를 만들지 말고 원인을 명확히 알린다. */
-      el.onerror=()=>reject(new Error('결과보고서 디자인 파일(report-v10.css)을 불러오지 못했습니다. GitHub 배포 파일을 확인해 주세요.'));
-      el.href='report.css?v=10';
+      el.onerror=()=>reject(new Error('결과보고서 디자인 파일(report-v11.css)을 불러오지 못했습니다. GitHub 배포 파일을 확인해 주세요.'));
+      el.href='report.css?v=11';
     };
     document.head.appendChild(el);
   });
