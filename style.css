@@ -580,6 +580,37 @@ button{cursor:pointer}
 .task-review-head{width:100%;min-height:68px;padding:11px 13px;border:0;background:#fff;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left}.task-review-card.done .task-review-head{background:#f2faf6}.task-review-head>span:first-child{display:grid;gap:3px;min-width:0}.task-review-head small{font-size:10px;color:var(--muted);font-weight:800}.task-review-head b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.task-review-head>span:last-child{display:flex;align-items:center;gap:8px}.task-review-head i{font-style:normal;font-size:10px;font-weight:900;color:var(--muted)}.task-review-head strong{font-size:18px;color:var(--muted);transition:transform .18s}.task-review-card.expanded .task-review-head strong{transform:rotate(180deg)}
 .task-readonly{padding:11px 13px;background:#f7f8fa;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.task-readonly>b{display:flex;justify-content:space-between;font-size:12px}.task-readonly small{color:var(--muted)}.task-readonly p{margin:7px 0 0;font-size:12px;line-height:1.5}.task-review-card>.acc-sub,.task-review-card>.acc-complete{margin-left:12px;margin-right:12px;width:calc(100% - 24px)}.task-review-card>.acc-sub:first-of-type{margin-top:12px}.task-review-card>.acc-complete{margin-bottom:12px}
 
+/* 사고조사와 지난 지적사항은 카드 안에 또 다른 접기를 두지 않는다.
+   한 카드를 펼치면 과거 내용 → 현재 확인 → 조치 결과가 한 흐름으로 끝난다. */
+.single-review-body{display:grid;gap:10px;padding:12px 13px 14px;background:#fff}
+.review-context{border-top:1px solid var(--line)}
+.review-step{min-width:0;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.review-step-title{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+.review-step-title>i{width:27px;height:27px;flex:none;border-radius:8px;background:#eef1f8;color:var(--p);display:grid;place-items:center;font-size:11px;font-style:normal;font-weight:1000}
+.review-step-title>span{display:grid;gap:2px;min-width:0}
+.review-step-title b{font-size:13.5px}
+.review-step-title small{color:var(--muted);font-size:9.5px;font-weight:800;line-height:1.3}
+.review-current-grid{display:grid;grid-template-columns:minmax(150px,.85fr) minmax(0,1.15fr);gap:10px;align-items:stretch}
+.review-current-grid>.field,.review-step>.field{margin:0}
+.review-grow{display:flex;flex-direction:column;min-width:0}
+.review-grow textarea{flex:1;min-height:128px}
+.action-photo-area.flat{padding:10px;border:1px solid var(--line);border-radius:12px;background:#f7f8fb;min-width:0}
+.action-photo-area.flat.after{margin-top:9px;background:#f2faf6;border-color:#c8ead8}
+.review-finish{display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,.52fr);align-items:center;gap:10px;padding-top:2px}
+.review-finish>span{color:var(--muted);font-size:10.5px;font-weight:850;line-height:1.4}
+.review-finish>.acc-complete{min-width:0;box-shadow:none}
+.task-review-card.expanded{position:relative}
+.task-review-card.expanded:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--p);z-index:2;pointer-events:none}
+.task-review-card.done.expanded:before{background:#16845b}
+.task-review-card.expanded .task-review-head{background:#f4f6fb}
+.task-review-card.done.expanded .task-review-head{background:#f2faf6}
+@media(max-width:560px){
+  .review-current-grid{grid-template-columns:1fr}
+  .review-grow textarea{min-height:88px}
+  .review-finish{grid-template-columns:1fr}
+  .review-finish>span{text-align:center}
+}
+
 /* 현 상태: 이행상태를 고르면 문구가 자동으로 채워지지만 점검자가 고칠 수 있다.
    고친 경우에는 아래에 "수정했다"는 표시와 되돌리기 버튼이 함께 나온다. */
 .acc-state-field{margin:11px 0 0}

@@ -1773,12 +1773,8 @@ function accident(){
   h+='<div class="card"><div class="summary"><h2>사고조사</h2>';
   h+='<span class="pill'+(done<S.accidents.length?' bad':'')+'">'+done+'/'+S.accidents.length+' 조사완료</span></div>';
   h+='<p class="muted">사고DB의 원본정보와 자동 생성된 위험요인을 확인하고, 현재 이행상태를 기록하세요.</p>';
-  var focusKey=S.accidentOpenKey||'';
-  if(focusKey)h+='<button class="acc-focus-back" onclick="closeAccidentFocus()">← 사고 목록으로</button>';
-
   for(i=0;i<S.accidents.length;i++){
     var x=S.accidents[i];
-    if(focusKey&&x.key!==focusKey)continue;
     var ok=isAccidentDone(x);
     var expanded=S.accidentOpenKey===x.key;
     /* 방금 펼친 카드에만 열림 애니메이션 클래스를 붙인다.
@@ -1788,29 +1784,29 @@ function accident(){
     h+='<button class="acc-accordion-head" onclick="toggleAccidentCard('+i+')"><span><small>'+esc(x.date||'-')+'</small><b>'+esc(x.type||'사고')+'</b><em>'+esc(x.source||'기인물 미등록')+'</em></span><span class="acc-head-state"><i class="risk-dot risk-'+x.riskLevel+'">'+esc(x.riskLevel)+'</i><i>'+(x.status?esc(x.status):'확인 전')+'</i><strong>⌄</strong></span></button>';
     if(!expanded){h+='</div>';continue}
 
-    /* 1) 사고DB에서 가져온 원본정보 (읽기 전용, 짧은 값은 2열) */
-    h+='<div class="acc-head">';
-    h+='<div class="acc-head-top"><b>사고 원본정보</b><span class="pill'+(x.approved==='Y'?' bad':'')+'">'+(x.approved==='Y'?'산재승인':'사고이력')+'</span></div>';
+    /* 한 번 펼친 카드 안에서 원본 확인부터 조치 완료까지 끝낸다. */
+    h+='<div class="acc-head review-context">';
+    h+='<div class="acc-head-top"><b>과거 사고 내용</b><span class="pill'+(x.approved==='Y'?' bad':'')+'">'+(x.approved==='Y'?'산재승인':'사고이력')+'</span></div>';
     h+='<div class="acc-fact-grid"><div><small>재해일자</small><b>'+esc(x.date||'-')+'</b></div><div><small>재해유형</small><b>'+esc(x.type||'-')+'</b></div><div><small>기인물</small><b>'+esc(x.source||'미등록')+'</b></div>';
     if(x.lostDays)h+='<div><small>근로손실일수</small><b>'+esc(String(x.lostDays))+'일</b></div>';
     h+='</div><div class="acc-content"><small>사고내용</small><p>'+esc(x.content||'등록된 사고내용이 없습니다.')+'</p></div>';
     h+='</div>';
 
-    /* 예시 화면 기준: 조치 전을 기본 노출하고, 조치완료일 때 조치 후를 이어서 펼친다. */
-    h+='<div class="acc-body action-flow">';
-    h+='<section class="acc-before-pane '+(x.beforeOpen===false?'collapsed':'')+'"><button class="action-section-bar" onclick="toggleAccidentBefore('+i+')"><span>조치 전</span><strong>⌄</strong></button><div class="acc-before-body"><div class="action-photo-area"><div class="action-photo-head"><b>조치 전 사진</b><span>이번 점검의 현재 상태</span></div>'+renderLimitedPhotoList(x.beforeFiles,'accidentBefore',i)+'</div>';
-    h+='<div class="field"><label>유해위험요인 <small>자동 생성 · 수정 가능</small></label><textarea onchange="setAccidentText('+i+',\u0027hazardText\u0027,this.value)">'+esc(x.hazardText)+'</textarea></div>';
+    h+='<div class="acc-body single-review-body">';
+    h+='<section class="review-step"><div class="review-step-title"><i>1</i><span><b>현재 상태 확인</b><small>사진과 위험요인을 함께 확인하세요.</small></span></div><div class="review-current-grid"><div class="action-photo-area flat"><div class="action-photo-head"><b>현재 상태 사진</b><span>촬영·앨범에서 추가</span></div>'+renderLimitedPhotoList(x.beforeFiles,'accidentBefore',i)+'</div>';
+    h+='<div class="field review-grow"><label>유해위험요인 <small>자동 생성 · 수정 가능</small></label><textarea onchange="setAccidentText('+i+',\u0027hazardText\u0027,this.value)">'+esc(x.hazardText)+'</textarea></div></div></section>';
+    h+='<section class="review-step"><div class="review-step-title"><i>2</i><span><b>조치 내용 기록</b><small>현재 상태를 고르면 기본 문구가 입력됩니다.</small></span></div>';
     h+='<div class="field"><label>현재 조치 상태</label><div class="form-status3 accident-status2">';
     ['미조치','조치완료'].forEach(function(st){
       var cls=st==='조치완료'?'status-done':'status-none';
       h+='<button class="'+cls+(x.status===st?' sel':'')+'" onclick="setAccidentStatus('+i+',\u0027'+st+'\u0027)">'+st+'</button>';
     });
-    h+='</div></div></div></section>';
-    if(x.status==='조치완료'){
-      h+='<div class="action-transition"><i></i>조치완료 선택됨 · 조치 후 증빙을 입력하세요</div><div class="action-done-label">조치완료</div><div class="action-section-bar action-after-bar">조치 후</div><div class="action-photo-area"><div class="action-photo-head"><b>조치 후 사진</b><span>완료 증빙 · 필수</span></div>'+renderLimitedPhotoList(x.afterFiles,'accidentAfter',i)+'</div>';
-    }
+    h+='</div></div>';
     if(x.status)h+='<div class="field"><label>'+(x.status==='조치완료'?'조치내용':'조치계획')+' <small>자동 생성 · 수정 가능</small></label><textarea onchange="setAccidentText('+i+',\u0027actionText\u0027,this.value)" placeholder="재발방지를 위해 실시하거나 예정한 조치를 적어 주세요.">'+esc(x.actionText)+'</textarea></div>';
-    h+='<button class="acc-complete" onclick="completeAccident('+i+')">완료</button></div></div>';
+    if(x.status==='조치완료'){
+      h+='<div class="action-photo-area flat after"><div class="action-photo-head"><b>조치 후 사진 <span class="req">*</span></b><span>조치완료 증빙</span></div>'+renderLimitedPhotoList(x.afterFiles,'accidentAfter',i)+'</div>';
+    }
+    h+='</section><div class="review-finish"><span>'+(ok?'✓ 이 항목은 작성 완료되었습니다.':'필수 내용을 확인한 뒤 완료해 주세요.')+'</span><button class="acc-complete" onclick="completeAccident('+i+')">'+(ok?'완료 내용 저장':'이 사고조사 완료')+'</button></div></div></div>';
   }
 
   h+='<div class="navrow">';
@@ -1856,7 +1852,9 @@ function completeAccident(i){
   if(!x.hazardText)return toast('유해위험요인을 확인해 주세요.');
   if(!x.status||!x.actionText)return toast('이행상태와 조치내용을 입력해 주세요.');
   if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return toast('조치완료 사진을 등록해 주세요.');
-  x.currentState=x.hazardText;S.accidentOpenKey='';x.sectionOpen='';save();accident();toast('사고조사를 완료했습니다.');
+  x.currentState=x.hazardText;x.sectionOpen='';
+  var next=S.accidents.slice(i+1).find(function(a){return !isAccidentDone(a)})||S.accidents.slice(0,i).find(function(a){return !isAccidentDone(a)});
+  S.accidentOpenKey=next?next.key:'';save();accident();toast(next?'사고조사를 완료했습니다. 다음 미완료 항목을 열었습니다.':'모든 사고조사를 완료했습니다.');
 }
 function setAccidentText(i,field,value){
   if(!S.accidents[i])return;
@@ -1883,7 +1881,7 @@ function tasks(){
   var i,j;
   var h=tabs('tasks');
   h+='<div class="card"><h2>지난 지적사항 조치 확인</h2>';
-  h+='<p class="muted">지난 점검에서 지적됐지만 아직 조치되지 않은 사항입니다. 이번에 조치가 끝났으면 조치완료로 바꿔 주세요. 이번 점검에서 새로 발견한 미흡사항은 결과보고서에서 확인할 수 있습니다.</p>';
+  h+='<p class="muted">항목 하나를 펼치면 과거 지적내용과 사진, 현재 상태, 조치 결과를 한 화면에서 확인할 수 있습니다.</p>';
 
   if(S.taskOpenKey===undefined)S.taskOpenKey='';
   if(!S.tasks.length){
@@ -1893,16 +1891,11 @@ function tasks(){
       var x=S.tasks[i];
       var expanded=S.taskOpenKey===x.key;
       h+='<div class="task-review-card '+(x.confirmed?'done':'')+(expanded?' expanded':'')+'">';
-      h+='<button class="task-review-head" onclick="toggleTaskCard('+i+')"><span><small>'+esc(x.date||'-')+' · 이전 점검</small><b>'+esc(x.title)+'</b></span><span><i>'+esc(x.status||'조치대기')+'</i><strong>⌄</strong></span></button>';
+      h+='<button class="task-review-head" onclick="toggleTaskCard('+i+')"><span><small>'+esc(x.date||'-')+' · 이전 점검</small><b>'+esc(x.title)+'</b></span><span><i>'+(x.confirmed?'확인완료':esc(x.status||'조치대기'))+'</i><strong>⌄</strong></span></button>';
       if(!expanded){h+='</div>';continue}
-      h+='<div class="task-readonly"><b>이전 지적내용 <small>읽기 전용</small></b><p>'+esc(x.detail||x.title)+'</p></div>';
-      var sub=x.sectionOpen||'current';
-      h+='<section class="acc-sub '+(sub==='current'?'open':'')+'"><button class="acc-sub-head" onclick="toggleTaskSection('+i+',\'current\')"><span><i>1</i><b>현재 상태 확인</b></span><strong>⌄</strong></button>';
-    if(sub==='current')h+='<div class="acc-sub-body"><div class="field"><label>현재 상태 <span class="req">*</span></label><textarea onchange="setTaskField('+i+',\'currentState\',this.value)" placeholder="이번 재점검에서 확인한 상태를 적어 주세요.">'+esc(x.currentState)+'</textarea></div><div class="acc-photo-box"><b>조치 전 사진 <small>이번 재점검의 현재 상태</small></b>'+renderLimitedPhotoList(x.beforeFiles,'taskBefore',i)+'</div></div>';
-      h+='</section>';
-      h+='<section class="acc-sub '+(sub==='action'?'open':'')+'"><button class="acc-sub-head" onclick="toggleTaskSection('+i+',\'action\')"><span><i>2</i><b>조치 결과</b></span><strong>⌄</strong></button>';
-      if(sub==='action'){
-      h+='<div class="acc-sub-body"><div class="grid"><div class="field"><label>책임구분</label><select onchange="setTaskField('+i+',\'owner\',this.value)">';
+      h+='<div class="task-readonly review-context"><b>과거 지적내용 <small>읽기 전용</small></b><p>'+esc(x.detail||x.title)+'</p></div>';
+      h+='<div class="single-review-body"><section class="review-step"><div class="review-step-title"><i>1</i><span><b>과거 사진·현재 상태</b><small>과거 사진을 참고해 현재 상태를 기록하세요.</small></span></div><div class="review-current-grid"><div class="acc-photo-box"><b>과거 사진 / 현재 증빙 <small>추가 가능</small></b>'+renderLimitedPhotoList(x.beforeFiles,'taskBefore',i)+'</div><div class="field review-grow"><label>현재 상태 <span class="req">*</span></label><textarea onchange="setTaskField('+i+',\'currentState\',this.value)" placeholder="이번 재점검에서 확인한 상태를 적어 주세요.">'+esc(x.currentState)+'</textarea></div></div></section>';
+      h+='<section class="review-step"><div class="review-step-title"><i>2</i><span><b>조치 결과</b><small>담당과 처리 상태를 정리하세요.</small></span></div><div class="grid"><div class="field"><label>책임구분</label><select onchange="setTaskField('+i+',\'owner\',this.value)">';
       var owners=['매장 자체조치','타부서 조치','공동조치'];
       for(j=0;j<owners.length;j++){
         h+='<option'+(x.owner===owners[j]?' selected':'')+'>'+owners[j]+'</option>';
@@ -1914,10 +1907,8 @@ function tasks(){
         h+='<option'+(x.status===statuses[j]?' selected':'')+'>'+statuses[j]+'</option>';
       }
       h+='</select></div></div><div class="field"><label>조치내용 <span class="req">*</span></label><textarea onchange="setTaskField('+i+',\'actionText\',this.value)" placeholder="확인하거나 실시한 조치를 적어 주세요.">'+esc(x.actionText)+'</textarea></div>';
-      if(x.status==='조치완료')h+='<div class="acc-photo-box acc-after-only"><b>조치 후 사진 <small>조치완료 시 필수</small></b>'+renderLimitedPhotoList(x.afterFiles,'taskAfter',i)+'</div>';
-      h+='</div>';
-      }
-      h+='</section><button class="acc-complete" onclick="completeTask('+i+')">확인 완료 · 목록으로</button></div>';
+      if(x.status==='조치완료')h+='<div class="acc-photo-box acc-after-only"><b>조치 후 사진 <span class="req">*</span><small>조치완료 증빙</small></b>'+renderLimitedPhotoList(x.afterFiles,'taskAfter',i)+'</div>';
+      h+='</section><div class="review-finish"><span>'+(x.confirmed?'✓ 이 항목은 확인 완료되었습니다.':'현재 상태와 조치 결과를 확인해 주세요.')+'</span><button class="acc-complete" onclick="completeTask('+i+')">'+(x.confirmed?'확인 내용 저장':'이 항목 확인 완료')+'</button></div></div></div>';
     }
   }
 
@@ -1939,7 +1930,9 @@ function completeTask(i){
   if(!x.currentState)return toast('현재 상태를 입력해 주세요.');
   if(!x.actionText)return toast('조치내용을 입력해 주세요.');
   if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return toast('조치 후 사진을 등록해 주세요.');
-  x.confirmed=true;x.sectionOpen='';S.taskOpenKey='';save();tasks();toast('조치 확인을 완료했습니다.');
+  x.confirmed=true;x.sectionOpen='';
+  var next=S.tasks.slice(i+1).find(function(t){return !t.confirmed})||S.tasks.slice(0,i).find(function(t){return !t.confirmed});
+  S.taskOpenKey=next?next.key:'';save();tasks();toast(next?'조치 확인을 완료했습니다. 다음 미완료 항목을 열었습니다.':'모든 지난 지적사항 확인을 완료했습니다.');
 }
 
 function completionState(){
