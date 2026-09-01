@@ -12,12 +12,21 @@
  */
 const $=s=>document.querySelector(s),root=$('#app'),KEY='daiso_safety_v9';
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const fresh=()=>({screen:'start',store:null,basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:''},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:'',amTime:'08:00',pmTime:'13:45'},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
+const fresh=()=>({screen:'start',store:null,inspectionMode:'new',sourceInspectionId:'',basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'',inboundBoxes:'',hasStairs:'무',hasElevator:'무',hasEscalator:'무',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:''},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:'',amTime:'08:00',pmTime:'13:45'},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
 let S=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}})();
 function normalizeState(){
   const f=fresh();
   if(!S||typeof S!=='object')S=f;
   S.basic={...f.basic,...(S.basic||{})};
+  var legacyTransport=[].concat(S.basic.workplaceEquipment||[],S.basic.inboundRoute||[]).join('|');
+  if(!S.basic.floors&&S.basic.floorStructure==='단층')S.basic.floors='1';
+  S.basic.hasStairs=S.basic.hasStairs==='유'||/계단/.test(legacyTransport)?'유':'무';
+  S.basic.hasElevator=S.basic.hasElevator==='유'||/\bEV\b|E\/V/.test(legacyTransport)?'유':'무';
+  S.basic.hasEscalator=S.basic.hasEscalator==='유'||/E\/S/.test(legacyTransport)?'유':'무';
+  delete S.basic.floorStructure;delete S.basic.workplaceEquipment;delete S.basic.inboundRoute;
+  S.inspectionMode=S.inspectionMode==='past'?'past':'new';
+  S.sourceInspectionId=S.sourceInspectionId||'';
+  if(S.store){S.store.pastInspections=Array.isArray(S.store.pastInspections)?S.store.pastInspections:[]}
   S.wa=S.wa||{};
   S.tbm=S.tbm||{};
   S.workers=Array.isArray(S.workers)&&S.workers.length?S.workers:f.workers;
@@ -126,13 +135,18 @@ function mockServer(fnName,args){
   }
   /* 사고이력 + 미조치 지적사항을 한 번에 주는 합친 함수 */
   if(fnName==='getStorePrepData'){
-    return {accidents:mockServer('getStoreAccidentHistory',args),openIssues:mockServer('getStoreOpenIssues',args)};
+    return {accidents:mockServer('getStoreAccidentHistory',args),openIssues:mockServer('getStoreOpenIssues',args),history:mockServer('getStoreInspectionHistory',args)};
   }
   if(fnName==='getStoreOpenIssues'){
     if(args[0]==='테스트 강남점')return [{date:'2025-11-20',title:'창고·후방 통로 및 적재'}];
     return [];
   }
   if(fnName==='getLadderTypeImages')return {};
+  if(fnName==='getStoreInspectionHistory'){
+    if(args[0]==='테스트 강남점')return [{inspectionId:'TEST-2025-11',date:'2025-11-20',inspector:'Park(안전)',workRisk:2,ladder:0,facility:1,tbm:0,taskCount:1,taskDone:0,folderUrl:'',pdfUrl:'',snapshotAvailable:false,inboundBoxes:84,floors:1,hasStairs:'유',hasElevator:'무',hasEscalator:'무',issues:[{category:'공통·시설',item:'창고·후방 통로 및 적재',hazard:'넘어짐',status:'조치대기',detail:'후방 통로에 합포박스 적치',photoUrls:[]}]}];
+    return [];
+  }
+  if(fnName==='getInspectionSnapshot')return null;
   if(fnName==='submitInspection')return {pdfUrl:'',folderUrl:''};
   if(fnName==='saveReportPdf')return {pdfUrl:''};
   if(fnName==='getStoreDashboardHistory')return [];
@@ -208,14 +222,14 @@ function photoDb(){
   });
 }
 async function persistPhoto(id,p){
-  try{var db=await photoDb();await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readwrite');tx.objectStore(PHOTO_DB_STORE).put({id:id,name:p.name,dataUrl:p.dataUrl});tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)}});db.close()}catch(e){console.warn('사진 영구저장 실패',e)}
+  try{var db=await photoDb();await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readwrite');tx.objectStore(PHOTO_DB_STORE).put({id:id,name:p.name,dataUrl:p.dataUrl,sourceUrl:p.sourceUrl||''});tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)}});db.close()}catch(e){console.warn('사진 영구저장 실패',e)}
 }
 async function deletePersistedPhoto(id){
   if(!id)return;PHOTO_STORE.delete(id);
   try{var db=await photoDb();await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readwrite');tx.objectStore(PHOTO_DB_STORE).delete(id);tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error)}});db.close()}catch(e){}
 }
 async function restorePersistedPhotos(){
-  try{var db=await photoDb();var rows=await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readonly'),req=tx.objectStore(PHOTO_DB_STORE).getAll();req.onsuccess=function(){resolve(req.result||[])};req.onerror=function(){reject(req.error)}});rows.forEach(function(p){PHOTO_STORE.set(p.id,{name:p.name,dataUrl:p.dataUrl})});db.close();if(rows.length)render(S.screen||'start')}catch(e){console.warn('저장 사진 복원 실패',e)}
+  try{var db=await photoDb();var rows=await new Promise(function(resolve,reject){var tx=db.transaction(PHOTO_DB_STORE,'readonly'),req=tx.objectStore(PHOTO_DB_STORE).getAll();req.onsuccess=function(){resolve(req.result||[])};req.onerror=function(){reject(req.error)}});rows.forEach(function(p){PHOTO_STORE.set(p.id,{name:p.name,dataUrl:p.dataUrl,sourceUrl:p.sourceUrl||''})});db.close();if(rows.length)render(S.screen||'start')}catch(e){console.warn('저장 사진 복원 실패',e)}
 }
 /* 사진 목록을 작은 썸네일 그리드로 보여준다. PHOTO_STORE에 실제 데이터가 있으면 */
 /* 미리보기 이미지를, 없으면(예: 새로고침 후 유실) 카메라 배지로 대체 표시한다. */
@@ -370,13 +384,14 @@ function field(label,id,value='',type='text',extra=''){return `<div class="field
 /* ============ 매장 선택 (서버에서 실시간 조회) ============ */
 let STORE_LIST=null,STORE_LOADING=false; // 매장 목록 메모리 캐시
 const STORE_CACHE_KEY='daiso_store_list_compact_v1';
-const PREP_CACHE_KEY='daiso_store_prep_v2'; /* v2부터 출퇴근 재해를 화면에서도 이중 제외 */
+const PREP_CACHE_KEY='daiso_store_prep_v4'; /* v4부터 새 점검/과거 재점검 선택과 원본 복원을 지원 */
 
 function normalizeStoreRows(list){return (list||[]).map(function(row){if(Array.isArray(row))return {division:row[0]||'',dept:row[1]||'',team:row[2]||'',store:row[3]||''};return row})}
 function readStoreCache(){try{var x=JSON.parse(localStorage.getItem(STORE_CACHE_KEY)||'null');return x&&Array.isArray(x.rows)&&x.rows.length?normalizeStoreRows(x.rows):null}catch(e){return null}}
 function writeStoreCache(list){try{localStorage.setItem(STORE_CACHE_KEY,JSON.stringify({savedAt:Date.now(),rows:(list||[]).map(function(r){return [r.division,r.dept,r.team,r.store]} )}))}catch(e){}}
 function readPrepCache(store){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}'),x=all[store];return x&&Date.now()-x.at<PREP_TTL?x.data:null}catch(e){return null}}
 function writePrepCache(store,data){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}');all[store]={at:Date.now(),data:data};localStorage.setItem(PREP_CACHE_KEY,JSON.stringify(all))}catch(e){}}
+function clearPrepCache(store){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}');delete all[store];localStorage.setItem(PREP_CACHE_KEY,JSON.stringify(all));delete STORE_PREP[store]}catch(e){}}
 function isCommuteAccident(a){var text=[a&&a.category,a&&a.type,a&&a.content].filter(Boolean).join('').replace(/\s+/g,'');return /출퇴근재해|출근재해|퇴근재해/.test(text)}
 function inspectionAccidents(list){return (list||[]).filter(function(a){return !isCommuteAccident(a)})}
 
@@ -472,13 +487,19 @@ function fetchStorePrep(store){
   var cached=readPrepCache(store);if(cached)return Promise.resolve(cached);
   return gsRun('getStorePrepData',store).then(function(d){
     d=d||{};
-    var out={accidents:inspectionAccidents(d.accidents),openIssues:d.openIssues||[]};writePrepCache(store,out);return out;
+    var finish=function(history){
+      var out={accidents:inspectionAccidents(d.accidents),openIssues:d.openIssues||[],history:history||[]};
+      writePrepCache(store,out);return out;
+    };
+    /* 서버가 직전 버전이면 준비데이터에 history가 없을 수 있다. 이 경우에만 별도로 조회한다. */
+    if(Array.isArray(d.history))return finish(d.history);
+    return gsRun('getStoreInspectionHistory',store,5).then(finish).catch(function(){return finish([])});
   }).catch(function(err){
     var msg=err&&err.message?err.message:String(err);
     /* Apps Script가 아직 옛 버전이면(합친 함수가 없으면) 기존 두 함수로 대체한다. */
     if(/허용되지 않은 요청|함수를 찾을 수 없습니다/.test(msg)){
-      return Promise.all([gsRun('getStoreAccidentHistory',store),gsRun('getStoreOpenIssues',store)])
-        .then(function(r){return {accidents:inspectionAccidents(r[0]),openIssues:r[1]||[]}});
+      return Promise.all([gsRun('getStoreAccidentHistory',store),gsRun('getStoreOpenIssues',store),gsRun('getStoreInspectionHistory',store,5).catch(function(){return []})])
+        .then(function(r){return {accidents:inspectionAccidents(r[0]),openIssues:r[1]||[],history:r[2]||[]}});
     }
     throw err;
   });
@@ -546,7 +567,7 @@ function selectStore(){
   if(!SEL.store)return uiError('매장까지 모두 선택하세요');
   if(!SEL.date)return uiError('점검일을 선택하세요');
   var n=SEL.store;
-  var meta={name:n,hq:SEL.division,dept:SEL.dept,team:SEL.team,people:'',size:'',floors:'',delivery:'',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:'',inspector:SEL.inspector,date:SEL.date};
+  var meta={name:n,hq:SEL.division,dept:SEL.dept,team:SEL.team,people:'',size:'',floors:'',delivery:'',inboundBoxes:'',hasStairs:'무',hasElevator:'무',hasEscalator:'무',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:'',inspector:SEL.inspector,date:SEL.date};
   S=fresh();
   S.store={...meta,accidentRecords:[],accidents:[],openIssues:[],tasks:[]};
   Object.assign(S.basic,meta);
@@ -564,28 +585,111 @@ function prepareSelectedStore(){
   if(!S.store||!S.store.name){start();return}
   var n=S.store.name;
   var token=++PREPARING_TOKEN;
-  renderStorePrepOverlay('loading',n+' 조회 중','사고이력과 지난 지적사항을 확인하고 있습니다.','조회가 끝나면 자동으로 다음 화면으로 이동합니다.');
+  renderStorePrepOverlay('loading',n+' 데이터 조회 중','사고이력과 과거 점검내역·사진을 함께 불러오고 있습니다.','과거 점검이 있으면 선택 화면으로 자동 이동합니다.');
   /* 매장을 고를 때 미리 받아둔 결과가 있으면 즉시 넘어간다. */
   getStorePrep(n).then(d=>{
     if(token!==PREPARING_TOKEN)return;
-    const acc=d.accidents||[],open=d.openIssues||[];
+    const acc=d.accidents||[],open=d.openIssues||[],history=d.history||[];
     S.store.accidentRecords=acc;
     S.store.accidents=acc.map(a=>`${a.date} ${a.type}${a.approved==='Y'?'(산재승인)':''}: ${a.content}`);
     S.store.openIssues=open;
     S.store.tasks=open.map(x=>x.title);
+    S.store.pastInspections=history;
     save();
     if(acc.length){
       renderStorePrepOverlay('accident',acc.length+'건의 사고이력 확인','사고가 발생한 매장입니다. 사고조사를 먼저 진행합니다.',open.length?'지난 미조치 지적사항 '+open.length+'건도 함께 확인합니다.':'사고조사 화면으로 자동 이동합니다.');
     }else{
       renderStorePrepOverlay('clear','등록된 사고이력이 없습니다','해당 매장은 사고조사 대상이 없어 작업점검으로 이동합니다.',open.length?'지난 미조치 지적사항 '+open.length+'건은 점검 후 확인합니다.':'작업점검 화면으로 자동 이동합니다.');
     }
-    setTimeout(function(){if(token===PREPARING_TOKEN)enterInspection()},950);
+    setTimeout(function(){
+      if(token!==PREPARING_TOKEN)return;
+      if(history.length){S.screen='history';save();historyReview()}else enterInspection();
+    },950);
   }).catch(err=>{
     if(token!==PREPARING_TOKEN)return;
     toast('사고이력 조회 실패: '+(err&&err.message?err.message:String(err)));
     renderStorePrepOverlay('warning','매장 이력을 확인하지 못했습니다','네트워크 상태를 확인해 주세요. 점검은 계속 진행할 수 있습니다.','작업점검 화면으로 자동 이동합니다.');
     setTimeout(function(){if(token===PREPARING_TOKEN)enterInspection()},1200);
   });
+}
+/* ============ 점검 시작 전 과거 진행결과 확인 ============
+   최근 점검의 판정과 지적사항, 당시 사진을 함께 보여 준다.
+   사진은 이슈상세 시트에 저장된 Drive 링크를 썸네일 주소로 바꾸어 표시하며,
+   썸네일이 차단된 환경에서도 카드를 누르면 원본 Drive 사진을 열 수 있다. */
+function driveThumbnailUrl(url){
+  var s=String(url||''),m=s.match(/\/d\/([a-zA-Z0-9_-]+)/)||s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m?('https://drive.google.com/thumbnail?id='+encodeURIComponent(m[1])+'&sz=w480'):s;
+}
+function historyReview(){
+  S.screen='history';save();
+  var rows=(S.store&&S.store.pastInspections)||[];
+  var h='<div class="history-intro"><b>과거 점검 '+rows.length+'건</b><span>최근 결과와 사진을 확인한 뒤 현재 상태를 점검하세요.</span></div>';
+  h+='<button class="card history-new-card" onclick="startNewInspectionFromHistory()"><i>＋</i><span><b>새 점검 시작</b><small>과거 답변을 불러오지 않고 빈 점검표로 시작합니다.</small></span><strong>→</strong></button>';
+  rows.forEach(function(r,ri){
+    var facts=[];
+    if(r.inboundBoxes!==''&&r.inboundBoxes!=null)facts.push('입고 '+r.inboundBoxes+'박스');
+    if(r.floors)facts.push('작업공간 '+r.floors+'층');
+    facts.push('계단 '+(r.hasStairs||'무'),'E/V '+(r.hasElevator||'무'),'E/S '+(r.hasEscalator||'무'));
+    facts.push(r.snapshotAvailable?'전체 탭 복원 가능':'기존 자료 · 지적사항/사진 복원');
+    h+='<section class="card history-card'+(ri===0?' latest':'')+'"><header><div><small>'+(ri===0?'가장 최근 점검':'PAST INSPECTION')+'</small><h2>'+esc(r.date||'날짜 없음')+'</h2><span>'+esc(r.inspector||'점검자 미기록')+'</span></div><i>'+(ri+1)+'</i></header>';
+    h+='<div class="history-metrics"><span>작업 <b>'+Number(r.workRisk||0)+'</b></span><span>사다리 <b>'+Number(r.ladder||0)+'</b></span><span>시설 <b>'+Number(r.facility||0)+'</b></span><span>TBM <b>'+Number(r.tbm||0)+'</b></span></div>';
+    if(facts.length)h+='<div class="history-facts">'+facts.map(function(x){return '<span>'+esc(x)+'</span>'}).join('')+'</div>';
+    var issues=r.issues||[];
+    if(issues.length){
+      h+='<div class="history-issues">';
+      issues.forEach(function(x){
+        h+='<article><div class="history-issue-head"><b>'+esc(x.item||'지적사항')+'</b><span>'+esc(x.status||'')+'</span></div>'
+          +'<p>'+esc([x.category,x.hazard,x.detail].filter(Boolean).join(' · '))+'</p>';
+        if((x.photoUrls||[]).length){
+          h+='<div class="history-photos">';
+          x.photoUrls.forEach(function(url,pi){
+            h+='<a href="'+esc(url)+'" target="_blank" rel="noopener" title="과거 사진 '+(pi+1)+' 열기"><img src="'+esc(driveThumbnailUrl(url))+'" alt="과거 점검 사진 '+(pi+1)+'" loading="lazy"><small>사진 '+(pi+1)+'</small></a>';
+          });
+          h+='</div>';
+        }
+        h+='</article>';
+      });
+      h+='</div>';
+    }else h+='<p class="muted history-empty">등록된 지적사항이 없습니다.</p>';
+    h+='<div class="history-links">';
+    if(r.pdfUrl)h+='<a class="secondary" href="'+esc(r.pdfUrl)+'" target="_blank" rel="noopener">결과 PDF</a>';
+    if(r.folderUrl)h+='<a class="secondary" href="'+esc(r.folderUrl)+'" target="_blank" rel="noopener">점검 폴더</a>';
+    h+='</div><button class="history-select" onclick="choosePastInspection('+ri+')">이 점검을 기준으로 재점검 →</button></section>';
+  });
+  h+='<div class="history-actions"><button class="secondary wide" onclick="start()">매장 다시 선택</button></div>';
+  frame(h,'과거 점검 결과를<br>먼저 확인하세요.','사진과 미조치 내용을 현재 현장과 비교합니다.');
+}
+function startNewInspectionFromHistory(){
+  S.inspectionMode='new';S.sourceInspectionId='';S.store.openIssues=[];S.store.tasks=[];S.tasks=[];save();enterInspection();
+}
+function registerRemotePhoto(id,name,url){
+  if(!id||!url)return null;
+  PHOTO_STORE.set(id,{name:name||'과거사진.jpg',dataUrl:driveThumbnailUrl(url),sourceUrl:url});
+  return{id:id,name:name||'과거사진.jpg'};
+}
+function historyIssuesAsOpen(row){
+  return (row.issues||[]).map(function(x,xi){
+    var before=(x.photoUrls||[]).map(function(url,pi){return registerRemotePhoto('past-'+row.inspectionId+'-'+xi+'-'+pi,'과거사진_'+(pi+1)+'.jpg',url)}).filter(Boolean);
+    return{issueId:x.issueId||'',date:row.date,title:x.item||'지적사항',detail:x.detail||'',category:x.category||'',hazard:x.hazard||'',beforeFiles:before,photoUrls:x.photoUrls||[]};
+  });
+}
+function choosePastInspection(index){
+  var row=(S.store&&S.store.pastInspections||[])[index];if(!row)return;
+  renderStorePrepOverlay('loading',row.date+' 과거 점검 불러오는 중','답변·사진·지적사항을 재점검 화면에 복원하고 있습니다.','원본이 없는 예전 점검은 저장된 지적사항과 사진만 복원됩니다.');
+  var p=row.snapshotAvailable?gsRun('getInspectionSnapshot',row.inspectionId):Promise.resolve(null);
+  p.then(function(snapshot){applyPastInspection(row,snapshot)}).catch(function(){applyPastInspection(row,null)});
+}
+function applyPastInspection(row,snapshot){
+  var currentStore=S.store,currentBasic=S.basic;
+  if(snapshot&&snapshot.state){
+    S={...fresh(),...snapshot.state};
+    Object.keys(snapshot.remotePhotos||{}).forEach(function(id){var p=snapshot.remotePhotos[id];registerRemotePhoto(id,p.name,p.url)});
+  }
+  S.store={...(currentStore||{}),openIssues:historyIssuesAsOpen(row),tasks:[]};
+  S.tasks=[];
+  S.basic={...(S.basic||{}),date:currentBasic.date,inspector:currentBasic.inspector,hq:currentBasic.hq,dept:currentBasic.dept,team:currentBasic.team};
+  S.inspectionMode='past';S.sourceInspectionId=row.inspectionId||'';S.inspectionId='';S.submittedAt=null;S.submittedBy='';S.resultLinks=null;S.submitError='';S.reportPdfError='';
+  normalizeState();syncTasks();save();enterInspection();
 }
 function uiError(msg){const card=$('.card');if(card){card.classList.remove('shake-strong','validation-error');void card.offsetWidth;card.classList.add('shake-strong','validation-error');setTimeout(()=>card.classList.remove('shake-strong'),420);setTimeout(()=>card.classList.remove('validation-error'),900)}toast(msg)}
 function enterInspection(){ensureDefaults();if(hasAccidents()){S.accidentPhase='initial';accident()}else{S.accidentPhase='final';S.screen='work';work()}}
@@ -609,7 +713,10 @@ function activeSections(){
    기타사항·조치확인은 반드시 입력해야 하는 항목이 없어 완료 개념을 두지 않는다. */
 function sectionDone(k){
   if(k==='work')return D.works.every(function(w,i){
-    return (S.workNA&&S.workNA[i])||(S.workChecked&&S.workChecked[i]);
+    if((S.workNA&&S.workNA[i]))return true;
+    if(isInboundWork(i)&&!inboundMetaComplete())return false;
+    if(isTransportWork(i)&&!transportMetaComplete())return false;
+    return !!(S.workChecked&&S.workChecked[i]);
   });
   if(k==='ladder')return ['good','bad','na'].indexOf(S.ladder.status)>=0;
   if(k==='common'||k==='fire'||k==='tbm')return ['good','bad'].indexOf(S[k].status)>=0;
@@ -702,10 +809,13 @@ function work(){
   S.screen='work';ensureDefaults();
   const w=D.works[S.wi],a=S.wa[S.wi]||{},done=Object.keys(a).length,risk=Object.values(a).filter(x=>x.risk).length;
   const inbound=w[0]==='입고·하차'?inboundWorkFields():'';
+  const transport=w[0]==='운반·분류·합포'?transportFacilityFields():'';
   frame(`${tabs('work')}${workTabs()}<div class="card"><div class="work-card-heading"><div><small>WORK CHECK</small><h2>${w[0]}</h2><span class="pill ${risk?'bad':''}">${S.workNA[S.wi]?'해당 없음':`${done}/${w[1].length} 완료 · 위험신호 ${risk}`}</span></div><div class="heading-actions"><button class="compact-na ${S.workNA[S.wi]?'active':''}" onclick="toggleWorkNA(${S.wi})">${S.workNA[S.wi]?'✓ ':''}해당 작업 없음</button><button class="guide-btn work-guide-btn" onclick="workGuide()">ⓘ 점검 가이드</button></div></div>${inbound}
-  ${S.workNA[S.wi]?`<div class="notice"><b>${esc(w[0])}</b> 작업은 해당 없음으로 기록됩니다.</div>`:w[1].map((q,qi)=>question(q,qi,a[qi])).join('')}</div>
+  ${S.workNA[S.wi]?`<div class="notice"><b>${esc(w[0])}</b> 작업은 해당 없음으로 기록됩니다.</div>`:transport+w[1].map((q,qi)=>question(q,qi,a[qi])).join('')}</div>
   ${nav(S.wi,D.works.length,`prevWork()`,`nextWork()`)}`,`작업유형별<br>통합점검`,`${S.wi+1}/${D.works.length} · 각 문항의 양호 답변이 기본 선택되어 있습니다.`);
 }
+function isInboundWork(i){return !!(D.works[i]&&D.works[i][0]==='입고·하차')}
+function isTransportWork(i){return !!(D.works[i]&&D.works[i][0]==='운반·분류·합포')}
 /* ============ 시간 입력 (시/분 분리 드롭다운) ============
    왜 <input type="time">을 쓰지 않는가:
    모바일 기본 time 입력은 휠을 스크롤하는 도중 값이 확정돼 버린다.
@@ -765,6 +875,7 @@ function inboundWorkFields(){
   const b=S.basic;
   return `<div class="inbound-meta">
     <div class="field"><label>입고시간대</label><select onchange="S.basic.delivery=this.value;save()"><option value="">선택</option><option ${b.delivery==='오전'?'selected':''}>오전</option><option ${b.delivery==='오후(야간)'?'selected':''}>오후(야간)</option></select></div>
+    <div class="field"><label>입고 물량 <span class="req">*</span></label><div class="number-suffix"><input type="number" min="1" inputmode="numeric" placeholder="0" value="${esc(b.inboundBoxes)}" onchange="S.basic.inboundBoxes=this.value;save()"><span>박스</span></div></div>
   </div>
   <div class="inbound-labor">
     <div class="inbound-labor-head">입고 인력부담 측정 <small>(피로도 정량화 · 근골격계 위험신호에 자동 반영)</small></div>
@@ -778,6 +889,28 @@ function inboundWorkFields(){
     ${inboundLaborResultBadge()}
   </div>`;
 }
+function facilityYesNo(field,label){
+  var v=S.basic[field]==='유'?'유':'무';
+  return '<div class="field"><label>'+label+' 유무</label><select onchange="S.basic.'+field+'=this.value;save()"><option value="무"'+(v==='무'?' selected':'')+'>무</option><option value="유"'+(v==='유'?' selected':'')+'>유</option></select></div>';
+}
+function transportFacilityFields(){
+  var b=S.basic;
+  return '<div class="inbound-route-card"><div class="inbound-labor-head">운반 작업공간 정보 <small>(선택하지 않으면 설비는 자동으로 무)</small></div>'
+    +'<div class="transport-facility-grid"><div class="field"><label>작업공간 층수 <span class="req">*</span></label><div class="number-suffix"><input type="number" min="1" inputmode="numeric" placeholder="1" value="'+esc(b.floors)+'" onchange="S.basic.floors=this.value;save()"><span>층</span></div></div>'
+    +facilityYesNo('hasStairs','계단')+facilityYesNo('hasElevator','E/V')+facilityYesNo('hasEscalator','E/S')+'</div></div>';
+}
+function inboundMetaComplete(){
+  var b=S.basic||{};
+  return Number(b.inboundBoxes)>0;
+}
+function validateInboundMeta(){
+  var b=S.basic||{},missing=[];
+  if(!(Number(b.inboundBoxes)>0))missing.push('입고 물량(박스 수)');
+  if(missing.length){uiError(missing[0]+'을(를) 입력하세요');return false}
+  return true;
+}
+function transportMetaComplete(){return Number(S.basic&&S.basic.floors)>0}
+function validateTransportMeta(){if(transportMetaComplete())return true;uiError('작업공간 층수를 입력하세요');return false}
 /* 인시(person-minutes) 계산: 평균 투입인원, 도우미 공백비율, 위험도(양호/경미/심각)를 리턴한다.
    시작·종료시간, 인원이 다 입력되지 않으면 null(측정불가)을 리턴해 자동 위험신호를 걸지 않는다. */
 function calcInboundLabor(){
@@ -982,7 +1115,7 @@ async function pickFiles(k,id,input){
   if(k==='work')work();
 }
 function getObj(k,id){if(k==='work'){const [a,b]=id.split('-');return S.wa[a][b]}return S[k][id]}
-function nextWork(){ensureDefaults();S.workChecked[S.wi]={checkedAt:new Date().toISOString(),checkedBy:S.basic?.inspector||'',status:S.workNA?.[S.wi]?'na':'checked'};save();
+function nextWork(){ensureDefaults();if(isInboundWork(S.wi)&&!S.workNA?.[S.wi]&&!validateInboundMeta())return;if(isTransportWork(S.wi)&&!S.workNA?.[S.wi]&&!validateTransportMeta())return;S.workChecked[S.wi]={checkedAt:new Date().toISOString(),checkedBy:S.basic?.inspector||'',status:S.workNA?.[S.wi]?'na':'checked'};save();
   /* 누락 보완 모드면 다음 작업유형으로 넘기지 않고 누락 목록으로 돌아간다. */
   if(inFixMode())return fixReturn();
   if(S.wi<D.works.length-1){S.wi++;work()}else ladder()}function prevWork(){if(S.wi){S.wi--;work()}else start()}
@@ -1466,15 +1599,15 @@ async function attachOtherPhotos(i,input){
  * 이번 점검에서 새로 발견한 미흡은 어느 쪽에도 넣지 않고 결과보고서에만 나온다.
  */
 function hasAccidents(){return (S.store&&(S.store.accidentRecords||[]).length)>0}
-function hasOpenIssues(){return (S.store&&(S.store.openIssues||[]).length)>0}
+function hasOpenIssues(){return S.inspectionMode==='past'&&(S.store&&(S.store.openIssues||[]).length)>0}
 
-/* 조치확인 탭 데이터: 지난 점검의 미조치 지적사항만 담는다. */
+/* 조치확인 탭 데이터: 사용자가 선택한 과거 점검의 지적사항과 사진을 담는다. */
 function syncTasks(){
   var map={};
   (S.store.openIssues||[]).forEach(function(x,i){
     var key='past|'+i;
     map[key]={key:key,issueId:x.issueId||'',title:x.title,detail:x.detail||'',source:'지난 지적사항',date:x.date||'',
-              owner:'매장 자체조치',status:'조치대기',currentState:'',actionText:'',beforeFiles:[],afterFiles:[],confirmed:false,include:true};
+              owner:'매장 자체조치',status:'조치대기',currentState:'',actionText:'',beforeFiles:Array.isArray(x.beforeFiles)?x.beforeFiles:[],afterFiles:[],confirmed:false,include:true};
   });
   /* 점검자가 이미 수정한 값(상태/책임구분/포함여부)은 그대로 유지 */
   var prev={};(S.tasks||[]).forEach(function(t){if(t.key)prev[t.key]=t});
@@ -1762,7 +1895,7 @@ function completionState(){
   const missing=[];
   D.works.forEach((w,wi)=>{
     if(S.workNA?.[wi])return;
-    if(!S.workChecked?.[wi])missing.push({kind:'work',wi,label:`작업점검 · ${w[0]}`});
+    if(!S.workChecked?.[wi]||(isInboundWork(wi)&&!inboundMetaComplete())||(isTransportWork(wi)&&!transportMetaComplete()))missing.push({kind:'work',wi,label:`작업점검 · ${w[0]}${isInboundWork(wi)&&!inboundMetaComplete()?' · 입고정보 확인':isTransportWork(wi)&&!transportMetaComplete()?' · 층수 확인':''}`});
   });
   if(!['good','bad','na'].includes(S.ladder.status))missing.push({kind:'ladder',label:'사다리 점검'});
   if(!['good','bad'].includes(S.common.status))missing.push({kind:'common',label:'공통·시설 점검'});
@@ -1828,7 +1961,13 @@ function fixBanner(){
 }
 /* PHOTO_STORE(브라우저 메모리)에서 실제 사진 데이터를 꺼내온다. */
 function resolvePhotos(list){
-  return (list||[]).map(p=>PHOTO_STORE.get(p.id)).filter(Boolean).map(p=>({name:p.name,dataUrl:p.dataUrl}));
+  return (list||[]).map(function(meta){var p=PHOTO_STORE.get(meta.id);return p?{name:p.name,dataUrl:p.dataUrl,sourceUrl:p.sourceUrl||'',refId:meta.id}:null}).filter(Boolean);
+}
+function buildStateSnapshot(){
+  var state=JSON.parse(JSON.stringify(S));
+  if(state.store){delete state.store.pastInspections;delete state.store.openIssues;delete state.store.tasks}
+  state.screen='work';state.inspectionId='';state.submittedAt=null;state.submittedBy='';state.resultLinks=null;state.submitError='';state.reportPdfError='';state.fixMode=false;
+  return{schemaVersion:1,state:state};
 }
 /* 서버(submitInspection)로 보낼 payload를 구성한다. */
 /* 사진이 있는 이슈만 issues 배열에 담는다 (정상 항목은 폴더 자체가 안 생기도록). */
@@ -1859,15 +1998,15 @@ function buildSubmitPayload(){
   });
   /* 사고조사는 현재 상태(조치 전)와 조치 후 사진을 한 이슈 폴더에 함께 보관한다. */
   (S.accidents||[]).forEach(x=>{
-    const before=resolvePhotos(x.beforeFiles).map(p=>({name:'조치전_'+p.name,dataUrl:p.dataUrl}));
-    const after=(x.status==='조치완료'?resolvePhotos(x.afterFiles):[]).map(p=>({name:'조치후_'+p.name,dataUrl:p.dataUrl}));
+    const before=resolvePhotos(x.beforeFiles).map(p=>({...p,name:'조치전_'+p.name}));
+    const after=(x.status==='조치완료'?resolvePhotos(x.afterFiles):[]).map(p=>({...p,name:'조치후_'+p.name}));
     const memo=[x.status,x.source?'기인물: '+x.source:'',x.currentState?'현 상태: '+x.currentState:'',x.actionText?'조치내용: '+x.actionText:'',x.hazardText?'유해위험요인: '+x.hazardText:'','위험등급: '+x.riskLevel].filter(Boolean).join(' · ');
     issues.push({issueId:S.inspectionId+'-accident-'+x.key.replace(/[^a-zA-Z0-9_-]/g,'-'),category:'사고조사',itemName:`${x.date} ${x.type}`.trim(),note:memo,hazard:x.hazardText||x.type||'사고',status:x.status==='조치완료'?'조치완료':'조치대기',photos:before.concat(after)});
   });
   /* 이전 지적사항 재확인 증빙. 원본 이슈의 상태 갱신은 tasks로, 사진 저장은 별도 증빙 이슈로 처리한다. */
   (S.tasks||[]).filter(x=>x.include).forEach(x=>{
-    const before=resolvePhotos(x.beforeFiles).map(p=>({name:'조치전_'+p.name,dataUrl:p.dataUrl}));
-    const after=resolvePhotos(x.afterFiles).map(p=>({name:'조치후_'+p.name,dataUrl:p.dataUrl}));
+    const before=resolvePhotos(x.beforeFiles).map(p=>({...p,name:'조치전_'+p.name}));
+    const after=resolvePhotos(x.afterFiles).map(p=>({...p,name:'조치후_'+p.name}));
     if(!before.length&&!after.length)return;
     issues.push({issueId:S.inspectionId+'-followup-'+String(x.issueId||x.key).replace(/[^a-zA-Z0-9_-]/g,'-'),category:'조치확인',itemName:x.title,note:['현재 상태: '+(x.currentState||''),'조치내용: '+(x.actionText||''),'책임구분: '+(x.owner||'')].join(' · '),hazard:'재발방지',status:'재확인',photos:before.concat(after)});
   });
@@ -1877,7 +2016,9 @@ function buildSubmitPayload(){
     inspectionId:S.inspectionId,
     store:S.store.name, division:S.basic.hq||'', dept:S.basic.dept||'', team:S.basic.team||'',
     inspector:S.basic.inspector||'', date:S.basic.date||new Date().toISOString().slice(0,10),
-    delivery:S.basic.delivery||'', inboundHelpers:S.basic.inboundHelpers||'',
+    delivery:S.basic.delivery||'', inboundBoxes:Number(S.basic.inboundBoxes)||'', floors:Number(S.basic.floors)||'',
+    hasStairs:S.basic.hasStairs==='유'?'유':'무',hasElevator:S.basic.hasElevator==='유'?'유':'무',hasEscalator:S.basic.hasEscalator==='유'?'유':'무',
+    inboundHelpers:S.basic.inboundHelpers||'',
     inboundStart:S.basic.inboundStart||'', inboundEnd:S.basic.inboundEnd||'',
     inboundStaff:S.basic.inboundStaff||'', inboundHelperOutAt:S.basic.inboundHelperOutAt||'',
     inboundLaborLevel:labor?labor.level:'', inboundLaborAvgPeople:labor?Math.round(labor.avgPeople*10)/10:'',
@@ -1893,6 +2034,7 @@ function buildSubmitPayload(){
       source:x.source||'',hazardText:x.hazardText||'',riskLevel:x.riskLevel||'',
       currentState:x.currentState||'',actionText:x.actionText||'',status:x.status||''
     })),
+    inspectionMode:S.inspectionMode||'new',sourceInspectionId:S.sourceInspectionId||'',stateSnapshot:buildStateSnapshot(),
     resultNote:S.resultNote||'', issues
   };
 }
@@ -1948,7 +2090,8 @@ function getLandscapeReportSnapshot(){
     score:summary.score,grade:summary.grade,scoreParts:summary.parts,hasAccidentScore:summary.hasAccident,
     inboundLabor:labor?{level:labor.level,avgPeople:Math.round(labor.avgPeople*10)/10,gapRatioPct:Math.round(labor.gapRatio*100)}:null,
     /* 계산 결과뿐 아니라 보고서 판정 근거가 되는 원본 입력값도 함께 넘긴다. */
-    inbound:{delivery:S.basic.delivery||'',start:S.basic.inboundStart||'',end:S.basic.inboundEnd||'',staff:Number(S.basic.inboundStaff)||0,helpers:Number(S.basic.inboundHelpers)||0,helperOutAt:S.basic.inboundHelperOutAt||''},
+    inbound:{delivery:S.basic.delivery||'',boxes:Number(S.basic.inboundBoxes)||0,start:S.basic.inboundStart||'',end:S.basic.inboundEnd||'',staff:Number(S.basic.inboundStaff)||0,helpers:Number(S.basic.inboundHelpers)||0,helperOutAt:S.basic.inboundHelperOutAt||''},
+    transport:{floors:Number(S.basic.floors)||0,stairs:S.basic.hasStairs==='유'?'유':'무',elevator:S.basic.hasElevator==='유'?'유':'무',escalator:S.basic.hasEscalator==='유'?'유':'무'},
     tbmConfirmMethod:S.tbm.confirmMethod||'직접참관',tbmCrossCheckFlags:tbmCrossCheckFlags(),
     tbmTimes:{am:S.tbm.amTime||'',pm:S.tbm.pmTime||''},
     tbmStretchGap:stretchGap?{level:stretchGap.level,gapMinutes:stretchGap.gapMinutes}:null
@@ -2185,6 +2328,8 @@ async function submitToServer(){
   let links;
   try{
     links=await gsRun('submitInspection',payload);
+    /* 방금 저장한 결과가 다음 점검의 과거 이력에 즉시 보이도록 브라우저 캐시도 비운다. */
+    clearPrepCache(payload.store);
     S.resultLinks=links;S.submitError='';S.reportPdfError='';save();
   }catch(err){
     S.submitError=(err&&err.message?err.message:String(err));save();
@@ -2464,7 +2609,7 @@ function loadDashStoreHistory(name){
     if(el)el.innerHTML='<div class="notice">이력을 불러오지 못했습니다: '+esc(err&&err.message?err.message:String(err))+'</div>';
   });
 }
-function render(x){({start,preparing:prepareSelectedStore,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,result:report}[x]||start)()}
+function render(x){({start,preparing:prepareSelectedStore,history:historyReview,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,result:report}[x]||start)()}
 try{
   render(S.screen);
   restorePersistedPhotos();

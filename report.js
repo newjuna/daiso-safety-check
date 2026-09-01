@@ -41,6 +41,10 @@ function dateDot(v){ return String(v||"").replace(/-/g,"."); }
 function inboundFacts(s){
   var x=s.inbound||{},parts=[];
   if(x.delivery)parts.push("입고시간 "+x.delivery);
+  if(x.boxes)parts.push("입고 "+x.boxes+"박스");
+  var t=s.transport||{};
+  if(t.floors)parts.push("작업공간 "+t.floors+"층");
+  if(t.floors)parts.push("계단 "+(t.stairs||"무")+" · E/V "+(t.elevator||"무")+" · E/S "+(t.escalator||"무"));
   if(x.start||x.end)parts.push((x.start||"-")+"~"+(x.end||"-"));
   if(x.staff||x.helpers)parts.push("임직원 "+(+x.staff||0)+"명 · 도우미 "+(+x.helpers||0)+"명");
   if(x.helperOutAt)parts.push("도우미 "+x.helperOutAt+" 퇴근");
