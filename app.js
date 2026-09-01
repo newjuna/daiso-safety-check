@@ -113,7 +113,22 @@ function normalizeState(){
 }
 normalizeState();
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function save(){localStorage.setItem(KEY,JSON.stringify(S))}function toast(x){const e=$('#toast');e.textContent=x;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1600)}
+/* 과거 사진 미리보기(data URL)는 수십~수백 KB라 localStorage 상태에 넣으면
+   모바일 저장 한도를 쉽게 넘는다. 저장 시 미리보기 필드는 항상 제외한다. */
+function stateForLocalStorage(){return JSON.stringify(S,function(k,v){return k==='photoPreviews'?undefined:v})}
+function clearLargeAppCaches(){['daiso_store_prep_v4','daiso_store_prep_v5','daiso_store_prep_v6','daiso_landscape_report_v1'].forEach(function(k){try{localStorage.removeItem(k)}catch(e){}})}
+function save(){
+  var value=stateForLocalStorage();
+  try{localStorage.setItem(KEY,value);return true}catch(first){
+    /* 직전 버전이 남긴 대용량 이력 캐시를 지운 뒤 자동 재시도한다. */
+    clearLargeAppCaches();
+    try{localStorage.setItem(KEY,value);return true}catch(second){
+      /* 그래도 부족하면 화면 진행에 필요 없는 과거 카드 목록만 임시저장에서 뺀다. */
+      try{var lean=JSON.parse(value);if(lean.store)lean.store.pastInspections=[];localStorage.setItem(KEY,JSON.stringify(lean));return true}catch(last){console.warn('점검 임시저장 공간 부족',last);return false}
+    }
+  }
+}
+function toast(x){const e=$('#toast');e.textContent=x;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1600)}
 
 /* ============ 서버 호출 헬퍼 (Apps Script API를 fetch로 호출) ============ */
 /* Apps Script 웹앱(API)을 호출한다.
@@ -215,6 +230,18 @@ async function compressAll(fileList){
 /* 사진 메타데이터는 localStorage 상태에, 압축한 실제 이미지는 용량이 큰 IndexedDB에 저장한다.
    같은 모바일 브라우저에서 페이지를 닫았다 다시 열어도 답변과 사진이 함께 복원된다. */
 const PHOTO_STORE=new Map(); // id -> {name, dataUrl}
+const HISTORY_PREVIEW_STORE=new Map(); // Drive 원본 URL -> 서버가 만든 작은 data URL (메모리 전용)
+function rememberAndStripPhotoPreviews(rows){
+  (rows||[]).forEach(function(row){
+    var issues=Array.isArray(row&&row.issues)?row.issues:[row];
+    issues.forEach(function(x){
+      if(!x)return;(x.photoUrls||[]).forEach(function(url,i){var p=(x.photoPreviews||[])[i];if(url&&p)HISTORY_PREVIEW_STORE.set(url,p)});
+      delete x.photoPreviews;
+    });
+  });
+  return rows||[];
+}
+function historyPreviewUrl(url){return HISTORY_PREVIEW_STORE.get(String(url||''))||''}
 const PHOTO_DB_NAME='daiso_safety_photos_v1',PHOTO_DB_STORE='photos';
 function photoDb(){
   return new Promise(function(resolve,reject){
@@ -387,7 +414,7 @@ function field(label,id,value='',type='text',extra=''){return `<div class="field
 /* ============ 매장 선택 (서버에서 실시간 조회) ============ */
 let STORE_LIST=null,STORE_LOADING=false; // 매장 목록 메모리 캐시
 const STORE_CACHE_KEY='daiso_store_list_compact_v1';
-const PREP_CACHE_KEY='daiso_store_prep_v5'; /* v5: 모바일용 과거사진 미리보기와 재점검 전용 흐름 */
+const PREP_CACHE_KEY='daiso_store_prep_v6'; /* v6: 사진 data URL을 localStorage에서 완전히 분리 */
 
 function normalizeStoreRows(list){return (list||[]).map(function(row){if(Array.isArray(row))return {division:row[0]||'',dept:row[1]||'',team:row[2]||'',store:row[3]||''};return row})}
 function readStoreCache(){try{var x=JSON.parse(localStorage.getItem(STORE_CACHE_KEY)||'null');return x&&Array.isArray(x.rows)&&x.rows.length?normalizeStoreRows(x.rows):null}catch(e){return null}}
@@ -491,7 +518,9 @@ function fetchStorePrep(store){
   return gsRun('getStorePrepData',store).then(function(d){
     d=d||{};
     var finish=function(history){
-      var out={accidents:inspectionAccidents(d.accidents),openIssues:d.openIssues||[],history:history||[]};
+      var open=rememberAndStripPhotoPreviews(d.openIssues||[]);
+      history=rememberAndStripPhotoPreviews(history||[]);
+      var out={accidents:inspectionAccidents(d.accidents),openIssues:open,history:history};
       writePrepCache(store,out);return out;
     };
     /* 서버가 직전 버전이면 준비데이터에 history가 없을 수 있다. 이 경우에만 별도로 조회한다. */
@@ -646,7 +675,7 @@ function historyReview(){
         if((x.photoUrls||[]).length){
           h+='<div class="history-photos">';
           x.photoUrls.forEach(function(url,pi){
-            var preview=(x.photoPreviews||[])[pi]||driveThumbnailUrl(url);
+            var preview=historyPreviewUrl(url)||driveThumbnailUrl(url);
             h+='<a href="'+esc(url)+'" target="_blank" rel="noopener" title="과거 사진 '+(pi+1)+' 열기"><img src="'+esc(preview)+'" alt="과거 점검 사진 '+(pi+1)+'" loading="lazy" onerror="this.closest(\u0027a\u0027).classList.add(\u0027preview-failed\u0027)"><small>사진 '+(pi+1)+'</small></a>';
           });
           h+='</div>';
@@ -676,14 +705,14 @@ function registerRemotePhoto(id,name,url,preview){
 }
 function historyIssuesAsOpen(row){
   return (row.issues||[]).filter(function(x){return x.status!=='조치완료'&&x.category!=='사고조사'&&x.category!=='조치확인'}).map(function(x,xi){
-    var before=(x.photoUrls||[]).map(function(url,pi){return registerRemotePhoto('past-'+row.inspectionId+'-'+xi+'-'+pi,'과거사진_'+(pi+1)+'.jpg',url,(x.photoPreviews||[])[pi]||'')}).filter(Boolean);
+    var before=(x.photoUrls||[]).map(function(url,pi){return registerRemotePhoto('past-'+row.inspectionId+'-'+xi+'-'+pi,'과거사진_'+(pi+1)+'.jpg',url,historyPreviewUrl(url))}).filter(Boolean);
     return{issueId:x.issueId||'',date:row.date,title:x.item||'지적사항',detail:x.detail||'',category:x.category||'',hazard:x.hazard||'',beforeFiles:before,photoUrls:x.photoUrls||[]};
   });
 }
 function currentStoreIssuesAsOpen(list){
   return (list||[]).filter(function(x){return x.category!=='사고조사'&&x.category!=='조치확인'}).map(function(x,xi){
     var key=String(x.issueId||xi).replace(/[^a-zA-Z0-9_-]/g,'-');
-    var before=(x.photoUrls||[]).map(function(url,pi){return registerRemotePhoto('open-'+key+'-'+pi,'과거사진_'+(pi+1)+'.jpg',url,(x.photoPreviews||[])[pi]||'')}).filter(Boolean);
+    var before=(x.photoUrls||[]).map(function(url,pi){return registerRemotePhoto('open-'+key+'-'+pi,'과거사진_'+(pi+1)+'.jpg',url,historyPreviewUrl(url))}).filter(Boolean);
     return{issueId:x.issueId||'',date:x.date||'',title:x.title||'지적사항',detail:x.detail||'',category:x.category||'',hazard:x.hazard||'',beforeFiles:before,photoUrls:x.photoUrls||[]};
   });
 }
