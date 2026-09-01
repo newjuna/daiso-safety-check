@@ -143,7 +143,7 @@ function mockServer(fnName,args){
   }
   if(fnName==='getLadderTypeImages')return {};
   if(fnName==='getStoreInspectionHistory'){
-    if(args[0]==='테스트 강남점')return [{inspectionId:'TEST-2025-11',date:'2025-11-20',inspector:'Park(안전)',workRisk:2,ladder:0,facility:1,tbm:0,taskCount:1,taskDone:0,folderUrl:'',pdfUrl:'',snapshotAvailable:false,inboundBoxes:84,floors:1,hasStairs:'유',hasElevator:'무',hasEscalator:'무',issues:[{category:'공통·시설',item:'창고·후방 통로 및 적재',hazard:'넘어짐',status:'조치대기',detail:'후방 통로에 합포박스 적치',photoUrls:[]}]}];
+    if(args[0]==='테스트 강남점')return [{inspectionId:'TEST-2025-11',date:'2025-11-20',inspector:'Park(안전)',workRisk:2,ladder:0,facility:1,tbm:0,taskCount:2,taskDone:0,folderUrl:'',pdfUrl:'',snapshotAvailable:false,delivery:'오전',inboundStart:'08:30',inboundEnd:'10:00',inboundStaff:3,inboundHelpers:1,inboundBoxes:84,floors:1,hasStairs:'유',hasElevator:'무',hasEscalator:'무',issues:[{category:'작업점검',item:'입고·하차',hazard:'근골격계',status:'조치대기',detail:'박스·상품을 직접 손으로 하차',photoUrls:[]},{category:'공통·시설',item:'창고·후방 통로 및 적재',hazard:'넘어짐',status:'조치대기',detail:'후방 통로에 합포박스 적치',photoUrls:[]}]}];
     return [];
   }
   if(fnName==='getInspectionSnapshot')return null;
@@ -673,6 +673,55 @@ function historyIssuesAsOpen(row){
     return{issueId:x.issueId||'',date:row.date,title:x.item||'지적사항',detail:x.detail||'',category:x.category||'',hazard:x.hazard||'',beforeFiles:before,photoUrls:x.photoUrls||[]};
   });
 }
+function restoreLegacyInspection(row){
+  var b=S.basic;
+  if(row.delivery)b.delivery=row.delivery;
+  if(row.inboundBoxes!==''&&row.inboundBoxes!=null)b.inboundBoxes=String(row.inboundBoxes);
+  if(row.inboundHelpers!==''&&row.inboundHelpers!=null)b.inboundHelpers=String(row.inboundHelpers);
+  if(row.inboundStart)b.inboundStart=row.inboundStart;if(row.inboundEnd)b.inboundEnd=row.inboundEnd;
+  if(row.inboundStaff!==''&&row.inboundStaff!=null)b.inboundStaff=String(row.inboundStaff);
+  if(row.inboundHelperOutAt)b.inboundHelperOutAt=row.inboundHelperOutAt;
+  if(row.floors)b.floors=String(row.floors);
+  b.hasStairs=row.hasStairs==='유'?'유':'무';b.hasElevator=row.hasElevator==='유'?'유':'무';b.hasEscalator=row.hasEscalator==='유'?'유':'무';
+  if(row.tbmConfirmMethod)S.tbm.confirmMethod=row.tbmConfirmMethod;
+  if(row.tbmAmTime)S.tbm.amTime=row.tbmAmTime;if(row.tbmPmTime)S.tbm.pmTime=row.tbmPmTime;
+
+  /* 구버전은 전체 답변을 저장하지 않았으므로 정상 항목은 양호 기본값으로 채우고,
+     이슈상세의 선택 답변 문구가 일치하는 문항만 당시 미흡 선택으로 되돌린다. */
+  ensureDefaults();
+  S.workChecked=S.workChecked||{};
+  D.works.forEach(function(_,wi){S.workChecked[wi]={checkedAt:row.date||'',checkedBy:row.inspector||'',status:'checked'}});
+  var open=(S.store&&S.store.openIssues)||[];
+  (row.issues||[]).forEach(function(x,xi){
+    var files=(open[xi]&&open[xi].beforeFiles)||[],detail=String(x.detail||'').trim();
+    if(x.category==='작업점검'){
+      var wi=D.works.findIndex(function(w){return w[0]===x.item});
+      if(wi<0)return;
+      var questions=D.works[wi][1];
+      for(var qi=0;qi<questions.length;qi++){
+        var opts=questions[qi][1]||[],oi=opts.indexOf(detail);
+        if(oi<0&&detail)oi=opts.findIndex(function(opt){return detail.indexOf(opt)>=0||opt.indexOf(detail)>=0});
+        if(oi>=0){S.wa[wi][qi]={oi:oi,risk:(questions[qi][3]||[]).indexOf(oi)>=0,hazards:questions[qi][2]||[],files:files};break}
+      }
+      return;
+    }
+    if(x.category==='공통·시설'||x.category==='소방'||x.category==='TBM'){
+      var kind=x.category==='공통·시설'?'common':(x.category==='소방'?'fire':'tbm');
+      S[kind].issues.push({id:'legacy-'+row.inspectionId+'-'+xi,item:x.item||'미흡사항',note:detail,files:files});
+      return;
+    }
+    if(x.category==='사다리'){
+      var type=(D.ladderTypes||[]).find(function(t){return String(x.item||'').indexOf(t)===0})||'기타';
+      var item=String(x.item||'').slice(type==='기타'?0:type.length).trim()||'이상사항';
+      if(S.ladder.types.indexOf(type)<0)S.ladder.types.push(type);
+      S.ladder.counts[type]=Math.max(1,Number(S.ladder.counts[type])||0);S.ladder.typeStatus[type]='bad';
+      S.ladder.issues.push({id:'legacy-'+row.inspectionId+'-'+xi,typeKey:type,type:type,item:item,note:detail,files:files});
+      return;
+    }
+    if(x.category==='기타사항')S.others.push({id:'legacy-'+row.inspectionId+'-'+xi,text:x.item||detail,files:files,task:false});
+  });
+  S.common.status=S.common.issues.length?'bad':'good';S.fire.status=S.fire.issues.length?'bad':'good';S.tbm.status=S.tbm.issues.length?'bad':'good';S.ladder.status=S.ladder.issues.length?'bad':'good';
+}
 function choosePastInspection(index){
   var row=(S.store&&S.store.pastInspections||[])[index];if(!row)return;
   renderStorePrepOverlay('loading',row.date+' 과거 점검 불러오는 중','답변·사진·지적사항을 재점검 화면에 복원하고 있습니다.','원본이 없는 예전 점검은 저장된 지적사항과 사진만 복원됩니다.');
@@ -681,13 +730,15 @@ function choosePastInspection(index){
 }
 function applyPastInspection(row,snapshot){
   var currentStore=S.store,currentBasic=S.basic;
-  if(snapshot&&snapshot.state){
+  var hasFull=!!(snapshot&&snapshot.state);
+  if(hasFull){
     S={...fresh(),...snapshot.state};
     Object.keys(snapshot.remotePhotos||{}).forEach(function(id){var p=snapshot.remotePhotos[id];registerRemotePhoto(id,p.name,p.url)});
   }
   S.store={...(currentStore||{}),openIssues:historyIssuesAsOpen(row),tasks:[]};
   S.tasks=[];
   S.basic={...(S.basic||{}),date:currentBasic.date,inspector:currentBasic.inspector,hq:currentBasic.hq,dept:currentBasic.dept,team:currentBasic.team};
+  if(!hasFull)restoreLegacyInspection(row);
   S.inspectionMode='past';S.sourceInspectionId=row.inspectionId||'';S.inspectionId='';S.submittedAt=null;S.submittedBy='';S.resultLinks=null;S.submitError='';S.reportPdfError='';
   normalizeState();syncTasks();save();enterInspection();
 }
