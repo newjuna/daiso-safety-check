@@ -599,6 +599,14 @@ button{cursor:pointer}
 .review-finish{display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,.52fr);align-items:center;gap:10px;padding-top:2px}
 .review-finish>span{color:var(--muted);font-size:10.5px;font-weight:850;line-height:1.4}
 .review-finish>.acc-complete{min-width:0;box-shadow:none}
+.observe-choice{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;border-radius:12px;background:#f5f7fb;border:1px solid #dce1ec}
+.observe-choice>span{display:grid;gap:2px;min-width:0}.observe-choice b{font-size:12px}.observe-choice small{color:var(--muted);font-size:9.5px;font-weight:800;line-height:1.35}
+.observe-choice>button{flex:none;min-height:38px;padding:7px 11px;border:1px solid #c9cfdb;border-radius:10px;background:#fff;color:#596170;font-size:10.5px;font-weight:950}
+.observe-choice>button.selected{border-color:#d97706;background:#fff8e9;color:#9a5700}
+.not-observed-note{display:flex;align-items:center;gap:10px;padding:13px;border:1px solid #f0d6a8;border-radius:13px;background:#fff9ee;color:#8b5709}
+.not-observed-note>i{width:32px;height:32px;flex:none;border-radius:10px;background:#f6e3ba;display:grid;place-items:center;font-style:normal;font-size:16px;font-weight:1000}
+.not-observed-note>span{display:grid;gap:3px}.not-observed-note b{font-size:12px}.not-observed-note small{font-size:9.5px;font-weight:800;line-height:1.4}
+.review-current-grid.photo-only{grid-template-columns:minmax(0,320px)}
 .task-review-card.expanded{position:relative}
 .task-review-card.expanded:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--p);z-index:2;pointer-events:none}
 .task-review-card.done.expanded:before{background:#16845b}
@@ -609,6 +617,7 @@ button{cursor:pointer}
   .review-grow textarea{min-height:88px}
   .review-finish{grid-template-columns:1fr}
   .review-finish>span{text-align:center}
+  .observe-choice{align-items:stretch;flex-direction:column}.observe-choice>button{width:100%}
 }
 
 /* 현 상태: 이행상태를 고르면 문구가 자동으로 채워지지만 점검자가 고칠 수 있다.
@@ -696,9 +705,9 @@ button{cursor:pointer}
 .history-metrics span{padding:8px 5px;border-radius:9px;background:#f5f6f8;text-align:center;color:var(--muted);font-size:9.5px;font-weight:850}.history-metrics b{display:block;color:var(--ink);font-size:15px}
 .history-facts{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px}.history-facts span{padding:5px 8px;border-radius:99px;background:#fff4dc;color:#805a05;font-size:9.5px;font-weight:900}
 .history-issues{display:grid;gap:8px}.history-issues article{padding:10px;border:1px solid var(--line);border-radius:12px;background:#fafafa}.history-issue-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.history-issue-head b{font-size:12.5px;line-height:1.4}.history-issue-head span{padding:3px 6px;border-radius:6px;background:#fff0f3;color:var(--bad);font-size:8.5px;font-weight:950;white-space:nowrap}.history-issues p{margin:4px 0 0;color:var(--muted);font-size:10px;line-height:1.5}
-.history-photos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}.history-photos a{position:relative;aspect-ratio:1/1;border-radius:9px;overflow:hidden;background:#e9ecf1;text-decoration:none}.history-photos img{width:100%;height:100%;object-fit:cover;display:block}.history-photos small{position:absolute;left:4px;bottom:4px;padding:2px 5px;border-radius:5px;background:#20232acc;color:#fff;font-size:8px;font-weight:900}
+.history-photos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}.history-photos a{position:relative;aspect-ratio:1/1;border-radius:9px;overflow:hidden;background:#e9ecf1;text-decoration:none}.history-photos img{width:100%;height:100%;object-fit:cover;display:block}.history-photos small{position:absolute;left:4px;bottom:4px;padding:2px 5px;border-radius:5px;background:#20232acc;color:#fff;font-size:8px;font-weight:900}.history-photos a.preview-failed:after{content:'미리보기 실패\A원본 열기';white-space:pre;position:absolute;inset:0;display:grid;place-items:center;text-align:center;background:#eef0f4;color:#687080;font-size:9px;font-weight:900;line-height:1.4}.history-photos a.preview-failed small{z-index:2}
 .history-links{display:flex;gap:7px;margin-top:10px}.history-links a{flex:1;min-height:38px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:11px}
-.history-select{width:100%;min-height:44px;margin-top:9px;border:0;border-radius:11px;background:var(--p);color:#fff;font-size:12px;font-weight:950}
+.history-select{width:100%;min-height:44px;margin-top:9px;border:0;border-radius:11px;background:var(--p);color:#fff;font-size:12px;font-weight:950}.history-select:disabled{background:#d9dde5;color:#7c8491;box-shadow:none}
 .history-empty{margin:10px 0 0}.history-actions{display:grid;gap:8px;margin:12px 0 20px}
 @media(max-width:380px){.history-photos{grid-template-columns:repeat(3,minmax(0,1fr))}.history-metrics{gap:4px}.history-metrics span{font-size:8.5px}}
 @media (prefers-reduced-motion:reduce){.shake,.shake-strong,.risk-alert{animation:none!important}}

@@ -417,7 +417,7 @@ function sheetRoute(s){
     var doneT=(s.tasks||[]).filter(function(t){return t.status==="조치완료"}).length;
     rows.push({cls:doneT===(s.tasks||[]).length?"good":"risk",mark:"조치",
       title:"지난 지적사항 조치확인",
-      desc:(s.tasks||[]).map(function(t){return esc(t.title)+"("+esc(t.status||"-")+")"}).join(" · "),
+      desc:(s.tasks||[]).map(function(t){return esc(t.title)+"("+esc(t.notObserved?"확인 못함":(t.status||"-"))+")"}).join(" · "),
       big:doneT+"/"+(s.tasks||[]).length,sub:"조치완료"});
   }
 
@@ -741,18 +741,37 @@ function sheetPlan(s){
   if((s.tasks||[]).length){
     h+='<div class="sr-section-title"><div><small>FOLLOW-UP</small><h2>지난 지적사항 조치확인</h2></div>'
       +'<span>'+(s.tasks||[]).length+'건</span></div>'
-      +'<table class="sr-findings"><thead><tr><th style="width:240px">지적사항</th><th>현재 상태 / 조치내용</th><th style="width:150px">책임구분</th><th style="width:96px">상태</th></tr></thead><tbody>';
+      +'<table class="sr-findings"><thead><tr><th style="width:250px">지적사항</th><th>현재 상태 / 조치내용</th><th style="width:110px">상태</th></tr></thead><tbody>';
     (s.tasks||[]).forEach(function(t){
       h+='<tr><td>'+esc(t.title)+'<div class="sr-sub">'+dateDot(t.date)+'</div></td>'
-        +'<td>'+esc(t.currentState||"-")+'<div class="sr-sub">'+esc(t.actionText||"-")+'</div></td>'
-        +'<td>'+esc(t.owner||"-")+'</td>'
-        +'<td>'+dot(t.status==="조치완료"?"good":"warn")+esc(t.status||"-")+'</td></tr>';
+        +'<td>'+esc(t.notObserved?"이번 방문 확인 못함":(t.currentState||"-"))+'<div class="sr-sub">'+esc(t.notObserved?"다음 방문 재확인":(t.actionText||"-"))+'</div></td>'
+        +'<td>'+dot(t.status==="조치완료"?"good":"warn")+esc(t.notObserved?"확인 못함":(t.status||"-"))+'</td></tr>';
     });
     h+='</tbody></table>';
   }
 
   h+=footer("조치 완료 후 차기 점검에서 이행 여부를 재확인",NO)+'</div>';
   return sheet("조치계획",h);
+}
+
+/* 지적사항 재점검은 전체 체크리스트를 실시한 것이 아니므로 종합점수·분야별 양호판정을
+   만들지 않고, 확인한 지적사항만 별도 결과표로 출력한다. */
+function sheetFollowup(s){
+  var list=s.tasks||[],done=list.filter(function(t){return t.status==="조치완료"}).length;
+  var unseen=list.filter(function(t){return t.notObserved}).length;
+  var h=head("FOLLOW-UP ONLY","지난 지적사항 재점검 결과",NO)+'<div class="sr-body">'
+    +'<div class="sr-section-title"><div><small>FOLLOW-UP SUMMARY</small><h2>'+esc(s.store.name)+' · '+dateDot(s.store.date)+'</h2></div><span>기준 점검 '+esc(s.sourceInspectionId||"-")+'</span></div>'
+    +'<div class="sr-kpi"><div><small>확인 대상</small><b>'+list.length+'건</b></div><div><small>조치완료</small><b>'+done+'건</b></div><div><small>미조치</small><b>'+(list.length-done-unseen)+'건</b></div><div><small>확인 못함</small><b>'+unseen+'건</b></div></div>'
+    +'<div class="sr-section-title"><div><small>FOLLOW-UP ITEMS</small><h2>항목별 확인 결과</h2></div><span>전체 체크리스트 미실시 · 지적사항만 재확인</span></div>'
+    +'<table class="sr-findings"><thead><tr><th style="width:250px">지적사항</th><th>현재 상태 / 조치내용</th><th style="width:110px">결과</th></tr></thead><tbody>';
+  list.forEach(function(t){
+    h+='<tr><td>'+esc(t.title)+'<div class="sr-sub">최초 지적 '+dateDot(t.date)+'</div></td>'
+      +'<td>'+esc(t.notObserved?"이번 방문 확인 못함":(t.currentState||"-"))+'<div class="sr-sub">'+esc(t.notObserved?"미조치 유지 · 다음 방문 재확인":(t.actionText||"-"))+'</div></td>'
+      +'<td>'+dot(t.status==="조치완료"?"good":"warn")+esc(t.notObserved?"확인 못함":(t.status||"미조치"))+'</td></tr>';
+  });
+  if(!list.length)h+='<tr><td colspan="3">재점검 대상 지적사항이 없습니다.</td></tr>';
+  h+='</tbody></table>'+footer("지적사항 재점검 전용 · 미조치/확인 못함 항목은 다음 방문에 다시 표시",NO)+'</div>';
+  return sheet("재점검 결과",h);
 }
 
 /* ---------- 09 사진증빙 (4건/장, 자동증가) ---------- */
@@ -767,6 +786,10 @@ function sheetsEvidence(s){
       sub:"사고조사 · 조치 전 · "+dateDot(a.date)});
     items.push({photos:a.afterPhotos,label:"사고조사 조치 후",title:(a.type||"사고")+" 조치 후",
       sub:"사고조사 · "+(a.status||"확인 전")+" · "+dateDot(a.date)});
+  });
+  if(s.followupOnly)(s.tasks||[]).forEach(function(t){
+    if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"과거 지적사진",title:t.title,sub:"재점검 참고자료"});
+    if((t.afterPhotos||[]).length)items.push({photos:t.afterPhotos,label:"조치 후 사진",title:t.title,sub:t.notObserved?"확인 못함":"조치결과 증빙"});
   });
   (s.tasks||[]).forEach(function(t){
     if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"지난 지적 조치 전",title:t.title+" 조치 전",sub:"조치확인 · 조치 전"});
@@ -796,6 +819,13 @@ function sheetsEvidence(s){
 /* ============ 전체 조립 ============ */
 function buildSheets(s){
   var list=[];
+  if(s.followupOnly){
+    list.push(sheetFollowup(s));
+    list=list.concat(sheetsEvidence(s));
+    var followupTotal=list.length;
+    list.forEach(function(x,i){var no=pad2(i+1)+" / "+pad2(followupTotal);x.html=x.html.split(NO).join(no);x.no=i+1});
+    return list;
+  }
   list.push(sheetCover(s));
   list.push(sheetRoute(s));
   list.push(sheetWorkTypes(s));
