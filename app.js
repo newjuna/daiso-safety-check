@@ -652,6 +652,30 @@ function driveThumbnailUrl(url){
   var s=String(url||''),m=s.match(/\/d\/([a-zA-Z0-9_-]+)/)||s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   return m?('https://drive.google.com/thumbnail?id='+encodeURIComponent(m[1])+'&sz=w480'):s;
 }
+/* drive.google.com 썸네일이 사내망·프록시에서 끊기는 일이 있다(ERR_CONNECTION_RESET).
+   같은 사진을 다른 도메인으로 한 번 더 시도해 볼 수 있게 대체 주소를 만든다. */
+function driveAltThumbnailUrl(url){
+  var s=String(url||''),m=s.match(/\/d\/([a-zA-Z0-9_-]+)/)||s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m?('https://lh3.googleusercontent.com/d/'+m[1]+'=w480'):'';
+}
+/* 썸네일 로딩이 실패했을 때. 대체 주소가 남아 있으면 그걸로 한 번 더 시도하고,
+   그것도 실패하면 img를 없애 뒤에 깔린 안내(📷 / 미리보기 실패)가 보이게 한다. */
+function retryThumb(img){
+  var alt=img.getAttribute('data-alt-src');
+  if(alt){img.removeAttribute('data-alt-src');img.src=alt;return}
+  var box=img.parentNode;
+  if(box&&box.classList)box.classList.add('thumb-failed');
+  img.remove();
+}
+/* 카드 안 작은 썸네일 한 장의 HTML.
+   구글 드라이브 주소는 실패할 수 있으므로 안내를 항상 뒤에 깔고 그 위에 이미지를 덮는다. */
+function thumbInner(p,name){
+  if(!p)return '<span class="tr-fallback">📷</span>';
+  var alt=(p.sourceUrl&&String(p.dataUrl||'').indexOf('data:')!==0)?driveAltThumbnailUrl(p.sourceUrl):'';
+  return '<span class="tr-fallback">📷</span>'
+    +'<img src="'+esc(p.dataUrl||'')+'"'+(alt?' data-alt-src="'+esc(alt)+'"':'')
+    +' alt="'+esc(name||'')+'" loading="lazy" onerror="retryThumb(this)">';
+}
 function historyReview(){
   S.screen='history';save();
   var rows=(S.store&&S.store.pastInspections)||[];
@@ -1759,13 +1783,15 @@ function taskStrip(i,which){
     return '<div class="tr-drop" id="'+wrapId+'"><label class="tr-add wide" for="'+inputId+'"><b>＋</b><small>사진 촬영 · 앨범에서 추가</small></label></div>'
       +'<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachTaskPhotos('+i+',\'afterFiles\',this)">';
   }
-  var visible=Math.min(files.length,past?3:2);
-  var h='<div class="tr-strip" id="'+wrapId+'">';
+  /* 그리드 칸 수를 실제 아이템 수와 맞춘다(과거 사진은 추가버튼이 없어 썸네일 수만).
+     칸이 둘로 나뉘면(조치완료) 폭이 절반이라 보여주는 장수를 줄인다. */
+  var two=x.status==='조치완료';
+  var visible=Math.min(files.length,past?(two?2:3):1);
+  var h='<div class="tr-strip" id="'+wrapId+'" data-n="'+(past?visible:visible+1)+'">';
   for(var j=0;j<visible;j++){
     var f=files[j],p=(f&&f.id)?PHOTO_STORE.get(f.id):null;
-    var thumb=p?('<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">'):'<span class="tr-fallback">📷</span>';
     var more=(j===visible-1&&files.length>visible)?'<span class="tr-more">+'+(files.length-visible)+'</span>':'';
-    h+='<button class="tr-thumb" onclick="openTaskGallery('+i+',\''+which+'\')" aria-label="사진 크게 보기">'+thumb+more+'</button>';
+    h+='<button class="tr-thumb" onclick="openTaskGallery('+i+',\''+which+'\')" aria-label="사진 크게 보기">'+thumbInner(p,f&&f.name)+more+'</button>';
   }
   if(past)return h+'</div>';
   h+='<label class="tr-add" for="'+inputId+'" title="사진 추가">＋</label></div>';
@@ -1786,7 +1812,14 @@ function openTaskGallery(i,which){
   var items=files.map(function(f,j){
     var p=PHOTO_STORE.get(f.id);
     var del=editable?('<button onclick="event.stopPropagation();removePhotoAt(\''+kind+'\','+i+','+(offset+j)+');document.getElementById(\'evidenceGallery\')?.remove()">삭제</button>'):'';
-    return '<div class="evidence-gallery-item">'+(p?'<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">':'<div class="photo-thumb-fallback">📷</div>')+'<span>'+title+' '+(j+1)+' / '+files.length+'</span>'+del+'</div>';
+    /* 드라이브 썸네일이 막힌 환경에서도 원본은 열어볼 수 있게 링크를 남긴다. */
+    var open=(p&&p.sourceUrl)?('<a class="evidence-open" href="'+esc(p.sourceUrl)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">원본 열기</a>'):'';
+    var body=p
+      ? '<div class="photo-thumb-fallback">미리보기 실패</div><img src="'+esc(p.dataUrl||'')+'"'
+        +((p.sourceUrl&&String(p.dataUrl||'').indexOf('data:')!==0)?(' data-alt-src="'+esc(driveAltThumbnailUrl(p.sourceUrl))+'"'):'')
+        +' alt="'+esc(f.name||'')+'" onerror="retryThumb(this)">'
+      : '<div class="photo-thumb-fallback">📷</div>';
+    return '<div class="evidence-gallery-item">'+body+'<span>'+title+' '+(j+1)+' / '+files.length+'</span>'+open+del+'</div>';
   }).join('');
   box.innerHTML='<button class="zoom-close" onclick="document.getElementById(\'evidenceGallery\')?.remove()">✕</button><div class="evidence-gallery-grid">'+items+'</div>';
   box.onclick=function(e){if(e.target===box)box.remove()};
@@ -1912,13 +1945,14 @@ function accStrip(i,which){
   if(!files.length){
     return '<div class="tr-drop" id="'+wrapId+'"><label class="tr-add wide" for="'+inputId+'"><b>＋</b><small>사진 촬영 · 앨범에서 추가</small></label></div>'+input;
   }
-  var visible=Math.min(files.length,2);
-  var h='<div class="tr-strip" id="'+wrapId+'">';
+  /* 썸네일 수 + 추가버튼 1개가 그리드 칸 수와 딱 맞아야 한쪽으로 쏠려 보이지 않는다.
+     칸이 둘로 나뉘면(조치완료) 폭이 절반이라 썸네일을 한 장만 보여준다. */
+  var visible=Math.min(files.length,x.status==='조치완료'?1:2);
+  var h='<div class="tr-strip" id="'+wrapId+'" data-n="'+(visible+1)+'">';
   for(var j=0;j<visible;j++){
     var f=files[j],p=(f&&f.id)?PHOTO_STORE.get(f.id):null;
-    var thumb=p?('<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">'):'<span class="tr-fallback">📷</span>';
     var more=(j===visible-1&&files.length>visible)?'<span class="tr-more">+'+(files.length-visible)+'</span>':'';
-    h+='<button class="tr-thumb" onclick="openEvidenceGallery(\''+kind+'\',\''+i+'\')" aria-label="사진 크게 보기">'+thumb+more+'</button>';
+    h+='<button class="tr-thumb" onclick="openEvidenceGallery(\''+kind+'\',\''+i+'\')" aria-label="사진 크게 보기">'+thumbInner(p,f&&f.name)+more+'</button>';
   }
   h+='<label class="tr-add" for="'+inputId+'" title="사진 추가">＋</label></div>';
   return h+input;
