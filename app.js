@@ -658,22 +658,52 @@ function driveAltThumbnailUrl(url){
   var s=String(url||''),m=s.match(/\/d\/([a-zA-Z0-9_-]+)/)||s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   return m?('https://lh3.googleusercontent.com/d/'+m[1]+'=w480'):'';
 }
+/* 한 번 실패한 썸네일 주소는 기억해 두고 다시 부르지 않는다.
+   상태 버튼을 누를 때마다 화면을 다시 그리는데, 그때마다 막힌 주소로 또 요청이 나가면
+   콘솔이 ERR_CONNECTION_RESET으로 가득 차고 화면도 그만큼 느려진다. */
+var FAILED_THUMBS=new Set();
 /* 썸네일 로딩이 실패했을 때. 대체 주소가 남아 있으면 그걸로 한 번 더 시도하고,
-   그것도 실패하면 img를 없애 뒤에 깔린 안내(📷 / 미리보기 실패)가 보이게 한다. */
+   그것도 실패하면 img를 없애 뒤에 깔린 안내가 보이게 한다. */
 function retryThumb(img){
+  var cur=img.getAttribute('src')||'';
+  if(cur)FAILED_THUMBS.add(cur);
   var alt=img.getAttribute('data-alt-src');
-  if(alt){img.removeAttribute('data-alt-src');img.src=alt;return}
+  if(alt&&!FAILED_THUMBS.has(alt)){img.removeAttribute('data-alt-src');img.src=alt;return}
+  if(alt)FAILED_THUMBS.add(alt);
   var box=img.parentNode;
   if(box&&box.classList)box.classList.add('thumb-failed');
   img.remove();
+}
+/* 과거 점검 목록의 썸네일도 같은 방식으로 처리한다(실패하면 카드에 원본 열기만 남는다). */
+function retryHistoryThumb(img){
+  var cur=img.getAttribute('src')||'';
+  if(cur)FAILED_THUMBS.add(cur);
+  var alt=img.getAttribute('data-alt-src');
+  if(alt&&!FAILED_THUMBS.has(alt)){img.removeAttribute('data-alt-src');img.src=alt;return}
+  if(alt)FAILED_THUMBS.add(alt);
+  var a=img.closest?img.closest('a'):null;
+  if(a)a.classList.add('preview-failed');
+}
+/* 이미 실패한 주소를 걸러내고 실제로 시도할 주소를 정한다.
+   돌려주는 값: {src:지금 시도할 주소, alt:실패 시 다시 시도할 주소, dead:둘 다 이미 실패} */
+function thumbSources(dataUrl,sourceUrl){
+  var url=String(dataUrl||'');
+  var alt=(sourceUrl&&url.indexOf('data:')!==0)?driveAltThumbnailUrl(sourceUrl):'';
+  if(url&&FAILED_THUMBS.has(url)){
+    if(alt&&!FAILED_THUMBS.has(alt))return {src:alt,alt:'',dead:false};
+    return {src:'',alt:'',dead:true};
+  }
+  if(alt&&FAILED_THUMBS.has(alt))alt='';
+  return {src:url,alt:alt,dead:!url};
 }
 /* 카드 안 작은 썸네일 한 장의 HTML.
    구글 드라이브 주소는 실패할 수 있으므로 안내를 항상 뒤에 깔고 그 위에 이미지를 덮는다. */
 function thumbInner(p,name){
   if(!p)return '<span class="tr-fallback">📷</span>';
-  var alt=(p.sourceUrl&&String(p.dataUrl||'').indexOf('data:')!==0)?driveAltThumbnailUrl(p.sourceUrl):'';
+  var s=thumbSources(p.dataUrl,p.sourceUrl);
+  if(s.dead)return '<span class="tr-fallback failed"><b>📷</b><small>미리보기 실패</small></span>';
   return '<span class="tr-fallback">📷</span>'
-    +'<img src="'+esc(p.dataUrl||'')+'"'+(alt?' data-alt-src="'+esc(alt)+'"':'')
+    +'<img src="'+esc(s.src)+'"'+(s.alt?' data-alt-src="'+esc(s.alt)+'"':'')
     +' alt="'+esc(name||'')+'" loading="lazy" onerror="retryThumb(this)">';
 }
 function historyReview(){
@@ -699,8 +729,13 @@ function historyReview(){
         if((x.photoUrls||[]).length){
           h+='<div class="history-photos">';
           x.photoUrls.forEach(function(url,pi){
+            /* 서버가 미리보기(base64)를 주면 그걸 쓰고, 없으면 드라이브 썸네일 주소로 시도한다.
+               드라이브가 막힌 환경에서는 이미 실패한 주소로 다시 요청하지 않고 바로 안내만 보여준다. */
             var preview=historyPreviewUrl(url)||driveThumbnailUrl(url);
-            h+='<a href="'+esc(url)+'" target="_blank" rel="noopener" title="과거 사진 '+(pi+1)+' 열기"><img src="'+esc(preview)+'" alt="과거 점검 사진 '+(pi+1)+'" loading="lazy" onerror="this.closest(\u0027a\u0027).classList.add(\u0027preview-failed\u0027)"><small>사진 '+(pi+1)+'</small></a>';
+            var s=thumbSources(preview,url);
+            h+='<a href="'+esc(url)+'" target="_blank" rel="noopener"'+(s.dead?' class="preview-failed"':'')+' title="과거 사진 '+(pi+1)+' 열기">';
+            if(!s.dead)h+='<img src="'+esc(s.src)+'"'+(s.alt?' data-alt-src="'+esc(s.alt)+'"':'')+' alt="과거 점검 사진 '+(pi+1)+'" loading="lazy" onerror="retryHistoryThumb(this)">';
+            h+='<small>사진 '+(pi+1)+'</small></a>';
           });
           h+='</div>';
         }
@@ -1755,9 +1790,32 @@ function syncTasks(){
     task.notObserved=!!task.notObserved;
     /* 과거 사진 장수는 항상 서버 값을 기준으로 삼는다(임시저장에 남은 옛 값을 신뢰하지 않는다). */
     task.pastCount=map[key].pastCount;
+    /* "현재 상태"에는 과거에 뭐라고 지적됐는지를 먼저 채워 넣는다.
+       점검자는 그 문구를 보면서 지금 상태에 맞게 고치기만 하면 된다.
+       한 번 손댄 뒤에는(currentStateEdited) 다시 덮어쓰지 않는다. */
+    if(!task.currentStateEdited&&!task.currentState)task.currentState=map[key].detail||map[key].title||'';
+    /* 조치문구도 상태에 맞는 초안을 미리 넣어 둔다. */
+    if(!task.actionTextEdited&&!task.actionText)task.actionText=taskActionDraft(map[key],task.status);
     return task;
   });
   save();
+}
+/* 지적사항 제목·상세·위험요인의 키워드로 조치문구 초안을 만든다.
+   사고조사(accidentActionDraft)와 같은 방식이다. 점검자가 고치면 그 값을 그대로 둔다. */
+function taskActionDraft(x,status){
+  var text=[x.title,x.detail,x.hazard].filter(Boolean).join(' ');
+  var action='지적된 상태를 개선하고 재발하지 않도록 작업방법을 안내했습니다.';
+  if(/통로|적재|적치|넘어|미끄|바닥|단차/.test(text))action='통로 적재물을 제거하고 지정 적치구역으로 옮겨 통행로를 확보했습니다.';
+  else if(/사다리|계단|발판|추락|떨어|고소|상부작업/.test(text))action='안전한 발판·사다리 사용기준을 확인하고 상부작업 절차를 재교육했습니다.';
+  else if(/낙하|맞음|적재높이|상부/.test(text))action='상부 적재물을 정리·고정하고 적재높이 기준을 안내했습니다.';
+  else if(/전선|콘센트|멀티탭|감전|전기|분전/.test(text))action='전선과 전기설비를 정리·보수하고 사용 전 점검방법을 안내했습니다.';
+  else if(/칼|커터|베임|절단/.test(text))action='노출형 칼날 사용을 중지하고 안전커터로 교체했습니다.';
+  else if(/근골격|중량|운반|허리|들어|하차|손으로|반복/.test(text))action='보조기구를 사용하도록 조치하고 중량물 취급 자세를 재교육했습니다.';
+  else if(/보호구|안전모|미착용|장갑/.test(text))action='보호구를 지급·비치하고 착용상태를 확인했습니다.';
+  else if(/소화기|소방|피난|비상|방화/.test(text))action='소방시설 상태를 정비하고 점검표를 부착했습니다.';
+  else if(/끼임|부딪|대차|롤테이너|L카|문/.test(text))action='이동 동선을 정리하고 끼임·부딪힘 예방수칙을 안내했습니다.';
+  if(status==='미조치')return action.replace(/했습니다\.$/,'할 예정입니다.').replace(/합니다\.$/,'할 예정입니다.');
+  return action;
 }
 /* 과거 사진 / 이번 방문 사진을 경계(pastCount)로 나눠서 돌려준다. */
 function taskPhotoSlices(x){
@@ -2198,10 +2256,23 @@ function tasks(){
 
   frame(h,'지난 지적사항<br>조치 확인','재점검 시 조치 여부를 확인하는 탭입니다.');
 }
-/* 조치 상태는 화면 구성(1칸/2칸)을 바꾸므로 다시 그린다. */
-function setTaskStatus(i,status){var x=S.tasks[i];if(!x)return;x.status=status;x.notObserved=false;x.confirmed=false;save();tasks()}
-/* 글자 입력은 다시 그리지 않는다. 다시 그리면 입력 중 커서가 사라진다. */
-function setTaskText(i,field,value){var x=S.tasks[i];if(!x)return;x[field]=value;x.confirmed=false;save()}
+/* 조치 상태는 화면 구성(1칸/2칸)을 바꾸므로 다시 그린다.
+   상태에 따라 조치문구 초안도 갈아끼운다(점검자가 직접 고친 문구는 건드리지 않는다). */
+function setTaskStatus(i,status){
+  var x=S.tasks[i];if(!x)return;
+  x.status=status;x.notObserved=false;x.confirmed=false;
+  if(!x.actionTextEdited)x.actionText=taskActionDraft(x,status);
+  save();tasks();
+}
+/* 글자 입력은 다시 그리지 않는다. 다시 그리면 입력 중 커서가 사라진다.
+   점검자가 손댄 칸은 자동 초안으로 덮어쓰지 않도록 표시해 둔다. */
+function setTaskText(i,field,value){
+  var x=S.tasks[i];if(!x)return;
+  x[field]=value;x.confirmed=false;
+  if(field==='actionText')x.actionTextEdited=true;
+  if(field==='currentState')x.currentStateEdited=true;
+  save();
+}
 function setTaskNotObserved(i,value){var x=S.tasks[i];if(!x)return;x.notObserved=!!value;x.confirmed=false;if(x.notObserved)x.status='미조치';save();tasks()}
 function toggleTaskCard(i){var x=S.tasks[i];if(!x)return;S.taskOpenKey=S.taskOpenKey===x.key?'':x.key;save();tasks()}
 function toggleTaskSection(i,key){var x=S.tasks[i];if(!x)return;x.sectionOpen=x.sectionOpen===key?'':key;save();tasks()}
@@ -2213,8 +2284,8 @@ function completeTask(i){
   /* 빠뜨린 칸을 직접 붉게 흔들어서 어디를 채워야 하는지 바로 보이게 한다. */
   if(!x.status)return uiErrorAt('#taskStatus'+i,'조치 상태를 선택해 주세요.');
   if(!x.currentState)return uiErrorAt('#taskState'+i,'현재 상태를 입력해 주세요.');
-  /* 미조치는 사유·계획 입력칸을 두지 않는다. 보고서에 빈칸이 남지 않도록 기본 문구를 채운다. */
-  if(x.status==='미조치'&&!x.actionText)x.actionText='미조치 상태 유지 · 다음 점검 시 재확인';
+  /* 미조치는 사유·계획 입력칸을 두지 않는다. 보고서에 빈칸이 남지 않도록 초안을 채운다. */
+  if(x.status==='미조치'&&!x.actionText)x.actionText=taskActionDraft(x,'미조치');
   if(x.status==='조치완료'){
     if(!x.actionText)return uiErrorAt('#taskAct'+i,'조치내용을 입력해 주세요.');
     if(!(x.afterFiles||[]).length)return uiErrorAt('#taskPhotoBox-after-'+i,'조치 후 사진을 등록해 주세요.');
