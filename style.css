@@ -665,6 +665,32 @@ button{cursor:pointer}
 .tr-facts small{flex:none;font-size:9px;font-weight:800;color:var(--muted)}
 .tr-facts b{font-size:11px;font-weight:900;overflow-wrap:anywhere}
 
+/* 조치 상태는 현장 확인 줄 바로 아래에 같은 모양의 작은 버튼으로 둔다.
+   이 버튼이 아래 사진·내용 칸을 1칸 → 2칸으로 바꾸는 스위치다. */
+.tr-statusline{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:7px 10px;border-radius:11px;background:#f5f7fb;border:1px solid #dce1ec}
+.tr-statusline>span{font-size:11.5px;font-weight:900;min-width:0}
+.tr-status-mini{display:flex;gap:5px;flex:none}
+.tr-status-mini button{min-height:34px;padding:0 13px;border:1.5px solid #d3d8e2;border-radius:9px;background:#fff;color:#767d8a;font-size:11px;font-weight:950}
+.tr-status-mini button.none.sel{border-color:#c62847;background:#fff0f3;color:#c62847}
+.tr-status-mini button.done.sel{border-color:#16845b;background:#edf9f4;color:#16845b}
+
+/* 현재 상태 / 조치 후를 사진과 내용까지 한 세트로 좌우 비교한다.
+   기본은 카드 전체폭을 쓰는 한 칸이고, 조치완료를 고르면 반씩 나눠
+   2칸(사진 2 + 내용 2)이 된다. 잘려서 좁아지는 게 아니라 폭이 다시 계산된다. */
+.tr-pair{display:grid;gap:8px;grid-template-columns:minmax(0,1fr)}
+.tr-pair.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.tr-pair-col{min-width:0;display:grid;gap:6px;align-content:start;padding:8px 9px 9px;border:1px solid var(--line);border-radius:12px;background:#fafbfc}
+.tr-pair-col.now{background:#f3f7ff;border-color:#cddcf3}
+.tr-pair-col.after{background:#f2faf6;border-color:#c8ead8}
+.tr-pair-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.tr-pair-head b{font-size:11px;font-weight:900}
+.tr-pair-head i{font-style:normal;font-size:9.5px;font-weight:900;color:var(--muted);flex:none}
+.tr-pair-col .tr-mini{min-height:58px}
+/* 2칸으로 좁아지면 사진 줄은 2열로 줄이고, 글이 줄바꿈되는 만큼 입력칸을 조금 높인다. */
+.tr-pair.two .tr-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tr-pair.two .tr-mini{min-height:74px}
+.tr-pair-col.after .tr-mini:focus{border-color:#16845b}
+
 .tr-line{display:grid;gap:5px}
 .tr-line>label{font-size:11.5px;font-weight:900;color:#464d59}
 .tr-line>label small{font-size:10px;font-weight:800;color:var(--muted)}
@@ -687,7 +713,11 @@ button{cursor:pointer}
 @media(max-width:420px){
   .tr-observe{align-items:stretch;flex-direction:column;gap:7px}
   .tr-observe-btns{display:grid;grid-template-columns:1fr 1fr}
+  .tr-statusline{align-items:stretch;flex-direction:column;gap:7px}
+  .tr-status-mini{display:grid;grid-template-columns:1fr 1fr}
   .tr-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* 한 칸일 때는 전체폭을 쓰므로 3열을 유지해 썸네일이 지나치게 커지지 않게 한다. */
+  .tr-pair:not(.two) .tr-strip{grid-template-columns:repeat(3,minmax(0,1fr))}
   .tr-finish{grid-template-columns:1fr}
   .tr-finish>span{text-align:center}
 }
