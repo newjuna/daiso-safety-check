@@ -1884,6 +1884,14 @@ function accStrip(i,which){
   var files=(which==='after'?x.afterFiles:x.beforeFiles)||[];
   var kind=which==='after'?'accidentAfter':'accidentBefore';
   var field=which==='after'?'afterFiles':'beforeFiles';
+  var inputId='accphoto-'+which+'-'+i;
+  var input='<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\''+field+'\',this)">';
+  /* 사진이 한 장도 없으면 3열 그리드를 쓰지 않는다.
+     그대로 두면 왼쪽 1/3만 작은 ＋ 버튼이 뜨고 오른쪽이 텅 비어 보인다.
+     대신 추가 버튼이 칸 전체폭을 채우는 큰 영역으로 나온다. */
+  if(!files.length){
+    return '<div class="tr-drop"><label class="tr-add wide" for="'+inputId+'"><b>＋</b><small>사진 촬영 · 앨범에서 추가</small></label></div>'+input;
+  }
   var visible=Math.min(files.length,2);
   var h='<div class="tr-strip">';
   for(var j=0;j<visible;j++){
@@ -1892,10 +1900,8 @@ function accStrip(i,which){
     var more=(j===visible-1&&files.length>visible)?'<span class="tr-more">+'+(files.length-visible)+'</span>':'';
     h+='<button class="tr-thumb" onclick="openEvidenceGallery(\''+kind+'\',\''+i+'\')" aria-label="사진 크게 보기">'+thumb+more+'</button>';
   }
-  var inputId='accphoto-'+which+'-'+i;
   h+='<label class="tr-add" for="'+inputId+'" title="사진 추가">＋</label></div>';
-  h+='<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\''+field+'\',this)">';
-  return h;
+  return h+input;
 }
 /* 사고조사 카드.
    모바일에서 세로로 길어지지 않도록 STEP 박스를 없애고 한 흐름으로 압축했다.
@@ -1927,16 +1933,18 @@ function accident(){
     /* 한 번 펼친 카드 안에서 원본 확인부터 조치 완료까지 끝낸다.
        조치확인 카드와 같은 압축 레이아웃(tr-)을 공유한다. */
     h+='<div class="tr-body">';
+    /* 과거 사고 내용(읽기용)과 현장 확인 여부(입력)를 7:3으로 나란히 둔다.
+       읽기용 정보가 카드 위쪽을 통째로 차지하면서 화면이 길어지던 걸 막는다. */
+    h+='<div class="tr-top">';
     h+='<div class="tr-past acc"><b>과거 사고 내용<span class="tr-tag'+(x.approved==='Y'?' bad':'')+'">'+(x.approved==='Y'?'산재승인':'사고이력')+'</span></b>';
     h+='<div class="tr-facts"><span><small>재해일</small><b>'+esc(x.date||'-')+'</b></span><span><small>유형</small><b>'+esc(x.type||'-')+'</b></span><span><small>기인물</small><b>'+esc(x.source||'미등록')+'</b></span>';
     if(x.lostDays)h+='<span><small>손실일수</small><b>'+esc(String(x.lostDays))+'일</b></span>';
     h+='</div><p>'+esc(x.content||'등록된 사고내용이 없습니다.')+'</p></div>';
-
-    /* 현장 확인 여부는 한 줄 2버튼으로 줄인다. */
-    h+='<div class="tr-observe"><span>이번 방문 현장 확인</span><div class="tr-observe-btns">'
+    h+='<div class="tr-observe col"><span>이번 방문<br>현장 확인</span><div class="tr-observe-btns">'
       +'<button class="'+(x.notObserved?'':'sel')+'" onclick="setAccidentNotObserved('+i+',false)">확인함</button>'
       +'<button class="'+(x.notObserved?'sel warn':'')+'" onclick="setAccidentNotObserved('+i+',true)">확인 못함</button>'
       +'</div></div>';
+    h+='</div>';
 
     if(x.notObserved){
       h+='<div class="tr-note"><i>↻</i><span>이번 방문에는 확인하지 못했습니다. 미조치로 유지되어 다음 방문에 다시 표시됩니다.</span></div>';
@@ -1968,10 +1976,9 @@ function accident(){
           +'</div>';
       }
       h+='</div>';
-      /* 미조치는 "조치 후" 칸이 없으므로 조치계획을 아래 전체폭으로 받는다. */
-      if(x.status==='미조치'){
-        h+='<textarea class="tr-mini" placeholder="조치계획 · 언제 어떻게 조치할 예정인지" onchange="setAccidentText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea>';
-      }
+      /* 미조치는 조치계획 입력칸을 따로 두지 않는다.
+         현장에서 확인한 내용은 왼쪽 "현재 상태" 칸에 적고,
+         조치계획 문구는 자동 초안(accidentActionDraft)을 그대로 쓴다. */
     }
 
     h+='<div class="tr-finish"><span>'+(ok?'✓ 이 항목은 작성 완료되었습니다.':(x.notObserved?'확인 못함으로 기록하고 다음 항목으로 이동합니다.':'필수 내용을 확인한 뒤 완료해 주세요.'))+'</span>'
@@ -2021,8 +2028,11 @@ function completeAccident(i){
   var x=S.accidents[i];if(!x)return;
   if(x.notObserved){x.status='확인 못함';x.currentState='이번 방문에는 현장 확인 못함';x.confirmed=true}
   else{
-  if(!x.hazardText)return toast('유해위험요인을 확인해 주세요.');
-  if(!x.status||!x.actionText)return toast('이행상태와 조치내용을 입력해 주세요.');
+  if(!x.hazardText)return toast('현재 상태를 입력해 주세요.');
+  /* 미조치는 화면에 조치계획 입력칸이 없으므로 비어 있으면 자동 초안으로 채운다. */
+  if(x.status==='미조치'&&!x.actionText)x.actionText=accidentActionDraft(x,'미조치');
+  if(!x.status)return toast('조치 상태를 선택해 주세요.');
+  if(!x.actionText)return toast('조치내용을 입력해 주세요.');
   if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return toast('조치완료 사진을 등록해 주세요.');
   x.currentState=x.hazardText;x.confirmed=true;
   }
