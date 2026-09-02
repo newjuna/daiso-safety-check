@@ -1742,43 +1742,45 @@ function taskPhotoSlices(x){
   return {past:files.slice(0,n),now:files.slice(n),offset:n};
 }
 /* 조치확인 카드 안의 작은 사진 줄.
-   which: 'past'(과거·읽기전용) | 'now'(이번 방문) | 'after'(조치 후)
+   which: 'past'(과거 점검 당시 사진·읽기전용) | 'after'(조치 후 사진)
+   이번 방문에 따로 "현재 사진"을 찍지는 않는다. 과거 사진을 보면서 지금 상태를 글로 적고,
+   조치가 끝났으면 그 증빙으로 조치 후 사진만 남긴다.
    카드를 짧게 유지하려고 썸네일은 최대 2~3장만 보이고, 나머지는 눌러서 갤러리로 확인한다. */
 function taskStrip(i,which){
   var x=S.tasks[i];if(!x)return'';
-  var s=taskPhotoSlices(x),files,offset=0,editable=true,field='beforeFiles';
-  if(which==='past'){files=s.past;editable=false}
-  else if(which==='now'){files=s.now;offset=s.offset}
-  else{files=x.afterFiles||[];field='afterFiles'}
-  var maxThumb=editable?2:3;
-  var visible=Math.min(files.length,maxThumb);
-  var h='<div class="tr-strip">';
-  if(!files.length&&!editable)h+='<div class="tr-none">과거 사진 없음</div>';
+  var past=which==='past';
+  var files=past?taskPhotoSlices(x).past:(x.afterFiles||[]);
+  /* 사진을 빠뜨렸을 때 이 영역만 붉게 표시할 수 있도록 id를 붙인다. */
+  var wrapId='taskPhotoBox-'+which+'-'+i;
+  var inputId='trphoto-'+which+'-'+i;
+  if(!files.length){
+    /* 과거 사진은 서버에서 받아오는 값이라 추가할 수 없다. 없으면 없다고만 알린다. */
+    if(past)return '<div class="tr-drop" id="'+wrapId+'"><div class="tr-nophoto">과거 사진 없음</div></div>';
+    return '<div class="tr-drop" id="'+wrapId+'"><label class="tr-add wide" for="'+inputId+'"><b>＋</b><small>사진 촬영 · 앨범에서 추가</small></label></div>'
+      +'<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachTaskPhotos('+i+',\'afterFiles\',this)">';
+  }
+  var visible=Math.min(files.length,past?3:2);
+  var h='<div class="tr-strip" id="'+wrapId+'">';
   for(var j=0;j<visible;j++){
     var f=files[j],p=(f&&f.id)?PHOTO_STORE.get(f.id):null;
     var thumb=p?('<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">'):'<span class="tr-fallback">📷</span>';
     var more=(j===visible-1&&files.length>visible)?'<span class="tr-more">+'+(files.length-visible)+'</span>':'';
     h+='<button class="tr-thumb" onclick="openTaskGallery('+i+',\''+which+'\')" aria-label="사진 크게 보기">'+thumb+more+'</button>';
   }
-  if(editable){
-    var inputId='trphoto-'+which+'-'+i;
-    h+='<label class="tr-add" for="'+inputId+'" title="사진 추가">＋</label></div>';
-    h+='<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachTaskPhotos('+i+',\''+field+'\',this)">';
-    return h;
-  }
-  return h+'</div>';
+  if(past)return h+'</div>';
+  h+='<label class="tr-add" for="'+inputId+'" title="사진 추가">＋</label></div>';
+  return h+'<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachTaskPhotos('+i+',\'afterFiles\',this)">';
 }
 /* 썸네일을 누르면 그 묶음만 전체화면으로 크게 본다.
    과거 사진은 증빙 자료이므로 삭제 버튼을 주지 않는다. */
 function openTaskGallery(i,which){
   var x=S.tasks[i];if(!x)return;
-  var s=taskPhotoSlices(x);
-  var files=which==='past'?s.past:(which==='now'?s.now:(x.afterFiles||[]));
-  if(!files.length)return;
-  var offset=which==='now'?s.offset:0;
   var editable=which!=='past';
-  var kind=which==='after'?'taskAfter':'taskBefore';
-  var title=which==='past'?'과거 사진':(which==='now'?'현재 사진':'조치 후 사진');
+  var files=editable?(x.afterFiles||[]):taskPhotoSlices(x).past;
+  if(!files.length)return;
+  var offset=0;
+  var kind=editable?'taskAfter':'taskBefore';
+  var title=editable?'조치 후 사진':'과거 사진';
   var old=document.getElementById('evidenceGallery');if(old)old.remove();
   var box=document.createElement('div');box.id='evidenceGallery';box.className='img-zoom evidence-gallery';
   var items=files.map(function(f,j){
@@ -2093,7 +2095,6 @@ function tasks(){
   var i;
   var h=tabs('tasks');
   h+='<div class="card"><h2>지난 지적사항 조치 확인</h2>';
-  h+='<p class="muted">항목을 펼쳐 과거 사진과 현재 상태를 나란히 비교하고, 조치 결과를 기록하세요.</p>';
 
   if(S.taskOpenKey===undefined)S.taskOpenKey='';
   if(!S.tasks.length){
@@ -2108,37 +2109,45 @@ function tasks(){
       if(!expanded){h+='</div>';continue}
 
       h+='<div class="tr-body">';
-      h+='<div class="tr-past"><b>과거 지적내용</b><p>'+esc(x.detail||x.title)+'</p></div>';
-
-      /* 현장 확인 여부는 한 줄 2버튼으로 줄인다. */
-      h+='<div class="tr-observe"><span>이번 방문 현장 확인</span><div class="tr-observe-btns">'
+      /* 읽기용 과거 지적내용(7)과 현장 확인 여부(3)를 좌우로 붙여 위쪽 높이를 줄인다. */
+      h+='<div class="tr-top">';
+      h+='<div class="tr-past acc"><b>과거 지적내용<span class="tr-tag">'+esc(x.date||'-')+'</span></b><p>'+esc(x.detail||x.title)+'</p></div>';
+      h+='<div class="tr-observe col"><span>이번 방문<br>현장 확인</span><div class="tr-observe-btns">'
         +'<button class="'+(x.notObserved?'':'sel')+'" onclick="setTaskNotObserved('+i+',false)">확인함</button>'
         +'<button class="'+(x.notObserved?'sel warn':'')+'" onclick="setTaskNotObserved('+i+',true)">확인 못함</button>'
         +'</div></div>';
-
-      /* 과거 / 현재 사진을 좌우로 분리 */
-      h+='<div class="tr-photos'+(x.notObserved?' single':'')+'">';
-      h+='<div class="tr-photo-col past"><label><b>과거 사진</b><i>'+slices.past.length+'장</i></label>'+taskStrip(i,'past')+'</div>';
-      if(!x.notObserved)h+='<div class="tr-photo-col now"><label><b>현재 사진</b><i>'+slices.now.length+'장</i></label>'+taskStrip(i,'now')+'</div>';
       h+='</div>';
 
       if(x.notObserved){
         h+='<div class="tr-note"><i>↻</i><span>이번 방문에는 확인하지 못했습니다. 미조치로 유지되어 다음 점검에 다시 표시됩니다.</span></div>';
       }else{
-        h+='<div class="tr-line"><label>현재 상태 <span class="req">*</span></label>'
-          +'<input class="tr-input" placeholder="현재 상태를 한 줄로 요약" value="'+esc(x.currentState)+'" onchange="setTaskField('+i+',\'currentState\',this.value)"></div>';
-        h+='<div class="tr-line"><label>조치 상태</label><div class="tr-status">'
-          +'<button class="none'+(x.status==='미조치'?' sel':'')+'" onclick="setTaskField('+i+',\'status\',\'미조치\')">미조치</button>'
-          +'<button class="done'+(x.status==='조치완료'?' sel':'')+'" onclick="setTaskField('+i+',\'status\',\'조치완료\')">조치완료</button>'
+        /* 조치 상태를 위로 올린다. 이 버튼이 아래 칸을 1칸 → 2칸으로 바꾸는 스위치다. */
+        h+='<div class="tr-statusline" id="taskStatus'+i+'"><span>조치 상태</span><div class="tr-status-mini">'
+          +'<button class="none'+(x.status==='미조치'?' sel':'')+'" onclick="setTaskStatus('+i+',\'미조치\')">미조치</button>'
+          +'<button class="done'+(x.status==='조치완료'?' sel':'')+'" onclick="setTaskStatus('+i+',\'조치완료\')">조치완료</button>'
           +'</div></div>';
-        h+='<div class="tr-line"><label>'+(x.status==='조치완료'?'조치내용':'미조치 사유·계획')+' <span class="req">*</span></label>'
-          +'<textarea class="tr-mini" placeholder="확인 결과와 필요한 조치를 간단히" onchange="setTaskField('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea></div>';
-        if(x.status==='조치완료'){
-          h+='<div class="tr-photo-col after"><label><b>조치 후 사진 <span class="req">*</span></b><i>'+(x.afterFiles||[]).length+'장</i></label>'+taskStrip(i,'after')+'</div>';
+
+        /* 왼쪽은 과거 사진 + 지금 상태, 조치완료를 고르면 오른쪽에 조치 후 사진이 붙는다. */
+        var two=x.status==='조치완료';
+        h+='<div class="tr-pair'+(two?' two':'')+'">';
+        h+='<div class="tr-pair-col past">'
+          +'<div class="tr-pair-head"><b>과거 사진</b><i>'+slices.past.length+'장</i></div>'
+          +taskStrip(i,'past')
+          +'<textarea class="tr-mini" id="taskState'+i+'" placeholder="현재 상태" onchange="setTaskText('+i+',\'currentState\',this.value)">'+esc(x.currentState)+'</textarea>'
+          +'</div>';
+        if(two){
+          h+='<div class="tr-pair-col after">'
+            +'<div class="tr-pair-head"><b>조치 후 사진 <span class="req">*</span></b><i>'+(x.afterFiles||[]).length+'장</i></div>'
+            +taskStrip(i,'after')
+            +'<textarea class="tr-mini" id="taskAct'+i+'" placeholder="조치내용" onchange="setTaskText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea>'
+            +'</div>';
         }
+        h+='</div>';
+        /* 미조치는 사유·계획을 따로 받지 않는다. 확인한 내용은 왼쪽 "현재 상태"에 적는다. */
       }
 
-      h+='<div class="tr-finish"><span>'+(x.confirmed?(x.notObserved?'↻ 확인 못함으로 기록됨':'✓ 확인 완료됨'):(x.notObserved?'확인 못함으로 기록하고 넘어갑니다.':'필수 항목을 채운 뒤 완료해 주세요.'))+'</span>'
+      /* 안내 문구는 두지 않는다. 빠뜨린 칸은 완료를 누르면 그 칸이 직접 붉게 흔들린다. */
+      h+='<div class="tr-finish solo">'
         +'<button class="acc-complete" onclick="completeTask('+i+')">'+(x.confirmed?'저장':(x.notObserved?'확인 못함으로 완료':'확인 완료'))+'</button></div>';
       h+='</div></div>';
     }
@@ -2155,7 +2164,10 @@ function tasks(){
 
   frame(h,'지난 지적사항<br>조치 확인','재점검 시 조치 여부를 확인하는 탭입니다.');
 }
-function setTaskField(i,field,value){S.tasks[i][field]=value;S.tasks[i].notObserved=false;S.tasks[i].confirmed=false;save();tasks()}
+/* 조치 상태는 화면 구성(1칸/2칸)을 바꾸므로 다시 그린다. */
+function setTaskStatus(i,status){var x=S.tasks[i];if(!x)return;x.status=status;x.notObserved=false;x.confirmed=false;save();tasks()}
+/* 글자 입력은 다시 그리지 않는다. 다시 그리면 입력 중 커서가 사라진다. */
+function setTaskText(i,field,value){var x=S.tasks[i];if(!x)return;x[field]=value;x.confirmed=false;save()}
 function setTaskNotObserved(i,value){var x=S.tasks[i];if(!x)return;x.notObserved=!!value;x.confirmed=false;if(x.notObserved)x.status='미조치';save();tasks()}
 function toggleTaskCard(i){var x=S.tasks[i];if(!x)return;S.taskOpenKey=S.taskOpenKey===x.key?'':x.key;save();tasks()}
 function toggleTaskSection(i,key){var x=S.tasks[i];if(!x)return;x.sectionOpen=x.sectionOpen===key?'':key;save();tasks()}
@@ -2164,9 +2176,15 @@ function completeTask(i){
   var x=S.tasks[i];if(!x)return;
   if(x.notObserved){x.status='미조치';x.confirmed=true}
   else{
-  if(!x.currentState)return toast('현재 상태를 입력해 주세요.');
-  if(!x.actionText)return toast('조치내용을 입력해 주세요.');
-  if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return toast('조치 후 사진을 등록해 주세요.');
+  /* 빠뜨린 칸을 직접 붉게 흔들어서 어디를 채워야 하는지 바로 보이게 한다. */
+  if(!x.status)return uiErrorAt('#taskStatus'+i,'조치 상태를 선택해 주세요.');
+  if(!x.currentState)return uiErrorAt('#taskState'+i,'현재 상태를 입력해 주세요.');
+  /* 미조치는 사유·계획 입력칸을 두지 않는다. 보고서에 빈칸이 남지 않도록 기본 문구를 채운다. */
+  if(x.status==='미조치'&&!x.actionText)x.actionText='미조치 상태 유지 · 다음 점검 시 재확인';
+  if(x.status==='조치완료'){
+    if(!x.actionText)return uiErrorAt('#taskAct'+i,'조치내용을 입력해 주세요.');
+    if(!(x.afterFiles||[]).length)return uiErrorAt('#taskPhotoBox-after-'+i,'조치 후 사진을 등록해 주세요.');
+  }
   x.confirmed=true;
   }
   x.sectionOpen='';
