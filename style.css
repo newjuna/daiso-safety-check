@@ -572,6 +572,13 @@ button{cursor:pointer}
 .action-flow{display:grid;gap:11px}.action-section-bar{width:100%;border:0;padding:10px 12px;border-radius:8px 8px 0 0;background:var(--p);color:#fff;text-align:left;font-size:13px;font-weight:950;display:flex;align-items:center;justify-content:space-between}.action-section-bar strong{transition:transform .18s}.acc-before-pane.collapsed .action-section-bar{border-radius:8px}.acc-before-pane.collapsed .action-section-bar strong{transform:rotate(-90deg)}.acc-before-pane.collapsed .acc-before-body{display:none}.action-photo-area{padding:12px;border:1px solid var(--line);border-top:0;border-radius:0 0 9px 9px;background:#f7f8fb}.action-photo-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.action-photo-head b{font-size:12.5px}.action-photo-head span{font-size:9.5px;color:var(--muted);font-weight:800}.action-after-bar{margin-bottom:-11px}.action-transition{margin:2px 0 0;padding-top:10px;border-top:1px solid var(--line);text-align:center;color:#14754a;font-size:10px;font-weight:900;line-height:1.4}.action-transition i{display:inline-block;width:7px;height:7px;border-radius:50%;background:#14754a;margin-right:6px}.action-done-label{justify-self:end;padding:4px 9px;border-radius:5px;background:#eaf9f1;color:#14754a;font-size:10px;font-weight:950;margin-bottom:-6px}
 .photo-count{font-size:10px;color:var(--muted);font-weight:850;margin-bottom:6px}.photo-empty-picker{min-height:122px;border:1.5px dashed #c8cdd5;border-radius:11px;background:#f7f8fb;display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;cursor:pointer}.photo-empty-picker i{display:block;font-size:30px;font-style:normal;margin-bottom:5px}.photo-empty-picker b{display:block;color:var(--ink);font-size:12px}.photo-empty-picker small{display:block;margin-top:3px;font-size:9px}.photo-add-inline{display:block;margin-top:8px;padding:8px 9px;border-radius:9px;background:#eef1f8;color:var(--p);text-align:center;font-size:10.5px;font-weight:900;cursor:pointer}.evidence-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:0}.evidence-thumb{width:auto;height:auto;aspect-ratio:1/1;margin:0;cursor:pointer}.photo-more{position:absolute;inset:0;border:0;border-radius:inherit;background:rgba(19,36,90,.72);color:#fff;font-size:17px;font-weight:1000;z-index:2}.evidence-thumb .photo-remove{z-index:3}.acc-focus-back{width:100%;min-height:44px;margin:0 0 11px;padding:0 13px;border:0;border-radius:11px;background:#eef1f8;color:var(--p);font-size:11px;font-weight:900;text-align:left}.accident-status2{grid-template-columns:1fr 1fr}
 .evidence-gallery{padding:58px 18px 24px;overflow:auto;align-items:flex-start}.evidence-gallery-grid{width:min(920px,100%);margin:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.evidence-gallery-item{position:relative;min-width:0;background:#fff;border-radius:12px;overflow:hidden;padding-bottom:34px}.evidence-gallery-item img,.evidence-gallery-item>.photo-thumb-fallback{width:100%;height:280px;object-fit:contain;background:#151821;display:grid;place-items:center}.evidence-gallery-item span{position:absolute;left:10px;bottom:9px;color:#343b48;font-size:11px;font-weight:900}.evidence-gallery-item button{position:absolute;right:8px;bottom:6px;min-height:26px;border:0;border-radius:6px;background:#fff0f3;color:#b31236;font-size:10px;font-weight:900;padding:4px 9px}
+/* 갤러리에서도 "미리보기 실패" 안내를 뒤에 깔고 그 위에 이미지를 덮는다.
+   드라이브 썸네일이 막히면 이미지가 사라지고 안내와 원본 링크가 남는다. */
+.evidence-gallery-item>.photo-thumb-fallback{position:absolute;top:0;left:0;right:0;color:#8b93a3;font-size:12px;font-weight:900}
+.evidence-gallery-item img{position:relative;z-index:1}
+.evidence-open{position:absolute;right:8px;bottom:6px;z-index:2;min-height:26px;display:inline-flex;align-items:center;border-radius:6px;background:#eef1f8;color:var(--p);font-size:10px;font-weight:900;padding:4px 9px;text-decoration:none}
+/* 삭제 버튼이 함께 있을 때는 원본 링크를 그 왼쪽으로 밀어준다. */
+.evidence-gallery-item>.evidence-open:not(:last-child){right:64px}
 .acc-fact-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:520px){.evidence-gallery-grid{grid-template-columns:1fr}.evidence-gallery-item img,.evidence-gallery-item>.photo-thumb-fallback{height:240px}.acc-fact-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.acc-fact-grid>div b{font-size:11px}}
 
@@ -645,16 +652,24 @@ button{cursor:pointer}
 .tr-photo-col>label{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
 .tr-photo-col>label b{font-size:11px;font-weight:900}
 .tr-photo-col>label i{font-style:normal;font-size:9.5px;font-weight:900;color:var(--muted);flex:none}
+/* 칸 수를 실제 아이템 수(썸네일 + 추가버튼)와 맞춰서 오른쪽이 텅 비지 않게 한다.
+   높이는 96px로 고정해 사진이 몇 장이든 줄 높이가 흔들리지 않는다. */
 .tr-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
-.tr-thumb{position:relative;aspect-ratio:1/1;min-height:0;padding:0;border:1px solid #e1e5eb;border-radius:9px;overflow:hidden;background:#eceef2;display:block}
+.tr-strip[data-n="1"]{grid-template-columns:minmax(0,1fr)}
+.tr-strip[data-n="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tr-thumb{position:relative;height:96px;min-height:0;padding:0;border:1px solid #e1e5eb;border-radius:9px;overflow:hidden;background:#eceef2;display:block}
 .tr-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .tr-fallback{position:absolute;inset:0;display:grid;place-items:center;font-size:17px}
+/* 구글 드라이브 썸네일이 막혀 이미지를 못 받은 경우 */
+.tr-thumb.thumb-failed{background:#f6eeee;border-color:#e6cfcf}
+.tr-thumb.thumb-failed .tr-fallback::after{content:'미리보기 실패';display:block;margin-top:2px;font-size:8.5px;font-weight:900;color:#a4626b}
+.tr-thumb.thumb-failed .tr-fallback{flex-direction:column;font-size:15px;line-height:1.1}
 .tr-more{position:absolute;inset:0;display:grid;place-items:center;background:rgba(19,36,90,.72);color:#fff;font-size:12px;font-weight:1000}
-.tr-add{aspect-ratio:1/1;border:1.5px dashed #a9bfe4;border-radius:9px;background:#fff;color:var(--p);display:grid;place-items:center;font-size:17px;font-weight:900;cursor:pointer}
+.tr-add{height:96px;border:1.5px dashed #a9bfe4;border-radius:9px;background:#fff;color:var(--p);display:grid;place-items:center;font-size:17px;font-weight:900;cursor:pointer}
 .tr-photo-col.after .tr-add{border-color:#9fd6bb;color:#16845b}
 /* 사진이 없을 때. 그리드를 쓰지 않고 추가 버튼이 칸 전체폭을 채운다. */
 .tr-drop{display:block}
-.tr-add.wide{width:100%;aspect-ratio:auto;min-height:96px;gap:3px;align-content:center}
+.tr-add.wide{width:100%;height:auto;min-height:96px;gap:3px;align-content:center}
 .tr-add.wide b{font-size:20px;font-weight:900;line-height:1}
 .tr-add.wide small{font-size:10px;font-weight:850;color:var(--muted)}
 .tr-pair-col.after .tr-add.wide small{color:#4f8a72}
@@ -705,8 +720,8 @@ button{cursor:pointer}
 .tr-pair-head b{font-size:11px;font-weight:900}
 .tr-pair-head i{font-style:normal;font-size:9.5px;font-weight:900;color:var(--muted);flex:none}
 .tr-pair-col .tr-mini{min-height:58px}
-/* 2칸으로 좁아지면 사진 줄은 2열로 줄이고, 글이 줄바꿈되는 만큼 입력칸을 조금 높인다. */
-.tr-pair.two .tr-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* 2칸으로 좁아지면 글이 줄바꿈되는 만큼 입력칸을 조금 높인다.
+   사진 줄의 칸 수는 data-n으로 아이템 수에 맞춰지므로 여기서 따로 건드리지 않는다. */
 .tr-pair.two .tr-mini{min-height:74px}
 .tr-pair-col.after .tr-mini:focus{border-color:#16845b}
 
@@ -739,10 +754,9 @@ button{cursor:pointer}
   .tr-observe-btns{display:grid;grid-template-columns:1fr 1fr}
   .tr-statusline{align-items:stretch;flex-direction:column;gap:7px}
   .tr-status-mini{display:grid;grid-template-columns:1fr 1fr}
-  .tr-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
-  /* 한 칸일 때는 전체폭을 쓰므로 3열을 유지해 썸네일이 지나치게 커지지 않게 한다. */
-  .tr-pair:not(.two) .tr-strip{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .tr-add.wide{min-height:86px}
+  /* 좁은 화면에서는 썸네일 높이만 살짝 줄인다(칸 수는 아이템 수에 맞춰져 있다). */
+  .tr-thumb,.tr-add{height:86px}
+  .tr-add.wide,.tr-nophoto{min-height:86px}
   .tr-finish{grid-template-columns:1fr}
   .tr-finish>span{text-align:center}
 }
