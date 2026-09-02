@@ -275,6 +275,90 @@ function footer(left,noHolder){
 /* 페이지 번호는 전체 장수가 확정된 뒤 치환한다. */
 var NO="__SR_PAGE_NO__";
 
+/* ============ 자동 페이지 나누기 ============
+   한 장은 1240x880 고정이고 .sr-capture .sr-sheet에 overflow:hidden이 걸려 있다.
+   그래서 내용이 넘치면 다음 장으로 가지 않고 그대로 잘려 사라진다(작업유형 09~11 유실 사례).
+   항목 개수로 어림잡아 나누면 글이 길 때 또 잘리고 짧을 때는 빈 공간이 남는다.
+   그래서 화면 밖에 실제와 같은 폭·스타일의 측정용 장을 만들어 두고,
+   블록을 하나씩 넣어 보며 넘치는 순간 다음 장으로 넘긴다.
+   (report.html 화면과 PDF 캡처 모두 CSS가 붙은 뒤에 호출되므로 측정값이 실제와 일치한다) */
+var MEASURE=null;
+function measureBox(){
+  if(MEASURE!==null)return MEASURE;
+  try{
+    if(typeof document==="undefined"||!document.body||!document.createElement)return MEASURE=false;
+    var box=document.createElement("div");
+    box.className="sr-report sr-capture";
+    box.setAttribute("aria-hidden","true");
+    box.style.cssText="position:fixed;left:-30000px;top:0;width:1240px;visibility:hidden;pointer-events:none";
+    box.innerHTML='<section class="sr-sheet" style="height:auto;min-height:0;overflow:visible">'
+      +'<header class="sr-page-head"><div><small>MEASURE</small><h2>측정</h2></div><span class="sr-page-no">00 / 00</span></header>'
+      +'<div class="sr-body" data-measure-body></div></section>';
+    document.body.appendChild(box);
+    var body=box.querySelector("[data-measure-body]");
+    var headEl=box.querySelector(".sr-page-head");
+    if(!body||typeof body.offsetHeight!=="number"||!headEl)return MEASURE=false;
+    var headH=headEl.offsetHeight||96;
+    /* 측정이 실제로 동작하는지 확인한다(가짜 DOM·서버 렌더 환경에서는 항상 0이 나온다). */
+    body.innerHTML='<div style="height:120px"></div>';
+    if(body.offsetHeight<100)return MEASURE=false;
+    return MEASURE={body:body,limit:880-headH};
+  }catch(e){return MEASURE=false}
+}
+function fitsInPage(html){
+  var m=measureBox();
+  if(!m)return true;
+  m.body.innerHTML=html;
+  return m.body.offsetHeight<=m.limit;
+}
+/* 섹션 하나를 필요한 만큼의 장으로 나눠 만든다.
+   cfg = {
+     label, kicker, title, footerText,
+     titleBar: function(range){...},  // 매 장 위에 붙는 섹션 제목줄(범위 표시)
+     blocks: [html],                  // 항목 하나 = 블록 하나. 이 단위로만 페이지가 나뉜다
+     tail: html,                      // 섹션 종합(마지막 장 끝. 안 들어가면 장을 하나 더 만든다)
+     perFallback: n                    // 높이 측정이 불가능한 환경에서 한 장에 담을 개수
+   } */
+function buildPagedSheets(cfg){
+  var m=measureBox();
+  var per=cfg.perFallback||4;
+  var groups=[],i,cur;
+  if(!m){
+    for(i=0;i<cfg.blocks.length;i+=per)groups.push(cfg.blocks.slice(i,i+per));
+  }else{
+    cur=[];i=0;
+    while(i<cfg.blocks.length){
+      cur.push(cfg.blocks[i]);
+      if(cur.length>1&&!fitsInPage(cfg.titleBar("")+cur.join("")+footer(cfg.footerText,NO))){
+        cur.pop();groups.push(cur);cur=[];continue;
+      }
+      i++;
+    }
+    if(cur.length)groups.push(cur);
+  }
+  if(!groups.length)groups=[[]];
+  /* 종합 요약을 마지막 장에 붙여도 되는지 확인한다. */
+  var tailOwnPage=false;
+  if(cfg.tail&&m){
+    var last=groups[groups.length-1];
+    if(!fitsInPage(cfg.titleBar("")+last.join("")+cfg.tail+footer(cfg.footerText,NO)))tailOwnPage=true;
+  }
+  var out=[],done=0,multi=groups.length+(tailOwnPage?1:0)>1;
+  groups.forEach(function(g,gi){
+    var range=(cfg.blocks.length&&groups.length>1)?((done+1)+"–"+(done+g.length)+" / "+cfg.blocks.length):"";
+    done+=g.length;
+    var inner=cfg.titleBar(range)+g.join("");
+    if(cfg.tail&&!tailOwnPage&&gi===groups.length-1)inner+=cfg.tail;
+    out.push(sheet(multi?cfg.label+(out.length+1):cfg.label,
+      head(cfg.kicker,cfg.title,NO)+'<div class="sr-body">'+inner+footer(cfg.footerText,NO)+'</div>'));
+  });
+  if(tailOwnPage){
+    out.push(sheet(cfg.label+(out.length+1),
+      head(cfg.kicker,cfg.title,NO)+'<div class="sr-body">'+cfg.tail+footer(cfg.footerText,NO)+'</div>'));
+  }
+  return out;
+}
+
 /* ---------- 01 표지 ---------- */
 function coverPriorityPhotos(s,p){
   var acc=s.accidents||[],findings=s.findings||[],list=[];
@@ -434,53 +518,112 @@ function sheetRoute(s){
 }
 
 /* ---------- 03 작업유형별 상태 ---------- */
-function sheetWorkTypes(s){
-  var works=s.work||[];
-  var map={};
-  (s.findings||[]).forEach(function(f){
-    if(f.category!=="작업점검")return;
-    if(!map[f.area])map[f.area]=[];
-    map[f.area].push(f);
+/* 작업유형 하나의 위험등급(상/중/하)을 매긴다.
+   건수만 보면 "미흡 1건"이 전부 같아 보이지만, 이 매장에서 실제로 사고가 났던 재해유형이면
+   같은 1건도 훨씬 위험하다. 그래서 아래 신호를 합산해 등급을 낸다.
+     미흡 건수            건당 1
+     넘어짐·근골격계      건당 +1.5  (실제 사고 비율 최상위 두 유형)
+     이 매장 사고이력과 같은 재해유형  +3
+     입고 인력부담 위험   +3(심각) / +1(경미)
+     스트레칭 없이 작업 시작          +1.5
+   합계 5 이상 상 · 2.5 이상 중 · 그 아래 하.
+   반환: [등급, 색상클래스, 판정근거 문장] */
+function workRiskGrade(s,w){
+  if(w.status==="na")return["해당없음","none","해당 작업 없음"];
+  var list=findingsOf(s,"작업점검").filter(function(f){return f.area===w.name});
+  if(!list.length)return["하","good","확인된 미흡사항 없음"];
+  var why=[],score=list.length;
+  var hz=w.hazards||[];
+  var heavy=hz.filter(function(h){return h==="넘어짐"||h==="근골격계"});
+  if(heavy.length){score+=1.5*heavy.length;why.push(heavy.join("·")+" 위험요인")}
+  /* 이 매장 사고이력과 같은 재해유형이면 재발 가능성이 실제로 확인된 것이다. */
+  var accTypes=(s.accidents||[]).map(function(a){return String(a.type||"")}).filter(Boolean);
+  var match=hz.filter(function(h){
+    return accTypes.some(function(t){return t.indexOf(h)>=0||h.indexOf(t)>=0});
   });
-  var riskN=works.filter(function(w){return +w.risk>0}).length;
-  var naN=works.filter(function(w){return w.status==="na"}).length;
-  var lb=s.inboundLabor,gap=s.tbmStretchGap;
-
-  var h=head("WORK TYPE STATUS","작업유형별 상태",NO)+'<div class="sr-body">'
-    +'<div class="sr-section-title"><div><small>SUMMARY</small><h2>'+works.length+'개 작업유형 점검결과</h2></div>'
-    +'<span>관리필요 '+riskN+' · 해당없음 '+naN+' · 양호 '+(works.length-riskN-naN)+'</span></div>'
-    +'<table class="sr-findings"><thead><tr><th style="width:180px">작업유형</th><th>확인 결과</th><th style="width:120px">상태</th></tr></thead><tbody>';
-
-  works.forEach(function(w,i){
-    var list=map[w.name]||[];
-    var state=w.status==="na"?["해당없음","none"]:(+w.risk>0?["관리필요","warn"]:["양호","good"]);
-    var note;
-    if(w.status==="na")note="해당 작업 없음";
-    else if(!list.length)note="특이사항 없음";
-    else note=list.map(function(f){return esc(f.title)}).join(" · ");
-    /* 입고·하차는 인력부담·TBM 선행 측정 결과를 같은 줄에 함께 보여준다(판정 근거 노출). */
-    if(w.name==="입고·하차"){
-      var extra=[];
-      if(inboundFacts(s))extra.push(inboundFacts(s));
-      if(lb)extra.push("입고 인력부담 "+(lb.level==="good"?"양호":(lb.level==="severe"?"위험(심각)":"위험(경미)"))
-        +"(평균 "+lb.avgPeople+"명 · 공백 "+lb.gapRatioPct+"%)");
-      if(gap&&gap.gapMinutes>0)extra.push("TBM보다 "+gap.gapMinutes+"분 먼저 시작");
-      if(extra.length)note+='<div class="sr-sub">'+esc(extra.join(" · "))+'</div>';
-      if(lb&&lb.level==="severe")state=["위험","risk"];
-    }
-    h+='<tr><td>'+pad2(i+1)+' '+esc(w.name)+'</td><td>'+note
-      +hazPills(w.hazards||[])+'</td><td>'+dot(state[1]==="none"?"":state[1])+esc(state[0])+'</td></tr>';
-  });
-
-  h+='</tbody></table>';
-  if(lb){
-    h+='<div class="sr-note'+(lb.level==="good"?" info":"")+'"><b>입고 인력부담 측정</b> — '
-      +(inboundFacts(s)?esc(inboundFacts(s))+' · ':'')+'평균 투입인원 '+lb.avgPeople+'명, 도우미 공백비율 '+lb.gapRatioPct+'% → '
-      +(lb.level==="good"?"양호":(lb.level==="severe"?"위험(심각)":"위험(경미)"))
-      +'. 인시(person-minutes) 기준으로 자동 산출되며 근골격계 위험신호에 반영됩니다.</div>';
+  if(match.length){score+=3;why.push("이 매장 "+match.join("·")+" 사고이력과 동일")}
+  if(w.name==="입고·하차"){
+    var lb=s.inboundLabor,gap=s.tbmStretchGap;
+    if(lb&&lb.level==="severe"){score+=3;why.push("입고 인력부담 위험(심각) · 평균 "+lb.avgPeople+"명")}
+    else if(lb&&lb.level==="minor"){score+=1;why.push("입고 인력부담 위험(경미) · 평균 "+lb.avgPeople+"명")}
+    if(gap&&gap.gapMinutes>0){score+=1.5;why.push("스트레칭 없이 "+gap.gapMinutes+"분 먼저 작업 시작")}
   }
-  h+=footer("양호 항목은 요약하고 위험·미흡 항목을 중심으로 기재",NO)+'</div>';
-  return sheet("작업유형",h);
+  var grade=score>=5?["상","risk"]:(score>=2.5?["중","warn"]:["하","good"]);
+  if(!why.length)why.push(list.length+"건 미흡");
+  return [grade[0],grade[1],why.join(" · ")];
+}
+/* 작업유형 한 개 = 카드 한 블록. 이 단위로만 페이지가 나뉘므로 카드가 쪼개지지 않는다. */
+function workCard(s,w,idx){
+  var g=workRiskGrade(s,w);
+  var list=findingsOf(s,"작업점검").filter(function(f){return f.area===w.name});
+  var note=w.status==="na"?"해당 작업 없음":(list.length?list.map(function(f){return esc(f.title)}).join(" · "):"특이사항 없음");
+  /* 사진은 그 작업유형 미흡에 붙은 것만, 최대 3장까지 같은 카드에 함께 싣는다. */
+  var photos=[];
+  list.forEach(function(f){
+    (f.photos||[]).forEach(function(p){if(p&&p.dataUrl&&photos.length<3)photos.push(p)});
+  });
+  var h='<div class="sr-wcard '+g[1]+'">'
+    +'<div class="sr-wcard-head"><b>'+pad2(idx+1)+' '+esc(w.name)+'</b>'
+    +'<span class="sr-wgrade '+g[1]+'">'+(g[1]==="none"?"":"위험 ")+esc(g[0])+'</span></div>'
+    +'<p class="sr-wcard-note">'+note+'</p>'
+    +'<p class="sr-wcard-why">'+esc(g[2])+'</p>';
+  if((w.hazards||[]).length)h+=hazPills(w.hazards);
+  /* 입고·하차는 판정 근거가 되는 측정 원본값을 함께 남긴다. */
+  if(w.name==="입고·하차"&&inboundFacts(s))h+='<p class="sr-wcard-facts">'+esc(inboundFacts(s))+'</p>';
+  if(photos.length){
+    h+='<div class="sr-wcard-photos">';
+    photos.forEach(function(p,pi){h+=photoBox([p],pad2(idx+1)+" "+w.name+" "+(pi+1),"첨부된 사진 없음")});
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+/* 섹션 종합. 어떤 작업이 위험한지와 이 매장에서 반복되는 재해유형을 한 번에 정리한다. */
+function workTail(s){
+  var works=s.work||[];
+  var high=[],mid=[];
+  works.forEach(function(w,i){
+    var g=workRiskGrade(s,w);
+    if(g[1]==="risk")high.push(pad2(i+1)+" "+w.name);
+    else if(g[1]==="warn")mid.push(pad2(i+1)+" "+w.name);
+  });
+  var hz={};
+  findingsOf(s,"작업점검").forEach(function(f){(f.hazards||[]).forEach(function(x){hz[x]=(hz[x]||0)+1})});
+  var top=Object.keys(hz).sort(function(a,b){return hz[b]-hz[a]}).slice(0,4)
+    .map(function(k){return k+" "+hz[k]+"건"});
+  var h='<div class="sr-section-title"><div><small>KEY POINT</small><h2>작업점검 종합</h2></div>'
+    +'<span>위험 '+high.length+' · 주의 '+mid.length+' · 양호 '+(works.length-high.length-mid.length)+'</span></div>'
+    +'<div class="sr-wsum">';
+  h+='<div class="'+(high.length?"risk":"")+'"><small>즉시 관리가 필요한 작업</small><b>'
+    +(high.length?esc(high.join(" · ")):"없음")+'</b></div>';
+  h+='<div class="'+(mid.length?"warn":"")+'"><small>주의 관찰이 필요한 작업</small><b>'
+    +(mid.length?esc(mid.join(" · ")):"없음")+'</b></div>';
+  h+='<div><small>이 매장에서 많이 나온 재해유형</small><b>'
+    +(top.length?esc(top.join(" · ")):"확인된 위험요인 없음")+'</b></div>';
+  h+='</div>';
+  if(high.length){
+    h+='<div class="sr-note"><b>'+esc(high[0].replace(/^\d+\s/,""))+'</b>부터 조치해 주세요. '
+      +'위험등급은 미흡 건수뿐 아니라 이 매장 사고이력·측정된 작업부담을 함께 반영한 결과입니다.</div>';
+  }
+  return h;
+}
+function sheetsWorkTypes(s){
+  var works=s.work||[];
+  if(!works.length)return [];
+  var high=0,mid=0;
+  works.forEach(function(w){var g=workRiskGrade(s,w);if(g[1]==="risk")high++;else if(g[1]==="warn")mid++});
+  return buildPagedSheets({
+    label:"작업유형",
+    kicker:"WORK TYPE STATUS",
+    title:"작업유형별 현황",
+    footerText:"위험등급은 미흡 건수·재해유형·이 매장 사고이력을 함께 반영",
+    titleBar:function(range){
+      return '<div class="sr-section-title"><div><small>SUMMARY</small><h2>'+works.length+'개 작업유형 점검결과</h2></div>'
+        +'<span>'+(range?esc(range)+" · ":"")+'위험 '+high+' · 주의 '+mid+' · 양호 '+(works.length-high-mid)+'</span></div>';
+    },
+    blocks:works.map(function(w,i){return workCard(s,w,i)}),
+    tail:workTail(s),
+    perFallback:3
+  });
 }
 
 /* ---------- 04 위험분석 ---------- */
@@ -799,7 +942,8 @@ function sheetFollowup(s){
 /* ---------- 09 사진증빙 (4건/장, 자동증가) ---------- */
 function sheetsEvidence(s){
   var items=[];
-  (s.findings||[]).forEach(function(f){
+  /* 작업점검 사진은 작업유형 카드 안에 이미 실렸으므로 여기서 또 싣지 않는다. */
+  (s.findings||[]).filter(function(f){return f.category!=="작업점검"}).forEach(function(f){
     items.push({photos:f.photos,label:f.category,title:f.title,
       sub:[f.category,f.area&&f.area!==f.category?f.area:"",dateDot(s.store.date)].filter(Boolean).join(" · ")});
   });
@@ -855,7 +999,8 @@ function buildSheets(s){
   }
   list.push(sheetCover(s));
   list.push(sheetRoute(s));
-  list.push(sheetWorkTypes(s));
+  /* 작업유형은 항목마다 사진과 위험등급이 붙어 분량이 크다. 필요한 만큼 장이 자동으로 늘어난다. */
+  list=list.concat(sheetsWorkTypes(s));
   list.push(sheetRiskAnalysis(s));
   list=list.concat(sheetsVoice(s));
   list=list.concat(sheetsAccident(s));   /* 사고이력 없으면 통째로 생략 */

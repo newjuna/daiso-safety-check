@@ -142,6 +142,34 @@ body{margin:0;background:#eef1f5}
 /* 사진이 없는 항목은 점선 안내 박스로 자리를 유지한다(요구사항). */
 .sr-report .sr-photo.empty{background:repeating-linear-gradient(135deg,#e8eaee,#e8eaee 9px,#f2f3f5 9px,#f2f3f5 18px);border:2px dashed #b9bec6;color:#82868e}
 
+/* ===== 작업유형 카드 (항목별 위험등급 + 사진) =====
+   표 대신 카드로 둔 이유: 사진을 항목 안에 함께 넣어야 하고,
+   페이지를 나눌 때 한 항목이 두 장에 걸쳐 쪼개지지 않아야 한다. */
+.sr-report .sr-wcard{padding:13px 15px;margin-bottom:9px;background:var(--sr-soft);border-left:4px solid var(--sr-line)}
+.sr-report .sr-wcard.risk{border-left-color:var(--sr-red);background:var(--sr-red-soft)}
+.sr-report .sr-wcard.warn{border-left-color:var(--sr-orange)}
+.sr-report .sr-wcard.good{border-left-color:var(--sr-green)}
+.sr-report .sr-wcard.none{opacity:.62}
+.sr-report .sr-wcard-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sr-report .sr-wcard-head b{font-size:14px;font-weight:500}
+.sr-report .sr-wgrade{flex:none;padding:4px 11px;border-radius:999px;font-size:10px;background:var(--sr-line);color:var(--sr-muted)}
+.sr-report .sr-wgrade.risk{background:var(--sr-red);color:#fff}
+.sr-report .sr-wgrade.warn{background:var(--sr-orange);color:#fff}
+.sr-report .sr-wgrade.good{background:var(--sr-green-soft);color:var(--sr-green)}
+.sr-report .sr-wcard-note{margin:6px 0 0;font-size:12px;line-height:1.5}
+.sr-report .sr-wcard-why{margin:4px 0 0;font-size:10px;line-height:1.45;color:var(--sr-muted)}
+.sr-report .sr-wcard-facts{margin:4px 0 0;font-size:9px;line-height:1.45;color:var(--sr-muted)}
+.sr-report .sr-wcard .sr-hazards{margin-top:6px}
+.sr-report .sr-wcard-photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:9px}
+.sr-report .sr-wcard-photos .sr-photo{height:132px}
+/* 작업점검 종합(섹션 끝 키포인트) */
+.sr-report .sr-wsum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.sr-report .sr-wsum>div{padding:11px 13px;background:var(--sr-soft);border-top:3px solid var(--sr-line)}
+.sr-report .sr-wsum>div.risk{border-top-color:var(--sr-red)}
+.sr-report .sr-wsum>div.warn{border-top-color:var(--sr-orange)}
+.sr-report .sr-wsum small{display:block;font-size:9px;color:var(--sr-muted)}
+.sr-report .sr-wsum b{display:block;margin-top:5px;font-size:12px;font-weight:500;line-height:1.45}
+
 /* ===== 상세결과 표 ===== */
 .sr-report .sr-findings{width:100%;border-collapse:collapse}
 .sr-report .sr-findings th{text-align:left;color:var(--sr-muted);font-size:10px;font-weight:400;padding:10px;border-bottom:2px solid var(--sr-ink)}
@@ -210,7 +238,9 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-field-row b{font-weight:500}.sr-report .sr-field-row span{color:var(--sr-red);text-align:right}.sr-report .sr-field-row.good span{color:var(--sr-green)}.sr-report .sr-field-row.watch span{color:var(--sr-orange)}
 .sr-report .sr-priority-title{margin-top:11px}
 .sr-report .sr-cover-risk-note{margin-top:10px;padding:13px 15px;background:linear-gradient(135deg,#eef2f9,#f7f8fb);border-left:4px solid var(--sr-navy)}
-.sr-report .sr-cover-risk-note small{display:block;font-size:8px;color:var(--sr-red);letter-spacing:.08em}.sr-report .sr-cover-risk-note b{display:block;margin:4px 0;font-size:15px;font-weight:500;line-height:1.28}.sr-report .sr-cover-risk-note p{margin:0;font-size:8px;line-height:1.5;color:var(--sr-muted)}
+/* 이 박스는 배경을 밝은 색으로 직접 지정했으므로 글자색도 변수를 쓰지 않고 함께 고정한다.
+   변수(--sr-ink 등)를 쓰면 다크모드에서 글자가 밝아져 밝은 배경 위에서 보이지 않는다. */
+.sr-report .sr-cover-risk-note small{display:block;font-size:8px;color:#e60033;letter-spacing:.08em}.sr-report .sr-cover-risk-note b{display:block;margin:4px 0;font-size:15px;font-weight:500;line-height:1.28;color:#13245a}.sr-report .sr-cover-risk-note p{margin:0;font-size:8px;line-height:1.5;color:#5a616e}
 .sr-report .sr-cover-facts{display:grid;gap:4px;margin-top:9px;padding:10px 12px;border:1px solid var(--sr-line);font-size:8px}.sr-report .sr-cover-facts b{font-size:9px;font-weight:500;color:var(--sr-navy)}.sr-report .sr-cover-facts span{color:var(--sr-muted)}
 
 .sr-report .sr-footer{display:flex;justify-content:space-between;margin-top:24px;padding-top:12px;border-top:1px solid var(--sr-line);color:var(--sr-muted);font-size:9px}
@@ -298,10 +328,14 @@ body{margin:0;background:#eef1f5}
  .sr-report .sr-evidence figure,.sr-report .sr-photo{break-inside:avoid;page-break-inside:avoid}
 }
 
-/* ===== 다크모드 (화면 보기 전용. 인쇄/캡처는 항상 라이트) ===== */
+/* ===== 다크모드 (화면 보기 전용. 인쇄/캡처는 항상 라이트) =====
+   .sr-capture(PDF 캡처용 컨테이너)는 반드시 제외한다.
+   이 예외가 없으면 점검자 기기가 다크모드일 때 결과보고서 PDF가 검은 배경으로 저장된다.
+   PDF는 인쇄·공유하는 공식 문서라 기기 설정과 무관하게 항상 흰 배경이어야 한다.
+   (html2canvas는 화면에 적용된 스타일을 그대로 캡처하므로 @media print로는 막을 수 없다) */
 @media(prefers-color-scheme:dark){
  body{background:#16181c}
- .sr-report{
+ .sr-report:not(.sr-capture){
    --sr-navy:#6f8ee8; --sr-navy-2:#203a7a; --sr-navy-soft:#202b48;
    --sr-red:#ff496f; --sr-red-soft:#35151d;
    --sr-ink:#f5f5f6; --sr-muted:#aeb2ba; --sr-line:#3b3e45;
@@ -309,5 +343,5 @@ body{margin:0;background:#eef1f5}
    --sr-green:#4fc993; --sr-green-soft:#17382b;
    --sr-orange:#f2a640; --sr-orange-soft:#3a2a12;
  }
- .sr-report .sr-score{background:#0f1114}
+ .sr-report:not(.sr-capture) .sr-score{background:#0f1114}
 }
