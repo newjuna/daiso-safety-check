@@ -652,6 +652,12 @@ button{cursor:pointer}
 .tr-more{position:absolute;inset:0;display:grid;place-items:center;background:rgba(19,36,90,.72);color:#fff;font-size:12px;font-weight:1000}
 .tr-add{aspect-ratio:1/1;border:1.5px dashed #a9bfe4;border-radius:9px;background:#fff;color:var(--p);display:grid;place-items:center;font-size:17px;font-weight:900;cursor:pointer}
 .tr-photo-col.after .tr-add{border-color:#9fd6bb;color:#16845b}
+/* 사진이 없을 때. 그리드를 쓰지 않고 추가 버튼이 칸 전체폭을 채운다. */
+.tr-drop{display:block}
+.tr-add.wide{width:100%;aspect-ratio:auto;min-height:96px;gap:3px;align-content:center}
+.tr-add.wide b{font-size:20px;font-weight:900;line-height:1}
+.tr-add.wide small{font-size:10px;font-weight:850;color:var(--muted)}
+.tr-pair-col.after .tr-add.wide small{color:#4f8a72}
 .tr-add:active{background:#f1f4fa}
 .tr-none{grid-column:1/-1;padding:9px 0;text-align:center;color:var(--muted);font-size:10px;font-weight:850}
 
@@ -664,6 +670,14 @@ button{cursor:pointer}
 .tr-facts>span{display:flex;align-items:baseline;gap:4px;min-width:0;padding:3px 7px;border-radius:8px;background:#fff;border:1px solid var(--line)}
 .tr-facts small{flex:none;font-size:9px;font-weight:800;color:var(--muted)}
 .tr-facts b{font-size:11px;font-weight:900;overflow-wrap:anywhere}
+
+/* 읽기만 하는 과거 사고 내용(7)과 현장 확인 버튼(3)을 좌우로 붙여 위쪽 높이를 줄인다. */
+.tr-top{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,3fr);gap:8px;align-items:stretch}
+.tr-top>.tr-past{margin:0}
+.tr-observe.col{flex-direction:column;align-items:stretch;justify-content:center;gap:7px;text-align:center}
+.tr-observe.col>span{font-size:11px;line-height:1.35}
+.tr-observe.col .tr-observe-btns{display:grid;grid-template-columns:minmax(0,1fr);gap:5px}
+.tr-observe.col .tr-observe-btns button{width:100%;padding:0 6px}
 
 /* 조치 상태는 현장 확인 줄 바로 아래에 같은 모양의 작은 버튼으로 둔다.
    이 버튼이 아래 사진·내용 칸을 1칸 → 2칸으로 바꾸는 스위치다. */
@@ -718,6 +732,7 @@ button{cursor:pointer}
   .tr-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
   /* 한 칸일 때는 전체폭을 쓰므로 3열을 유지해 썸네일이 지나치게 커지지 않게 한다. */
   .tr-pair:not(.two) .tr-strip{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .tr-add.wide{min-height:86px}
   .tr-finish{grid-template-columns:1fr}
   .tr-finish>span{text-align:center}
 }
