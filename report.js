@@ -83,7 +83,9 @@ function categoryStates(s){
   if(s.tbmStretchGap&&s.tbmStretchGap.level==="severe")st.tbm=["위험","risk"];
   else if(s.tbmStretchGap&&s.tbmStretchGap.level==="minor"&&st.tbm[1]==="good")st.tbm=["관리필요","warn"];
   if((s.tbmCrossCheckFlags||[]).length)st.tbm=["위험","risk"];
-  if(st.accident&&(s.accidents||[]).some(function(a){return a.status==="미조치"||a.riskLevel==="상"}))st.accident=["위험","risk"];
+  /* 확인 못한 건은 "위험"으로 내리지 않는다. 매장 상태를 나쁘게 본 게 아니라
+     이번 방문에 못 본 것이므로, 점수에서 빠지고 상태는 "확인필요"로 남는다. */
+  if(st.accident&&(s.accidents||[]).some(function(a){return a.status!=="확인 못함"&&(a.status==="미조치"||a.riskLevel==="상")}))st.accident=["위험","risk"];
   /* 미흡이 실제로 있는 분야는 최소 '관리필요'로 내린다(건수는 적어도 현장에서 조치가 필요하므로). */
   if(countFindings(s,"사다리")&&st.ladder[1]==="good")st.ladder=["관리필요","warn"];
   if(countFindings(s,"공통·시설")&&st.common[1]==="good")st.common=["관리필요","warn"];
@@ -624,7 +626,8 @@ function rankAccident(a){
   var r=0;
   if(a.status==="미조치")r+=10;
   if(a.riskLevel==="상")r+=5;
-  if(a.status==="개선 진행 중")r+=3;
+  /* 확인 못한 건도 다음 방문에 다시 봐야 하므로 뒤로 밀리지 않게 조금 올린다. */
+  if(a.status==="확인 못함")r+=3;
   if(a.approved==="Y")r+=1;
   return r;
 }
@@ -681,6 +684,8 @@ function sectionStateTable(s,st){
   var gap=s.tbmStretchGap;
   var acc=s.accidents||[];
   var open=acc.filter(function(a){return a.status==="미조치"}).length;
+  /* 확인 못한 건은 미조치와 따로 센다. 점수에서 빠진 건이 몇 건인지 근거로 보여준다. */
+  var unseenAcc=acc.filter(function(a){return a.status==="확인 못함"}).length;
   var rows=[
     ["작업점검",findingsOf(s,"작업점검").length+"건 미흡",st.work],
     ["사다리",(sec.ladder||0)+"건 미흡"+(highRiskOwned(s).length?" · 고위험 유형 보유":""),st.ladder],
@@ -688,7 +693,8 @@ function sectionStateTable(s,st){
     ["소방",(sec.fire||0)+"건 미흡",st.fire],
     ["TBM",((sec.tbm||0)?sec.tbm+"건 미흡":"전 항목 양호")+" · "+(s.tbmConfirmMethod||"-")+(gap&&gap.gapMinutes>0?" · 입고 "+gap.gapMinutes+"분 선행":""),st.tbm]
   ];
-  if(st.accident)rows.push(["사고 재발방지",acc.length+"건 중 "+open+"건 미조치",st.accident]);
+  if(st.accident)rows.push(["사고 재발방지",acc.length+"건 중 "+open+"건 미조치"
+    +(unseenAcc?" · "+unseenAcc+"건 확인 못함(점수 제외)":""),st.accident]);
   var h='<div class="sr-section-title"><div><small>SECTION STATUS</small><h2>분야별 상태 및 판정 근거</h2></div>'
     +'<span>점수 대신 상태 4단계(우수·양호·관리필요·위험)로 표기</span></div>'
     +'<table class="sr-findings"><thead><tr><th style="width:150px">분야</th><th>판정 근거</th><th style="width:110px">상태</th></tr></thead><tbody>';
@@ -696,6 +702,22 @@ function sectionStateTable(s,st){
     h+='<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td>'+dot(r[2][1])+esc(r[2][0])+'</td></tr>';
   });
   return h+'</tbody></table>';
+}
+
+/* 조치확인 표의 "현재 상태 / 조치결과" 칸을 만든다. 두 곳(조치계획 장·재점검 장)에서 함께 쓴다.
+   · 현재 상태 문구가 지적사항 제목과 똑같으면(자동 기입값을 그대로 둔 경우) 왼쪽 칸과 겹치므로
+     다시 쓰지 않는다.
+   · 조치문구는 상태에 따라 "조치내용"과 "조치계획"으로 나눠 붙인다. 미조치인데 조치 문장만
+     덩그러니 보이면 상태 칸과 어긋나 보이기 때문이다(사고조사 장과 같은 방식). */
+function followupStateCell(t,unseenNote){
+  if(t.notObserved){
+    return esc("이번 방문 확인 못함")+'<div class="sr-sub">'+esc(unseenNote||"다음 방문 재확인")+'</div>';
+  }
+  var state=t.currentState||"";
+  var sameAsTitle=state&&state===t.title;
+  var label=t.status==="조치완료"?"조치내용":"조치계획";
+  return (sameAsTitle?"":esc(state||"-"))
+    +'<div class="sr-sub">'+esc(label+": "+(t.actionText||"-"))+'</div>';
 }
 
 /* ---------- 08 개선조치 계획 (+ 사다리 보유현황 / 지난 지적사항) ---------- */
@@ -737,14 +759,14 @@ function sheetPlan(s){
     });
   }
 
-  /* 지난 지적사항 조치확인 — 사진 데이터가 없는 구조이므로 장부형 목록으로 표시한다. */
+  /* 지난 지적사항 조치확인 — 사진은 뒤쪽 사진증빙 장에서 따로 싣고, 여기서는 장부형 목록으로 정리한다. */
   if((s.tasks||[]).length){
     h+='<div class="sr-section-title"><div><small>FOLLOW-UP</small><h2>지난 지적사항 조치확인</h2></div>'
       +'<span>'+(s.tasks||[]).length+'건</span></div>'
-      +'<table class="sr-findings"><thead><tr><th style="width:250px">지적사항</th><th>현재 상태 / 조치내용</th><th style="width:110px">상태</th></tr></thead><tbody>';
+      +'<table class="sr-findings"><thead><tr><th style="width:250px">지적사항</th><th>현재 상태 / 조치결과</th><th style="width:110px">상태</th></tr></thead><tbody>';
     (s.tasks||[]).forEach(function(t){
       h+='<tr><td>'+esc(t.title)+'<div class="sr-sub">'+dateDot(t.date)+'</div></td>'
-        +'<td>'+esc(t.notObserved?"이번 방문 확인 못함":(t.currentState||"-"))+'<div class="sr-sub">'+esc(t.notObserved?"다음 방문 재확인":(t.actionText||"-"))+'</div></td>'
+        +'<td>'+followupStateCell(t)+'</td>'
         +'<td>'+dot(t.status==="조치완료"?"good":"warn")+esc(t.notObserved?"확인 못함":(t.status||"-"))+'</td></tr>';
     });
     h+='</tbody></table>';
@@ -766,7 +788,7 @@ function sheetFollowup(s){
     +'<table class="sr-findings"><thead><tr><th style="width:250px">지적사항</th><th>현재 상태 / 조치내용</th><th style="width:110px">결과</th></tr></thead><tbody>';
   list.forEach(function(t){
     h+='<tr><td>'+esc(t.title)+'<div class="sr-sub">최초 지적 '+dateDot(t.date)+'</div></td>'
-      +'<td>'+esc(t.notObserved?"이번 방문 확인 못함":(t.currentState||"-"))+'<div class="sr-sub">'+esc(t.notObserved?"미조치 유지 · 다음 방문 재확인":(t.actionText||"-"))+'</div></td>'
+      +'<td>'+followupStateCell(t,"미조치 유지 · 다음 방문 재확인")+'</td>'
       +'<td>'+dot(t.status==="조치완료"?"good":"warn")+esc(t.notObserved?"확인 못함":(t.status||"미조치"))+'</td></tr>';
   });
   if(!list.length)h+='<tr><td colspan="3">재점검 대상 지적사항이 없습니다.</td></tr>';
@@ -787,14 +809,19 @@ function sheetsEvidence(s){
     items.push({photos:a.afterPhotos,label:"사고조사 조치 후",title:(a.type||"사고")+" 조치 후",
       sub:"사고조사 · "+(a.status||"확인 전")+" · "+dateDot(a.date)});
   });
-  if(s.followupOnly)(s.tasks||[]).forEach(function(t){
-    if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"과거 지적사진",title:t.title,sub:"재점검 참고자료"});
-    if((t.afterPhotos||[]).length)items.push({photos:t.afterPhotos,label:"조치 후 사진",title:t.title,sub:t.notObserved?"확인 못함":"조치결과 증빙"});
-  });
-  (s.tasks||[]).forEach(function(t){
-    if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"지난 지적 조치 전",title:t.title+" 조치 전",sub:"조치확인 · 조치 전"});
-    if((t.afterPhotos||[]).length)items.push({photos:t.afterPhotos,label:"지난 지적 조치 후",title:t.title+" 조치 후",sub:"조치확인 · 조치 후"});
-  });
+  /* 조치확인 사진은 한 번만 싣는다. 예전에는 재점검 전용 모드에서 아래 블록까지 함께 실행돼
+     같은 사진이 두 번 들어가고 사진증빙 페이지가 두 배로 늘어났다. */
+  if(s.followupOnly){
+    (s.tasks||[]).forEach(function(t){
+      if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"과거 지적사진",title:t.title,sub:"재점검 참고자료"});
+      if((t.afterPhotos||[]).length)items.push({photos:t.afterPhotos,label:"조치 후 사진",title:t.title,sub:t.notObserved?"확인 못함":"조치결과 증빙"});
+    });
+  }else{
+    (s.tasks||[]).forEach(function(t){
+      if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"지난 지적 조치 전",title:t.title+" 조치 전",sub:"조치확인 · 조치 전"});
+      if((t.afterPhotos||[]).length)items.push({photos:t.afterPhotos,label:"지난 지적 조치 후",title:t.title+" 조치 후",sub:"조치확인 · 조치 후"});
+    });
+  }
   if(!items.length)return [];
 
   var withPhoto=items.filter(function(x){return (x.photos||[]).some(function(p){return p&&p.dataUrl})}).length;
