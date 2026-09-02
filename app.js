@@ -1874,6 +1874,33 @@ function accidentActionDraft(x,status){
   if(status==='미조치')return action.replace(/합니다\.$/,'할 예정입니다.');
   return action;
 }
+/* 사고조사 카드 안의 작은 사진 줄.
+   which: 'before'(현재 상태 사진) | 'after'(조치 후 사진)
+   조치확인 카드와 똑같은 tr- 스타일을 쓴다. 사고조사는 과거 사진이 없고
+   현장에서 찍는 사진만 있으므로 좌우 분리는 하지 않고 한 칸만 쓴다.
+   썸네일은 2장까지만 보이고 나머지는 +N으로 접어서 카드를 짧게 유지한다. */
+function accStrip(i,which){
+  var x=S.accidents[i];if(!x)return'';
+  var files=(which==='after'?x.afterFiles:x.beforeFiles)||[];
+  var kind=which==='after'?'accidentAfter':'accidentBefore';
+  var field=which==='after'?'afterFiles':'beforeFiles';
+  var visible=Math.min(files.length,2);
+  var h='<div class="tr-strip">';
+  for(var j=0;j<visible;j++){
+    var f=files[j],p=(f&&f.id)?PHOTO_STORE.get(f.id):null;
+    var thumb=p?('<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">'):'<span class="tr-fallback">📷</span>';
+    var more=(j===visible-1&&files.length>visible)?'<span class="tr-more">+'+(files.length-visible)+'</span>':'';
+    h+='<button class="tr-thumb" onclick="openEvidenceGallery(\''+kind+'\',\''+i+'\')" aria-label="사진 크게 보기">'+thumb+more+'</button>';
+  }
+  var inputId='accphoto-'+which+'-'+i;
+  h+='<label class="tr-add" for="'+inputId+'" title="사진 추가">＋</label></div>';
+  h+='<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\''+field+'\',this)">';
+  return h;
+}
+/* 사고조사 카드.
+   모바일에서 세로로 길어지지 않도록 STEP 박스를 없애고 한 흐름으로 압축했다.
+     과거 사고 내용(원본 요약) → 현장 확인 여부 → 현재 상태 사진
+     → 유해위험요인(한 줄) → 조치 상태 → 조치내용 → (조치완료면) 조치 후 사진 → 완료 */
 function accident(){
   S.screen='accident';
   syncAccidents();
@@ -1897,34 +1924,40 @@ function accident(){
     h+='<button class="acc-accordion-head" onclick="toggleAccidentCard('+i+')"><span><small>'+esc(x.date||'-')+'</small><b>'+esc(x.type||'사고')+'</b><em>'+esc(x.source||'기인물 미등록')+'</em></span><span class="acc-head-state"><i class="risk-dot risk-'+x.riskLevel+'">'+esc(x.riskLevel)+'</i><i>'+(x.status?esc(x.status):'확인 전')+'</i><strong>⌄</strong></span></button>';
     if(!expanded){h+='</div>';continue}
 
-    /* 한 번 펼친 카드 안에서 원본 확인부터 조치 완료까지 끝낸다. */
-    h+='<div class="acc-head review-context">';
-    h+='<div class="acc-head-top"><b>과거 사고 내용</b><span class="pill'+(x.approved==='Y'?' bad':'')+'">'+(x.approved==='Y'?'산재승인':'사고이력')+'</span></div>';
-    h+='<div class="acc-fact-grid"><div><small>재해일자</small><b>'+esc(x.date||'-')+'</b></div><div><small>재해유형</small><b>'+esc(x.type||'-')+'</b></div><div><small>기인물</small><b>'+esc(x.source||'미등록')+'</b></div>';
-    if(x.lostDays)h+='<div><small>근로손실일수</small><b>'+esc(String(x.lostDays))+'일</b></div>';
-    h+='</div><div class="acc-content"><small>사고내용</small><p>'+esc(x.content||'등록된 사고내용이 없습니다.')+'</p></div>';
-    h+='</div>';
+    /* 한 번 펼친 카드 안에서 원본 확인부터 조치 완료까지 끝낸다.
+       조치확인 카드와 같은 압축 레이아웃(tr-)을 공유한다. */
+    h+='<div class="tr-body">';
+    h+='<div class="tr-past acc"><b>과거 사고 내용<span class="tr-tag'+(x.approved==='Y'?' bad':'')+'">'+(x.approved==='Y'?'산재승인':'사고이력')+'</span></b>';
+    h+='<div class="tr-facts"><span><small>재해일</small><b>'+esc(x.date||'-')+'</b></span><span><small>유형</small><b>'+esc(x.type||'-')+'</b></span><span><small>기인물</small><b>'+esc(x.source||'미등록')+'</b></span>';
+    if(x.lostDays)h+='<span><small>손실일수</small><b>'+esc(String(x.lostDays))+'일</b></span>';
+    h+='</div><p>'+esc(x.content||'등록된 사고내용이 없습니다.')+'</p></div>';
 
-    h+='<div class="acc-body single-review-body"><div class="observe-choice"><span><b>이번 방문에 현장을 확인했나요?</b><small>확인하지 못한 사고는 다음 방문에도 다시 표시됩니다.</small></span><button class="'+(x.notObserved?'selected':'')+'" onclick="setAccidentNotObserved('+i+','+(!x.notObserved)+')">'+(x.notObserved?'현장 확인으로 변경':'이번에는 확인 못함')+'</button></div>';
+    /* 현장 확인 여부는 한 줄 2버튼으로 줄인다. */
+    h+='<div class="tr-observe"><span>이번 방문 현장 확인</span><div class="tr-observe-btns">'
+      +'<button class="'+(x.notObserved?'':'sel')+'" onclick="setAccidentNotObserved('+i+',false)">확인함</button>'
+      +'<button class="'+(x.notObserved?'sel warn':'')+'" onclick="setAccidentNotObserved('+i+',true)">확인 못함</button>'
+      +'</div></div>';
+
     if(x.notObserved){
-      h+='<div class="not-observed-note"><i>↻</i><span><b>이번 방문에는 확인하지 못한 항목입니다.</b><small>미조치 상태로 유지되어 다음 재방문 때 다시 확인할 수 있습니다.</small></span></div>';
+      h+='<div class="tr-note"><i>↻</i><span>이번 방문에는 확인하지 못했습니다. 미조치로 유지되어 다음 방문에 다시 표시됩니다.</span></div>';
     }else{
-    h+='<section class="review-step"><div class="review-step-title"><i>1</i><span><b>현재 상태 확인</b><small>사진과 위험요인을 함께 확인하세요.</small></span></div><div class="review-current-grid"><div class="action-photo-area flat"><div class="action-photo-head"><b>현재 상태 사진</b><span>촬영·앨범에서 추가</span></div>'+renderLimitedPhotoList(x.beforeFiles,'accidentBefore',i)+'</div>';
-    h+='<div class="field review-grow"><label>유해위험요인 <small>자동 생성 · 수정 가능</small></label><textarea onchange="setAccidentText('+i+',\u0027hazardText\u0027,this.value)">'+esc(x.hazardText)+'</textarea></div></div></section>';
-    h+='<section class="review-step"><div class="review-step-title"><i>2</i><span><b>조치 내용 기록</b><small>현재 상태를 고르면 기본 문구가 입력됩니다.</small></span></div>';
-    h+='<div class="field"><label>현재 조치 상태</label><div class="form-status3 accident-status2">';
-    ['미조치','조치완료'].forEach(function(st){
-      var cls=st==='조치완료'?'status-done':'status-none';
-      h+='<button class="'+cls+(x.status===st?' sel':'')+'" onclick="setAccidentStatus('+i+',\u0027'+st+'\u0027)">'+st+'</button>';
-    });
+      h+='<div class="tr-photos single"><div class="tr-photo-col now"><label><b>현재 상태 사진</b><i>'+(x.beforeFiles||[]).length+'장</i></label>'+accStrip(i,'before')+'</div></div>';
+      h+='<div class="tr-line"><label>유해위험요인 <span class="req">*</span> <small>자동 생성 · 수정 가능</small></label>'
+        +'<input class="tr-input" placeholder="현장에서 확인한 위험요인을 한 줄로" value="'+esc(x.hazardText)+'" onchange="setAccidentText('+i+',\'hazardText\',this.value)"></div>';
+      h+='<div class="tr-line"><label>조치 상태</label><div class="tr-status">'
+        +'<button class="none'+(x.status==='미조치'?' sel':'')+'" onclick="setAccidentStatus('+i+',\'미조치\')">미조치</button>'
+        +'<button class="done'+(x.status==='조치완료'?' sel':'')+'" onclick="setAccidentStatus('+i+',\'조치완료\')">조치완료</button>'
+        +'</div></div>';
+      if(x.status)h+='<div class="tr-line"><label>'+(x.status==='조치완료'?'조치내용':'조치계획')+' <span class="req">*</span></label>'
+        +'<textarea class="tr-mini" placeholder="재발방지를 위해 실시하거나 예정한 조치를 간단히" onchange="setAccidentText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea></div>';
+      if(x.status==='조치완료'){
+        h+='<div class="tr-photo-col after"><label><b>조치 후 사진 <span class="req">*</span></b><i>'+(x.afterFiles||[]).length+'장</i></label>'+accStrip(i,'after')+'</div>';
+      }
+    }
+
+    h+='<div class="tr-finish"><span>'+(ok?'✓ 이 항목은 작성 완료되었습니다.':(x.notObserved?'확인 못함으로 기록하고 다음 항목으로 이동합니다.':'필수 내용을 확인한 뒤 완료해 주세요.'))+'</span>'
+      +'<button class="acc-complete" onclick="completeAccident('+i+')">'+(ok?'완료 내용 저장':(x.notObserved?'확인 못함으로 완료':'이 사고조사 완료'))+'</button></div>';
     h+='</div></div>';
-    if(x.status)h+='<div class="field"><label>'+(x.status==='조치완료'?'조치내용':'조치계획')+' <small>자동 생성 · 수정 가능</small></label><textarea onchange="setAccidentText('+i+',\u0027actionText\u0027,this.value)" placeholder="재발방지를 위해 실시하거나 예정한 조치를 적어 주세요.">'+esc(x.actionText)+'</textarea></div>';
-    if(x.status==='조치완료'){
-      h+='<div class="action-photo-area flat after"><div class="action-photo-head"><b>조치 후 사진 <span class="req">*</span></b><span>조치완료 증빙</span></div>'+renderLimitedPhotoList(x.afterFiles,'accidentAfter',i)+'</div>';
-    }
-    h+='</section>';
-    }
-    h+='<div class="review-finish"><span>'+(ok?'✓ 이 항목은 작성 완료되었습니다.':(x.notObserved?'확인 못함으로 기록하고 다음 항목으로 이동합니다.':'필수 내용을 확인한 뒤 완료해 주세요.'))+'</span><button class="acc-complete" onclick="completeAccident('+i+')">'+(ok?'완료 내용 저장':(x.notObserved?'확인 못함으로 완료':'이 사고조사 완료'))+'</button></div></div></div>';
   }
 
   h+='<div class="navrow">';
