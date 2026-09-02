@@ -2525,7 +2525,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=15','_blank');
+  const win=window.open('report.html?v=16','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2647,7 +2647,7 @@ function loadReportCssOnce(){
   return new Promise((resolve,reject)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report-v12.css';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report-v12.css?v=3';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();
     el.onerror=()=>{
       /* 배포 누락·캐시 문제에 대비해 기존 이름을 한 번 더 시도한다.
