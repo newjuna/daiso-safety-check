@@ -1697,8 +1697,15 @@ function syncTasks(){
   var map={};
   (S.store.openIssues||[]).forEach(function(x,i){
     var key='past|'+i;
+    var past=Array.isArray(x.beforeFiles)?x.beforeFiles:[];
+    /* pastCount는 "서버에서 받아온 과거 사진 장수"다.
+       beforeFiles 앞쪽 pastCount장 = 과거 점검 당시 사진, 그 뒤 = 이번 방문에 새로 찍은 사진.
+       화면에서 과거와 현재를 두 박스로 나눠 보여주기 위한 기준점이며,
+       과거 사진은 UI에서 삭제할 수 없게 해서 이 경계가 절대 흐트러지지 않도록 한다. */
     map[key]={key:key,issueId:x.issueId||'',title:x.title,detail:x.detail||'',source:'지난 지적사항',date:x.date||'',
-              status:'미조치',currentState:'',actionText:'',beforeFiles:Array.isArray(x.beforeFiles)?x.beforeFiles:[],afterFiles:[],notObserved:false,confirmed:false,include:true};
+              /* 원본(S.store.openIssues) 배열을 그대로 쓰면 사진 삭제 시 원본까지 줄어들어
+                 과거/현재 경계가 어긋난다. 반드시 복사해서 넣는다. */
+              status:'미조치',currentState:'',actionText:'',beforeFiles:past.slice(),pastCount:past.length,afterFiles:[],notObserved:false,confirmed:false,include:true};
   });
   /* 점검자가 이미 수정한 값(상태/책임구분/포함여부)은 그대로 유지 */
   var prev={};(S.tasks||[]).forEach(function(t){if(t.key)prev[t.key]=t});
@@ -1706,9 +1713,66 @@ function syncTasks(){
     var task=prev[key]?Object.assign({},map[key],prev[key]):map[key];
     task.status=task.status==='조치완료'?'조치완료':'미조치';
     task.notObserved=!!task.notObserved;
+    /* 과거 사진 장수는 항상 서버 값을 기준으로 삼는다(임시저장에 남은 옛 값을 신뢰하지 않는다). */
+    task.pastCount=map[key].pastCount;
     return task;
   });
   save();
+}
+/* 과거 사진 / 이번 방문 사진을 경계(pastCount)로 나눠서 돌려준다. */
+function taskPhotoSlices(x){
+  var files=(x&&x.beforeFiles)||[];
+  var n=Math.max(0,Math.min(Number(x&&x.pastCount||0),files.length));
+  return {past:files.slice(0,n),now:files.slice(n),offset:n};
+}
+/* 조치확인 카드 안의 작은 사진 줄.
+   which: 'past'(과거·읽기전용) | 'now'(이번 방문) | 'after'(조치 후)
+   카드를 짧게 유지하려고 썸네일은 최대 2~3장만 보이고, 나머지는 눌러서 갤러리로 확인한다. */
+function taskStrip(i,which){
+  var x=S.tasks[i];if(!x)return'';
+  var s=taskPhotoSlices(x),files,offset=0,editable=true,field='beforeFiles';
+  if(which==='past'){files=s.past;editable=false}
+  else if(which==='now'){files=s.now;offset=s.offset}
+  else{files=x.afterFiles||[];field='afterFiles'}
+  var maxThumb=editable?2:3;
+  var visible=Math.min(files.length,maxThumb);
+  var h='<div class="tr-strip">';
+  if(!files.length&&!editable)h+='<div class="tr-none">과거 사진 없음</div>';
+  for(var j=0;j<visible;j++){
+    var f=files[j],p=(f&&f.id)?PHOTO_STORE.get(f.id):null;
+    var thumb=p?('<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">'):'<span class="tr-fallback">📷</span>';
+    var more=(j===visible-1&&files.length>visible)?'<span class="tr-more">+'+(files.length-visible)+'</span>':'';
+    h+='<button class="tr-thumb" onclick="openTaskGallery('+i+',\''+which+'\')" aria-label="사진 크게 보기">'+thumb+more+'</button>';
+  }
+  if(editable){
+    var inputId='trphoto-'+which+'-'+i;
+    h+='<label class="tr-add" for="'+inputId+'" title="사진 추가">＋</label></div>';
+    h+='<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachTaskPhotos('+i+',\''+field+'\',this)">';
+    return h;
+  }
+  return h+'</div>';
+}
+/* 썸네일을 누르면 그 묶음만 전체화면으로 크게 본다.
+   과거 사진은 증빙 자료이므로 삭제 버튼을 주지 않는다. */
+function openTaskGallery(i,which){
+  var x=S.tasks[i];if(!x)return;
+  var s=taskPhotoSlices(x);
+  var files=which==='past'?s.past:(which==='now'?s.now:(x.afterFiles||[]));
+  if(!files.length)return;
+  var offset=which==='now'?s.offset:0;
+  var editable=which!=='past';
+  var kind=which==='after'?'taskAfter':'taskBefore';
+  var title=which==='past'?'과거 사진':(which==='now'?'현재 사진':'조치 후 사진');
+  var old=document.getElementById('evidenceGallery');if(old)old.remove();
+  var box=document.createElement('div');box.id='evidenceGallery';box.className='img-zoom evidence-gallery';
+  var items=files.map(function(f,j){
+    var p=PHOTO_STORE.get(f.id);
+    var del=editable?('<button onclick="event.stopPropagation();removePhotoAt(\''+kind+'\','+i+','+(offset+j)+');document.getElementById(\'evidenceGallery\')?.remove()">삭제</button>'):'';
+    return '<div class="evidence-gallery-item">'+(p?'<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">':'<div class="photo-thumb-fallback">📷</div>')+'<span>'+title+' '+(j+1)+' / '+files.length+'</span>'+del+'</div>';
+  }).join('');
+  box.innerHTML='<button class="zoom-close" onclick="document.getElementById(\'evidenceGallery\')?.remove()">✕</button><div class="evidence-gallery-grid">'+items+'</div>';
+  box.onclick=function(e){if(e.target===box)box.remove()};
+  document.body.appendChild(box);
 }
 
 /* API 없이 사고내용·기인물·재해유형의 반복 키워드로 유해위험요인 초안을 만든다. */
@@ -1935,13 +1999,19 @@ async function attachAccidentPhotos(i,field,input){
   toast(`${n}개 사진 선택됨`);
   accident();
 }
+/* 조치확인 카드.
+   모바일에서 세로로 길어지지 않도록 STEP 구분을 없애고 한 흐름으로 압축했다.
+     과거 지적내용 → 현장 확인 여부 → [과거 사진 | 현재 사진] → 현재 상태(한 줄)
+     → 조치 상태 → 조치내용 → (조치완료면) 조치 후 사진 → 완료
+   과거 사진과 현재 사진은 같은 배열(beforeFiles)에 저장되지만 화면에서는 좌우로 분리해
+   "과거 상태"와 "지금 상태"가 눈으로 바로 구분되게 한다. */
 function tasks(){
   S.screen='tasks';
   syncTasks();
-  var i,j;
+  var i;
   var h=tabs('tasks');
   h+='<div class="card"><h2>지난 지적사항 조치 확인</h2>';
-  h+='<p class="muted">항목 하나를 펼치면 과거 지적내용과 사진, 현재 상태, 조치 결과를 한 화면에서 확인할 수 있습니다.</p>';
+  h+='<p class="muted">항목을 펼쳐 과거 사진과 현재 상태를 나란히 비교하고, 조치 결과를 기록하세요.</p>';
 
   if(S.taskOpenKey===undefined)S.taskOpenKey='';
   if(!S.tasks.length){
@@ -1950,24 +2020,45 @@ function tasks(){
     for(i=0;i<S.tasks.length;i++){
       var x=S.tasks[i];
       var expanded=S.taskOpenKey===x.key;
+      var slices=taskPhotoSlices(x);
       h+='<div class="task-review-card '+(x.confirmed?'done':'')+(expanded?' expanded':'')+'">';
       h+='<button class="task-review-head" onclick="toggleTaskCard('+i+')"><span><small>'+esc(x.date||'-')+' · 이전 점검</small><b>'+esc(x.title)+'</b></span><span><i>'+(x.confirmed?(x.notObserved?'확인 못함':'확인완료'):esc(x.status||'미조치'))+'</i><strong>⌄</strong></span></button>';
       if(!expanded){h+='</div>';continue}
-      h+='<div class="task-readonly review-context"><b>과거 지적내용 <small>읽기 전용</small></b><p>'+esc(x.detail||x.title)+'</p></div>';
-      h+='<div class="single-review-body"><div class="observe-choice"><span><b>이번 방문에 현장을 확인했나요?</b><small>확인하지 못하면 미조치로 남아 다음 방문에 다시 표시됩니다.</small></span><button class="'+(x.notObserved?'selected':'')+'" onclick="setTaskNotObserved('+i+','+(!x.notObserved)+')">'+(x.notObserved?'현장 확인으로 변경':'이번에는 확인 못함')+'</button></div>';
-      h+='<section class="review-step"><div class="review-step-title"><i>1</i><span><b>과거 사진'+(x.notObserved?' 확인':'·현재 상태')+'</b><small>'+(x.notObserved?'과거 자료만 확인하고 다음 방문으로 넘깁니다.':'과거 사진을 참고해 현재 상태를 기록하세요.')+'</small></span></div><div class="review-current-grid'+(x.notObserved?' photo-only':'')+'"><div class="acc-photo-box"><b>과거 사진 / 현재 증빙 <small>추가 가능</small></b>'+renderLimitedPhotoList(x.beforeFiles,'taskBefore',i)+'</div>';
-      if(!x.notObserved)h+='<div class="field review-grow"><label>현재 상태 <span class="req">*</span></label><textarea onchange="setTaskField('+i+',\'currentState\',this.value)" placeholder="이번 재점검에서 확인한 상태를 적어 주세요.">'+esc(x.currentState)+'</textarea></div>';
-      h+='</div></section>';
+
+      h+='<div class="tr-body">';
+      h+='<div class="tr-past"><b>과거 지적내용</b><p>'+esc(x.detail||x.title)+'</p></div>';
+
+      /* 현장 확인 여부는 한 줄 2버튼으로 줄인다. */
+      h+='<div class="tr-observe"><span>이번 방문 현장 확인</span><div class="tr-observe-btns">'
+        +'<button class="'+(x.notObserved?'':'sel')+'" onclick="setTaskNotObserved('+i+',false)">확인함</button>'
+        +'<button class="'+(x.notObserved?'sel warn':'')+'" onclick="setTaskNotObserved('+i+',true)">확인 못함</button>'
+        +'</div></div>';
+
+      /* 과거 / 현재 사진을 좌우로 분리 */
+      h+='<div class="tr-photos'+(x.notObserved?' single':'')+'">';
+      h+='<div class="tr-photo-col past"><label><b>과거 사진</b><i>'+slices.past.length+'장</i></label>'+taskStrip(i,'past')+'</div>';
+      if(!x.notObserved)h+='<div class="tr-photo-col now"><label><b>현재 사진</b><i>'+slices.now.length+'장</i></label>'+taskStrip(i,'now')+'</div>';
+      h+='</div>';
+
       if(x.notObserved){
-        h+='<div class="not-observed-note"><i>↻</i><span><b>이번 방문에는 확인하지 못한 항목입니다.</b><small>원래 지적사항은 미조치 상태로 유지되어 다음 재점검에 다시 나타납니다.</small></span></div>';
+        h+='<div class="tr-note"><i>↻</i><span>이번 방문에는 확인하지 못했습니다. 미조치로 유지되어 다음 점검에 다시 표시됩니다.</span></div>';
       }else{
-        h+='<section class="review-step"><div class="review-step-title"><i>2</i><span><b>조치 결과</b><small>미조치 또는 조치완료 중 하나를 선택하세요.</small></span></div><div class="field"><label>조치 상태</label><div class="form-status3 accident-status2">';
-        ['미조치','조치완료'].forEach(function(st){var cls=st==='조치완료'?'status-done':'status-none';h+='<button class="'+cls+(x.status===st?' sel':'')+'" onclick="setTaskField('+i+',\'status\',\''+st+'\')">'+st+'</button>'});
-        h+='</div></div><div class="field"><label>'+(x.status==='조치완료'?'조치내용':'미조치 사유·향후 계획')+' <span class="req">*</span></label><textarea onchange="setTaskField('+i+',\'actionText\',this.value)" placeholder="확인 결과와 필요한 조치를 적어 주세요.">'+esc(x.actionText)+'</textarea></div>';
-        if(x.status==='조치완료')h+='<div class="acc-photo-box acc-after-only"><b>조치 후 사진 <span class="req">*</span><small>조치완료 증빙</small></b>'+renderLimitedPhotoList(x.afterFiles,'taskAfter',i)+'</div>';
-        h+='</section>';
+        h+='<div class="tr-line"><label>현재 상태 <span class="req">*</span></label>'
+          +'<input class="tr-input" placeholder="현재 상태를 한 줄로 요약" value="'+esc(x.currentState)+'" onchange="setTaskField('+i+',\'currentState\',this.value)"></div>';
+        h+='<div class="tr-line"><label>조치 상태</label><div class="tr-status">'
+          +'<button class="none'+(x.status==='미조치'?' sel':'')+'" onclick="setTaskField('+i+',\'status\',\'미조치\')">미조치</button>'
+          +'<button class="done'+(x.status==='조치완료'?' sel':'')+'" onclick="setTaskField('+i+',\'status\',\'조치완료\')">조치완료</button>'
+          +'</div></div>';
+        h+='<div class="tr-line"><label>'+(x.status==='조치완료'?'조치내용':'미조치 사유·계획')+' <span class="req">*</span></label>'
+          +'<textarea class="tr-mini" placeholder="확인 결과와 필요한 조치를 간단히" onchange="setTaskField('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea></div>';
+        if(x.status==='조치완료'){
+          h+='<div class="tr-photo-col after"><label><b>조치 후 사진 <span class="req">*</span></b><i>'+(x.afterFiles||[]).length+'장</i></label>'+taskStrip(i,'after')+'</div>';
+        }
       }
-      h+='<div class="review-finish"><span>'+(x.confirmed?(x.notObserved?'↻ 확인 못함으로 기록되었습니다.':'✓ 이 항목은 확인 완료되었습니다.'):(x.notObserved?'확인 못함으로 기록하고 다음 항목으로 이동합니다.':'현재 상태와 조치 결과를 확인해 주세요.'))+'</span><button class="acc-complete" onclick="completeTask('+i+')">'+(x.confirmed?'확인 내용 저장':(x.notObserved?'확인 못함으로 완료':'이 항목 확인 완료'))+'</button></div></div></div>';
+
+      h+='<div class="tr-finish"><span>'+(x.confirmed?(x.notObserved?'↻ 확인 못함으로 기록됨':'✓ 확인 완료됨'):(x.notObserved?'확인 못함으로 기록하고 넘어갑니다.':'필수 항목을 채운 뒤 완료해 주세요.'))+'</span>'
+        +'<button class="acc-complete" onclick="completeTask('+i+')">'+(x.confirmed?'저장':(x.notObserved?'확인 못함으로 완료':'확인 완료'))+'</button></div>';
+      h+='</div></div>';
     }
   }
 
