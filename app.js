@@ -1941,17 +1941,36 @@ function accident(){
     if(x.notObserved){
       h+='<div class="tr-note"><i>↻</i><span>이번 방문에는 확인하지 못했습니다. 미조치로 유지되어 다음 방문에 다시 표시됩니다.</span></div>';
     }else{
-      h+='<div class="tr-photos single"><div class="tr-photo-col now"><label><b>현재 상태 사진</b><i>'+(x.beforeFiles||[]).length+'장</i></label>'+accStrip(i,'before')+'</div></div>';
-      h+='<div class="tr-line"><label>유해위험요인 <span class="req">*</span> <small>자동 생성 · 수정 가능</small></label>'
-        +'<input class="tr-input" placeholder="현장에서 확인한 위험요인을 한 줄로" value="'+esc(x.hazardText)+'" onchange="setAccidentText('+i+',\'hazardText\',this.value)"></div>';
-      h+='<div class="tr-line"><label>조치 상태</label><div class="tr-status">'
+      /* 조치 상태는 현장 확인 바로 아래에 같은 크기의 작은 버튼으로 붙인다.
+         이 버튼이 아래쪽 사진/내용 레이아웃을 1칸 → 2칸으로 바꾸는 스위치라서
+         화면 위쪽에 있어야 무엇이 바뀌는지 바로 보인다. */
+      h+='<div class="tr-statusline"><span>조치 상태</span><div class="tr-status-mini">'
         +'<button class="none'+(x.status==='미조치'?' sel':'')+'" onclick="setAccidentStatus('+i+',\'미조치\')">미조치</button>'
         +'<button class="done'+(x.status==='조치완료'?' sel':'')+'" onclick="setAccidentStatus('+i+',\'조치완료\')">조치완료</button>'
         +'</div></div>';
-      if(x.status)h+='<div class="tr-line"><label>'+(x.status==='조치완료'?'조치내용':'조치계획')+' <span class="req">*</span></label>'
-        +'<textarea class="tr-mini" placeholder="재발방지를 위해 실시하거나 예정한 조치를 간단히" onchange="setAccidentText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea></div>';
-      if(x.status==='조치완료'){
-        h+='<div class="tr-photo-col after"><label><b>조치 후 사진 <span class="req">*</span></b><i>'+(x.afterFiles||[]).length+'장</i></label>'+accStrip(i,'after')+'</div>';
+
+      /* 사진과 내용을 한 세트로 묶어 좌우 비교한다.
+         평소에는 왼쪽 한 칸(현재 상태)만, 조치완료를 고르면 오른쪽(조치 후)이 붙어 2칸이 된다. */
+      var two=x.status==='조치완료';
+      h+='<div class="tr-pair'+(two?' two':'')+'">';
+      /* 칸 제목("현재 상태 사진" / "조치 후 사진")만 있으면 무엇을 적는 칸인지 알 수 있어서
+         내용 입력칸에는 따로 라벨을 붙이지 않는다. */
+      h+='<div class="tr-pair-col now">'
+        +'<div class="tr-pair-head"><b>현재 상태 사진</b><i>'+(x.beforeFiles||[]).length+'장</i></div>'
+        +accStrip(i,'before')
+        +'<textarea class="tr-mini" placeholder="현재 상태·위험요인" onchange="setAccidentText('+i+',\'hazardText\',this.value)">'+esc(x.hazardText)+'</textarea>'
+        +'</div>';
+      if(two){
+        h+='<div class="tr-pair-col after">'
+          +'<div class="tr-pair-head"><b>조치 후 사진 <span class="req">*</span></b><i>'+(x.afterFiles||[]).length+'장</i></div>'
+          +accStrip(i,'after')
+          +'<textarea class="tr-mini" placeholder="조치내용" onchange="setAccidentText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea>'
+          +'</div>';
+      }
+      h+='</div>';
+      /* 미조치는 "조치 후" 칸이 없으므로 조치계획을 아래 전체폭으로 받는다. */
+      if(x.status==='미조치'){
+        h+='<textarea class="tr-mini" placeholder="조치계획 · 언제 어떻게 조치할 예정인지" onchange="setAccidentText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea>';
       }
     }
 
