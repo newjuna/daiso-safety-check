@@ -655,8 +655,19 @@ button{cursor:pointer}
 .tr-add:active{background:#f1f4fa}
 .tr-none{grid-column:1/-1;padding:9px 0;text-align:center;color:var(--muted);font-size:10px;font-weight:850}
 
+/* 사고조사 카드도 같은 압축 레이아웃을 쓴다.
+   사고DB 원본정보(재해일·유형·기인물·손실일수)는 표 대신 한 줄짜리 칩으로 얹어 높이를 줄인다. */
+.tr-past.acc>b{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.tr-tag{flex:none;font-size:9px;font-weight:900;padding:2px 7px;border-radius:999px;background:#e9edf4;color:#48546b}
+.tr-tag.bad{background:#fdeaea;color:#b42318}
+.tr-facts{display:flex;flex-wrap:wrap;gap:4px 5px;margin:0 0 6px}
+.tr-facts>span{display:flex;align-items:baseline;gap:4px;min-width:0;padding:3px 7px;border-radius:8px;background:#fff;border:1px solid var(--line)}
+.tr-facts small{flex:none;font-size:9px;font-weight:800;color:var(--muted)}
+.tr-facts b{font-size:11px;font-weight:900;overflow-wrap:anywhere}
+
 .tr-line{display:grid;gap:5px}
 .tr-line>label{font-size:11.5px;font-weight:900;color:#464d59}
+.tr-line>label small{font-size:10px;font-weight:800;color:var(--muted)}
 /* 입력칸 글씨는 16px를 유지한다. 그보다 작으면 아이폰이 칸을 누를 때 화면을 확대해버린다. */
 .tr-input{width:100%;height:46px;padding:0 12px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);font-family:inherit;font-size:16px;font-weight:700}
 .tr-input:focus,.tr-mini:focus{outline:0;border-color:var(--p)}
