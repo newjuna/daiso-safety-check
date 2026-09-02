@@ -698,6 +698,9 @@ button{cursor:pointer}
 .tr-pair-col{min-width:0;display:grid;gap:6px;align-content:start;padding:8px 9px 9px;border:1px solid var(--line);border-radius:12px;background:#fafbfc}
 .tr-pair-col.now{background:#f3f7ff;border-color:#cddcf3}
 .tr-pair-col.after{background:#f2faf6;border-color:#c8ead8}
+/* 조치확인 화면의 왼쪽 칸은 과거 점검 사진(읽기전용)이라 회색으로 구분한다. */
+.tr-pair-col.past{background:#f4f5f7;border-color:#dcdfe5}
+.tr-nophoto{display:grid;place-items:center;min-height:96px;border:1.5px dashed #d5d9e0;border-radius:9px;background:#fff;color:var(--muted);font-size:10.5px;font-weight:850}
 .tr-pair-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .tr-pair-head b{font-size:11px;font-weight:900}
 .tr-pair-head i{font-style:normal;font-size:9.5px;font-weight:900;color:var(--muted);flex:none}
