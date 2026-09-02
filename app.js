@@ -2415,12 +2415,20 @@ function buildSubmitPayload(){
     const memo=[x.status,x.source?'기인물: '+x.source:'',x.currentState?'현 상태: '+x.currentState:'',x.actionText?'조치내용: '+x.actionText:'',x.hazardText?'유해위험요인: '+x.hazardText:'','위험등급: '+x.riskLevel].filter(Boolean).join(' · ');
     issues.push({issueId:S.inspectionId+'-accident-'+x.key.replace(/[^a-zA-Z0-9_-]/g,'-'),category:'사고조사',itemName:`${x.date} ${x.type}`.trim(),note:memo,hazard:x.hazardText||x.type||'사고',status:x.status==='조치완료'?'조치완료':'조치대기',photos:before.concat(after)});
   });
-  /* 이전 지적사항 재확인 증빙. 원본 이슈의 상태 갱신은 tasks로, 사진 저장은 별도 증빙 이슈로 처리한다. */
+  /* 이전 지적사항 재확인 증빙. 원본 이슈의 상태 갱신은 tasks로, 사진 저장은 별도 증빙 이슈로 처리한다.
+     과거 사진(beforeFiles)은 올리지 않는다.
+       - 이미 최초 지적 당시 이슈 행에 저장돼 있어 다시 올릴 이유가 없다.
+       - 서버 savePhoto_는 sourceUrl이 있으면 드라이브 원본을 makeCopy로 복사하므로,
+         그냥 두면 방문할 때마다 같은 사진의 사본이 쌓이고 제출 시간도 그만큼 길어진다.
+     사진이 없어도 이슈 행은 만든다. 이번 방문에 확인했다는 사실과 현재 상태를 시트에 남겨야 한다.
+     (사진이 없으면 서버가 폴더를 만들지 않으므로 빈 폴더가 생기지는 않는다) */
   (S.tasks||[]).filter(x=>x.include).forEach(x=>{
-    const before=resolvePhotos(x.beforeFiles).map(p=>({...p,name:'조치전_'+p.name}));
     const after=resolvePhotos(x.afterFiles).map(p=>({...p,name:'조치후_'+p.name}));
-    if(!before.length&&!after.length)return;
-    issues.push({issueId:S.inspectionId+'-followup-'+String(x.issueId||x.key).replace(/[^a-zA-Z0-9_-]/g,'-'),category:'조치확인',itemName:x.title,note:x.notObserved?'이번 방문 확인 못함':['현재 상태: '+(x.currentState||''),'조치내용: '+(x.actionText||'')].join(' · '),hazard:'재발방지',status:'재확인',photos:before.concat(after)});
+    /* 상태를 시트에서도 구분할 수 있게 남긴다. 예전에는 전부 '재확인'이라 미조치/조치완료가 섞였다. */
+    const state=x.notObserved?'재확인(확인 못함)':(x.status==='조치완료'?'재확인(조치완료)':'재확인(미조치)');
+    const memo=x.notObserved?'이번 방문 확인 못함'
+      :[x.status,'현재 상태: '+(x.currentState||''),(x.status==='조치완료'?'조치내용: ':'조치계획: ')+(x.actionText||'')].join(' · ');
+    issues.push({issueId:S.inspectionId+'-followup-'+String(x.issueId||x.key).replace(/[^a-zA-Z0-9_-]/g,'-'),category:'조치확인',itemName:x.title,note:memo,hazard:'재발방지',status:state,photos:after});
   });
 
   const c=calc(),summary=scoreSummary(),labor=calcInboundLabor(),stretchGap=calcTbmStretchGap();
@@ -2517,7 +2525,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=13','_blank');
+  const win=window.open('report.html?v=15','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2840,9 +2848,16 @@ function scoreTbm(){
 function scoreAccident(){
   const list=S.accidents||[];
   if(!list.length)return null; /* 사고이력 없음: 이 카테고리 자체를 안 쓴다 */
+  /* 이번 방문에 확인하지 못한 사고는 점수 계산에서 뺀다.
+     현장을 못 본 것은 매장의 안전수준이 아니라 점검 진행 사정인데,
+     감점표에 없는 상태라 예전에는 미조치와 똑같이 만점 감점됐다.
+     빼도 놓치지 않는다: 그 건은 미조치로 남아 다음 방문에 다시 확인 대상이 된다. */
+  const scored=list.filter(a=>!a.notObserved&&a.status!=='확인 못함');
+  /* 전부 확인 못했으면 사고 배점을 쓰지 않는다(가중치는 work로 이전되고 상태는 "확인필요"로 표시). */
+  if(!scored.length)return null;
   const rates=D.scoring.accidentStatusDeductionRate;
   let deduction=0;
-  list.forEach(a=>{const r=rates[a.status]!=null?rates[a.status]:1;deduction+=r*(100/list.length)});
+  scored.forEach(a=>{const r=rates[a.status]!=null?rates[a.status]:1;deduction+=r*(100/scored.length)});
   return Math.max(0,Math.round(100-deduction));
 }
 /* 종합점수 + 등급 + 카테고리별 점수를 함께 반환한다. */
