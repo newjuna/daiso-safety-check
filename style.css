@@ -660,6 +660,9 @@ button{cursor:pointer}
 .tr-thumb{position:relative;height:96px;min-height:0;padding:0;border:1px solid #e1e5eb;border-radius:9px;overflow:hidden;background:#eceef2;display:block}
 .tr-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .tr-fallback{position:absolute;inset:0;display:grid;place-items:center;font-size:17px}
+/* 이미 실패한 주소라 요청을 아예 다시 보내지 않는 경우 */
+.tr-fallback.failed{gap:1px;align-content:center;font-size:14px;background:#f6eeee}
+.tr-fallback.failed small{font-size:8.5px;font-weight:900;color:#a4626b}
 /* 구글 드라이브 썸네일이 막혀 이미지를 못 받은 경우 */
 .tr-thumb.thumb-failed{background:#f6eeee;border-color:#e6cfcf}
 .tr-thumb.thumb-failed .tr-fallback::after{content:'미리보기 실패';display:block;margin-top:2px;font-size:8.5px;font-weight:900;color:#a4626b}
