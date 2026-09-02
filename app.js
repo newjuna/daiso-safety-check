@@ -781,6 +781,22 @@ function applyPastInspection(row,snapshot){
   normalizeState();syncTasks();S.screen='tasks';save();tasks();
 }
 function uiError(msg){const card=$('.card');if(card){card.classList.remove('shake-strong','validation-error');void card.offsetWidth;card.classList.add('shake-strong','validation-error');setTimeout(()=>card.classList.remove('shake-strong'),420);setTimeout(()=>card.classList.remove('validation-error'),900)}toast(msg)}
+/* 카드 전체가 아니라 "지금 채워야 하는 그 칸"만 붉게 + 흔들고 화면에 보이게 끌어온다.
+   카드가 길어서 문제되는 칸이 화면 밖에 있으면 안내문만 봐도 어디인지 못 찾기 때문. */
+function uiErrorAt(selector,msg){
+  var el=document.querySelector(selector);
+  if(!el)return uiError(msg);
+  el.classList.remove('shake-strong','validation-error');
+  void el.offsetWidth;
+  el.classList.add('shake-strong','validation-error');
+  setTimeout(function(){el.classList.remove('shake-strong')},420);
+  setTimeout(function(){el.classList.remove('validation-error')},1800);
+  if(el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'center'});
+  /* 글을 적는 칸이면 바로 입력을 시작할 수 있게 커서까지 넣어준다. */
+  var f=(el.tagName==='TEXTAREA'||el.tagName==='INPUT')?el:el.querySelector('textarea,input:not([type=file])');
+  if(f&&f.focus){try{f.focus({preventScroll:true})}catch(e){f.focus()}}
+  toast(msg);
+}
 function isFollowupOnly(){return S.inspectionMode==='past'&&!!S.followupOnly}
 function enterInspection(){if(isFollowupOnly()){S.screen='tasks';syncTasks();save();tasks();return}ensureDefaults();if(hasAccidents()){S.accidentPhase='initial';accident()}else{S.accidentPhase='final';S.screen='work';work()}}
 function resume(){if(S.screen==='basic')return enterInspection();render(S.screen||'start')}
@@ -1885,15 +1901,17 @@ function accStrip(i,which){
   var kind=which==='after'?'accidentAfter':'accidentBefore';
   var field=which==='after'?'afterFiles':'beforeFiles';
   var inputId='accphoto-'+which+'-'+i;
+  /* 사진을 빠뜨렸을 때 이 영역만 붉게 표시할 수 있도록 id를 붙인다. */
+  var wrapId='accPhotoBox-'+which+'-'+i;
   var input='<input id="'+inputId+'" class="photo-input" type="file" accept="image/*" multiple onchange="attachAccidentPhotos('+i+',\''+field+'\',this)">';
   /* 사진이 한 장도 없으면 3열 그리드를 쓰지 않는다.
      그대로 두면 왼쪽 1/3만 작은 ＋ 버튼이 뜨고 오른쪽이 텅 비어 보인다.
      대신 추가 버튼이 칸 전체폭을 채우는 큰 영역으로 나온다. */
   if(!files.length){
-    return '<div class="tr-drop"><label class="tr-add wide" for="'+inputId+'"><b>＋</b><small>사진 촬영 · 앨범에서 추가</small></label></div>'+input;
+    return '<div class="tr-drop" id="'+wrapId+'"><label class="tr-add wide" for="'+inputId+'"><b>＋</b><small>사진 촬영 · 앨범에서 추가</small></label></div>'+input;
   }
   var visible=Math.min(files.length,2);
-  var h='<div class="tr-strip">';
+  var h='<div class="tr-strip" id="'+wrapId+'">';
   for(var j=0;j<visible;j++){
     var f=files[j],p=(f&&f.id)?PHOTO_STORE.get(f.id):null;
     var thumb=p?('<img src="'+p.dataUrl+'" alt="'+esc(f.name||'')+'">'):'<span class="tr-fallback">📷</span>';
@@ -1918,7 +1936,6 @@ function accident(){
   if(S.accidentOpenKey===undefined)S.accidentOpenKey='';
   h+='<div class="card"><div class="summary"><h2>사고조사</h2>';
   h+='<span class="pill'+(done<S.accidents.length?' bad':'')+'">'+done+'/'+S.accidents.length+' 조사완료</span></div>';
-  h+='<p class="muted">사고DB의 원본정보와 자동 생성된 위험요인을 확인하고, 현재 이행상태를 기록하세요.</p>';
   for(i=0;i<S.accidents.length;i++){
     var x=S.accidents[i];
     var ok=isAccidentDone(x);
@@ -1952,7 +1969,7 @@ function accident(){
       /* 조치 상태는 현장 확인 바로 아래에 같은 크기의 작은 버튼으로 붙인다.
          이 버튼이 아래쪽 사진/내용 레이아웃을 1칸 → 2칸으로 바꾸는 스위치라서
          화면 위쪽에 있어야 무엇이 바뀌는지 바로 보인다. */
-      h+='<div class="tr-statusline"><span>조치 상태</span><div class="tr-status-mini">'
+      h+='<div class="tr-statusline" id="accStatus'+i+'"><span>조치 상태</span><div class="tr-status-mini">'
         +'<button class="none'+(x.status==='미조치'?' sel':'')+'" onclick="setAccidentStatus('+i+',\'미조치\')">미조치</button>'
         +'<button class="done'+(x.status==='조치완료'?' sel':'')+'" onclick="setAccidentStatus('+i+',\'조치완료\')">조치완료</button>'
         +'</div></div>';
@@ -1966,13 +1983,13 @@ function accident(){
       h+='<div class="tr-pair-col now">'
         +'<div class="tr-pair-head"><b>현재 상태 사진</b><i>'+(x.beforeFiles||[]).length+'장</i></div>'
         +accStrip(i,'before')
-        +'<textarea class="tr-mini" placeholder="현재 상태·위험요인" onchange="setAccidentText('+i+',\'hazardText\',this.value)">'+esc(x.hazardText)+'</textarea>'
+        +'<textarea class="tr-mini" id="accHaz'+i+'" placeholder="현재 상태·위험요인" onchange="setAccidentText('+i+',\'hazardText\',this.value)">'+esc(x.hazardText)+'</textarea>'
         +'</div>';
       if(two){
         h+='<div class="tr-pair-col after">'
           +'<div class="tr-pair-head"><b>조치 후 사진 <span class="req">*</span></b><i>'+(x.afterFiles||[]).length+'장</i></div>'
           +accStrip(i,'after')
-          +'<textarea class="tr-mini" placeholder="조치내용" onchange="setAccidentText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea>'
+          +'<textarea class="tr-mini" id="accAct'+i+'" placeholder="조치내용" onchange="setAccidentText('+i+',\'actionText\',this.value)">'+esc(x.actionText)+'</textarea>'
           +'</div>';
       }
       h+='</div>';
@@ -1981,7 +1998,9 @@ function accident(){
          조치계획 문구는 자동 초안(accidentActionDraft)을 그대로 쓴다. */
     }
 
-    h+='<div class="tr-finish"><span>'+(ok?'✓ 이 항목은 작성 완료되었습니다.':(x.notObserved?'확인 못함으로 기록하고 다음 항목으로 이동합니다.':'필수 내용을 확인한 뒤 완료해 주세요.'))+'</span>'
+    /* 안내 문구는 두지 않는다. 카드 머리에 이미 상태가 표시되고,
+       빠뜨린 칸은 완료를 누르면 그 칸이 직접 붉게 흔들려서 알려준다. */
+    h+='<div class="tr-finish solo">'
       +'<button class="acc-complete" onclick="completeAccident('+i+')">'+(ok?'완료 내용 저장':(x.notObserved?'확인 못함으로 완료':'이 사고조사 완료'))+'</button></div>';
     h+='</div></div>';
   }
@@ -2028,12 +2047,13 @@ function completeAccident(i){
   var x=S.accidents[i];if(!x)return;
   if(x.notObserved){x.status='확인 못함';x.currentState='이번 방문에는 현장 확인 못함';x.confirmed=true}
   else{
-  if(!x.hazardText)return toast('현재 상태를 입력해 주세요.');
+  /* 빠뜨린 칸을 직접 붉게 흔들어서 어디를 채워야 하는지 바로 보이게 한다. */
+  if(!x.status)return uiErrorAt('#accStatus'+i,'조치 상태를 선택해 주세요.');
+  if(!x.hazardText)return uiErrorAt('#accHaz'+i,'현재 상태를 입력해 주세요.');
   /* 미조치는 화면에 조치계획 입력칸이 없으므로 비어 있으면 자동 초안으로 채운다. */
   if(x.status==='미조치'&&!x.actionText)x.actionText=accidentActionDraft(x,'미조치');
-  if(!x.status)return toast('조치 상태를 선택해 주세요.');
-  if(!x.actionText)return toast('조치내용을 입력해 주세요.');
-  if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return toast('조치완료 사진을 등록해 주세요.');
+  if(!x.actionText)return uiErrorAt('#accAct'+i,'조치내용을 입력해 주세요.');
+  if(x.status==='조치완료'&&!(x.afterFiles||[]).length)return uiErrorAt('#accPhotoBox-after-'+i,'조치완료 사진을 등록해 주세요.');
   x.currentState=x.hazardText;x.confirmed=true;
   }
   x.sectionOpen='';
