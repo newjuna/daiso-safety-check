@@ -658,6 +658,8 @@ button{cursor:pointer}
 .tr-add.wide b{font-size:20px;font-weight:900;line-height:1}
 .tr-add.wide small{font-size:10px;font-weight:850;color:var(--muted)}
 .tr-pair-col.after .tr-add.wide small{color:#4f8a72}
+/* 사진 영역은 자체 테두리가 없어서 붉은 border가 보이지 않는다. outline으로 표시한다. */
+.tr-drop.validation-error,.tr-strip.validation-error{outline:2px solid #d92d20;outline-offset:2px;border-radius:10px}
 .tr-add:active{background:#f1f4fa}
 .tr-none{grid-column:1/-1;padding:9px 0;text-align:center;color:var(--muted);font-size:10px;font-weight:850}
 
@@ -711,7 +713,10 @@ button{cursor:pointer}
 /* 입력칸 글씨는 16px를 유지한다. 그보다 작으면 아이폰이 칸을 누를 때 화면을 확대해버린다. */
 .tr-input{width:100%;height:46px;padding:0 12px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);font-family:inherit;font-size:16px;font-weight:700}
 .tr-input:focus,.tr-mini:focus{outline:0;border-color:var(--p)}
-.tr-mini{width:100%;min-height:64px;max-height:120px;padding:10px 12px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);font-family:inherit;font-size:16px;font-weight:700;line-height:1.45;resize:vertical}
+/* 글자 크기는 16px을 유지해야 아이폰이 화면을 확대하지 않는다.
+   대신 굵기와 여백을 낮춰서 주변 라벨(11px)과의 무게 차이를 줄인다. */
+.tr-mini{width:100%;min-height:64px;max-height:120px;padding:8px 10px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);font-family:inherit;font-size:16px;font-weight:500;line-height:1.4;resize:vertical}
+.tr-mini::placeholder{font-weight:600;color:#a8adb6}
 .tr-status{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .tr-status button{min-height:44px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--muted);font-size:13px;font-weight:900}
 .tr-status button.none.sel{border-color:#c62847;background:#fff0f3;color:#c62847}
@@ -722,6 +727,8 @@ button{cursor:pointer}
 .tr-note>span{font-size:10.5px;font-weight:850;line-height:1.4}
 
 .tr-finish{display:grid;grid-template-columns:minmax(0,1fr) minmax(132px,.46fr);align-items:center;gap:9px}
+/* 안내 문구 없이 완료 버튼만 두는 경우 */
+.tr-finish.solo{grid-template-columns:minmax(0,1fr)}
 .tr-finish>span{color:var(--muted);font-size:10.5px;font-weight:850;line-height:1.35}
 .tr-finish>.acc-complete{min-width:0;min-height:44px;box-shadow:none}
 @media(max-width:420px){
