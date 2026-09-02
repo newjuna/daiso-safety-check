@@ -620,6 +620,67 @@ button{cursor:pointer}
   .observe-choice{align-items:stretch;flex-direction:column}.observe-choice>button{width:100%}
 }
 
+/* ===== 조치확인 카드 압축 레이아웃 (tr- = task review) =====
+   모바일에서 한 카드가 화면을 몇 번씩 스크롤해야 할 만큼 길어지던 문제를 잡기 위해
+   STEP 박스·큰 textarea·통합 사진박스를 모두 없애고 한 흐름으로 압축했다.
+   과거 사진과 현재 사진은 좌우 두 칸으로 나눠 색까지 다르게 해서 바로 구분된다. */
+.tr-body{display:grid;gap:9px;padding:11px 12px 13px;border-top:1px solid var(--line);background:#fff}
+.tr-past{padding:9px 10px;border-radius:11px;background:#f6f7f9;border:1px solid var(--line)}
+.tr-past>b{display:block;font-size:10.5px;font-weight:900;color:var(--muted);margin-bottom:4px}
+.tr-past>p{margin:0;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere}
+
+.tr-observe{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:7px 10px;border-radius:11px;background:#f5f7fb;border:1px solid #dce1ec}
+.tr-observe>span{font-size:11.5px;font-weight:900;min-width:0}
+.tr-observe-btns{display:flex;gap:5px;flex:none}
+.tr-observe-btns button{min-height:34px;padding:0 11px;border:1.5px solid #d3d8e2;border-radius:9px;background:#fff;color:#767d8a;font-size:11px;font-weight:950}
+.tr-observe-btns button.sel{border-color:var(--p);background:#eef1f8;color:var(--p)}
+.tr-observe-btns button.sel.warn{border-color:#d97706;background:#fff8e9;color:#9a5700}
+
+.tr-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tr-photos.single{grid-template-columns:minmax(0,220px)}
+.tr-photo-col{min-width:0;padding:8px 9px 9px;border:1px solid var(--line);border-radius:12px;background:#fafbfc}
+.tr-photo-col.past{background:#f4f5f7;border-color:#dcdfe5}
+.tr-photo-col.now{background:#f3f7ff;border-color:#cddcf3}
+.tr-photo-col.after{background:#f2faf6;border-color:#c8ead8}
+.tr-photo-col>label{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+.tr-photo-col>label b{font-size:11px;font-weight:900}
+.tr-photo-col>label i{font-style:normal;font-size:9.5px;font-weight:900;color:var(--muted);flex:none}
+.tr-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.tr-thumb{position:relative;aspect-ratio:1/1;min-height:0;padding:0;border:1px solid #e1e5eb;border-radius:9px;overflow:hidden;background:#eceef2;display:block}
+.tr-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.tr-fallback{position:absolute;inset:0;display:grid;place-items:center;font-size:17px}
+.tr-more{position:absolute;inset:0;display:grid;place-items:center;background:rgba(19,36,90,.72);color:#fff;font-size:12px;font-weight:1000}
+.tr-add{aspect-ratio:1/1;border:1.5px dashed #a9bfe4;border-radius:9px;background:#fff;color:var(--p);display:grid;place-items:center;font-size:17px;font-weight:900;cursor:pointer}
+.tr-photo-col.after .tr-add{border-color:#9fd6bb;color:#16845b}
+.tr-add:active{background:#f1f4fa}
+.tr-none{grid-column:1/-1;padding:9px 0;text-align:center;color:var(--muted);font-size:10px;font-weight:850}
+
+.tr-line{display:grid;gap:5px}
+.tr-line>label{font-size:11.5px;font-weight:900;color:#464d59}
+/* 입력칸 글씨는 16px를 유지한다. 그보다 작으면 아이폰이 칸을 누를 때 화면을 확대해버린다. */
+.tr-input{width:100%;height:46px;padding:0 12px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);font-family:inherit;font-size:16px;font-weight:700}
+.tr-input:focus,.tr-mini:focus{outline:0;border-color:var(--p)}
+.tr-mini{width:100%;min-height:64px;max-height:120px;padding:10px 12px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);font-family:inherit;font-size:16px;font-weight:700;line-height:1.45;resize:vertical}
+.tr-status{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.tr-status button{min-height:44px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--muted);font-size:13px;font-weight:900}
+.tr-status button.none.sel{border-color:#c62847;background:#fff0f3;color:#c62847}
+.tr-status button.done.sel{border-color:#16845b;background:#edf9f4;color:#16845b}
+
+.tr-note{display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px solid #f0d6a8;border-radius:11px;background:#fff9ee;color:#8b5709}
+.tr-note>i{width:26px;height:26px;flex:none;border-radius:8px;background:#f6e3ba;display:grid;place-items:center;font-style:normal;font-size:13px;font-weight:1000}
+.tr-note>span{font-size:10.5px;font-weight:850;line-height:1.4}
+
+.tr-finish{display:grid;grid-template-columns:minmax(0,1fr) minmax(132px,.46fr);align-items:center;gap:9px}
+.tr-finish>span{color:var(--muted);font-size:10.5px;font-weight:850;line-height:1.35}
+.tr-finish>.acc-complete{min-width:0;min-height:44px;box-shadow:none}
+@media(max-width:420px){
+  .tr-observe{align-items:stretch;flex-direction:column;gap:7px}
+  .tr-observe-btns{display:grid;grid-template-columns:1fr 1fr}
+  .tr-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tr-finish{grid-template-columns:1fr}
+  .tr-finish>span{text-align:center}
+}
+
 /* 현 상태: 이행상태를 고르면 문구가 자동으로 채워지지만 점검자가 고칠 수 있다.
    고친 경우에는 아래에 "수정했다"는 표시와 되돌리기 버튼이 함께 나온다. */
 .acc-state-field{margin:11px 0 0}
