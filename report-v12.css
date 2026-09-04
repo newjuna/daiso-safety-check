@@ -156,7 +156,10 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-wgrade.risk{background:var(--sr-red);color:#fff}
 .sr-report .sr-wgrade.warn{background:var(--sr-orange);color:#fff}
 .sr-report .sr-wgrade.good{background:var(--sr-green-soft);color:var(--sr-green)}
+.sr-report .sr-wcard-cat{margin:3px 0 0;font-size:9px;color:var(--sr-red);letter-spacing:.04em}
 .sr-report .sr-wcard-note{margin:6px 0 0;font-size:12px;line-height:1.5}
+.sr-report .sr-wcard-fix{margin:5px 0 0;padding:7px 9px;background:var(--sr-paper);border-left:2px solid var(--sr-navy);font-size:10px;line-height:1.5}
+.sr-report .sr-wcard-fix b{font-weight:500;color:var(--sr-navy)}
 .sr-report .sr-wcard-why{margin:4px 0 0;font-size:10px;line-height:1.45;color:var(--sr-muted)}
 .sr-report .sr-wcard-facts{margin:4px 0 0;font-size:9px;line-height:1.45;color:var(--sr-muted)}
 .sr-report .sr-wcard .sr-hazards{margin-top:6px}

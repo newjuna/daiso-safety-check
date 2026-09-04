@@ -626,6 +626,77 @@ function sheetsWorkTypes(s){
   });
 }
 
+/* 미흡사항 하나의 위험등급. 작업유형(workRiskGrade)과 같은 사고방식이다.
+   항목 1건 기준이라 시작점이 1이고, 아래 신호를 더해 상/중/하를 낸다.
+     넘어짐·근골격계·떨어짐 위험요인   건당 +1.5
+     소방(화재 시 대피에 직결)          +2
+     사다리 이상                        +1.5
+     이 매장 사고이력과 같은 재해유형   +3 */
+function findingRiskGrade(s,f){
+  var why=[],score=1,hz=f.hazards||[];
+  var heavy=hz.filter(function(h){return h==="넘어짐"||h==="근골격계"||h==="떨어짐"});
+  if(heavy.length){score+=1.5*heavy.length;why.push(heavy.join("·")+" 위험요인")}
+  if(f.category==="소방"){score+=2;why.push("소방설비 · 화재 시 대피에 직결")}
+  if(f.category==="사다리"){score+=1.5;why.push("사다리 이상 · 떨어짐 위험")}
+  var accTypes=(s.accidents||[]).map(function(a){return String(a.type||"")}).filter(Boolean);
+  var match=hz.filter(function(h){
+    return accTypes.some(function(t){return t.indexOf(h)>=0||h.indexOf(t)>=0});
+  });
+  if(match.length){score+=3;why.push("이 매장 "+match.join("·")+" 사고이력과 동일")}
+  var g=score>=5?["상","risk"]:(score>=2.5?["중","warn"]:["하","good"]);
+  if(!why.length)why.push("확인된 미흡사항");
+  return [g[0],g[1],why.join(" · ")];
+}
+/* 미흡사항 한 건 = 카드 한 블록. 사진을 항목 안에 함께 실어서
+   뒤쪽에 사진증빙 장을 따로 두지 않는다(앞뒤로 넘겨보지 않게 하려는 것). */
+function findingCard(s,f,idx){
+  var g=findingRiskGrade(s,f);
+  var photos=(f.photos||[]).filter(function(p){return p&&p.dataUrl}).slice(0,3);
+  var sub=[];
+  if(f.question)sub.push("문항: "+f.question);
+  if(f.note)sub.push(f.note);
+  var area=(f.area&&f.area!==f.category)?f.area:"";
+  var h='<div class="sr-wcard '+g[1]+'">'
+    +'<div class="sr-wcard-head"><b>'+pad2(idx+1)+' '+esc(f.title)+'</b>'
+    +'<span class="sr-wgrade '+g[1]+'">위험 '+esc(g[0])+'</span></div>'
+    +'<p class="sr-wcard-cat">'+esc(f.category)+(area?" · "+esc(area):"")+'</p>';
+  if(sub.length)h+='<p class="sr-wcard-note">'+esc(sub.join(" / "))+'</p>';
+  h+='<p class="sr-wcard-why">'+esc(g[2])+'</p>'
+    +'<p class="sr-wcard-fix"><b>개선방향</b> '+esc(improvementText(f))+'</p>';
+  if((f.hazards||[]).length)h+=hazPills(f.hazards);
+  if(photos.length){
+    h+='<div class="sr-wcard-photos">';
+    photos.forEach(function(p,pi){h+=photoBox([p],pad2(idx+1)+" "+f.category+" "+(pi+1),"첨부된 사진 없음")});
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+/* 지난 지적사항 한 건 = 카드 한 블록. 과거 사진과 조치 후 사진을 나란히 싣는다. */
+function taskCard(s,t,idx){
+  var cls=t.notObserved?"warn":(t.status==="조치완료"?"good":"risk");
+  var badge=t.notObserved?"확인 못함":(t.status||"미조치");
+  var h='<div class="sr-wcard '+cls+'">'
+    +'<div class="sr-wcard-head"><b>'+pad2(idx+1)+' '+esc(t.title)+'</b>'
+    +'<span class="sr-wgrade '+cls+'">'+esc(badge)+'</span></div>'
+    +'<p class="sr-wcard-cat">최초 지적 '+dateDot(t.date)+'</p>';
+  if(t.notObserved){
+    h+='<p class="sr-wcard-note">이번 방문에 확인하지 못했습니다. 미조치로 유지되어 다음 방문에 다시 확인합니다.</p>';
+  }else{
+    /* 현재 상태가 지적사항 제목과 같으면(자동 기입값 그대로) 위 제목과 겹치므로 생략한다. */
+    if(t.currentState&&t.currentState!==t.title)h+='<p class="sr-wcard-note">'+esc(t.currentState)+'</p>';
+    h+='<p class="sr-wcard-why">'+esc((t.status==="조치완료"?"조치내용: ":"조치계획: ")+(t.actionText||"-"))+'</p>';
+  }
+  var before=(t.beforePhotos||[]).filter(function(p){return p&&p.dataUrl}).slice(0,2);
+  var after=(t.afterPhotos||[]).filter(function(p){return p&&p.dataUrl}).slice(0,2);
+  if(before.length||after.length){
+    h+='<div class="sr-wcard-photos">';
+    before.forEach(function(p,i){h+=photoBox([p],"과거 지적 "+(i+1),"첨부된 사진 없음")});
+    after.forEach(function(p,i){h+=photoBox([p],"조치 후 "+(i+1),"첨부된 사진 없음")});
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+
 /* ---------- 04 위험분석 ---------- */
 function sheetRiskAnalysis(s){
   var pr=buildPriorities(s);
@@ -698,32 +769,49 @@ function managementNote(s){
 }
 
 /* ---------- 05 근로자 의견 (6건/장, 자동증가) ---------- */
-function sheetsVoice(s){
-  var list=s.workerOpinions||[];
-  if(!list.length)return [];
-  var per=6,out=[];
-  for(var i=0;i<list.length;i+=per){
-    var chunk=list.slice(i,i+per);
-    var h=head("WORKER VOICE","근로자 의견청취",NO)+'<div class="sr-body">'
-      +'<div class="sr-section-title"><div><small>ANONYMOUS</small><h2>양호하지 않은 응답</h2></div>'
-      +'<span>'+(i+1)+'–'+Math.min(i+per,list.length)+' / '+list.length+'건 · 익명 응답</span></div>';
-    chunk.forEach(function(o){
-      h+='<div class="sr-voice"><small>근로자 '+esc(o.worker)+'</small>'
-        +'<p>'+esc(o.question)+' → <strong>'+esc(o.answer)+'</strong></p></div>';
+/* 근로자 의견 + 지난 지적사항 조치확인을 한 섹션으로 묶는다.
+   둘 다 "현장에서 확인한 사람·이력" 이야기라 같이 보는 편이 맥락이 이어진다.
+   조치확인은 표 대신 카드로 만들어 과거 사진과 조치 후 사진을 그 안에 함께 싣는다. */
+function sheetsVoiceFollowup(s){
+  var voices=s.workerOpinions||[];
+  var tasks=s.tasks||[];
+  if(!voices.length&&!tasks.length)return [];
+  var blocks=[];
+  if(voices.length){
+    blocks.push('<div class="sr-section-title"><div><small>ANONYMOUS</small><h2>근로자 의견청취</h2></div>'
+      +'<span>양호하지 않은 응답 '+voices.length+'건 · 익명 수집</span></div>');
+    voices.forEach(function(o){
+      blocks.push('<div class="sr-voice"><small>근로자 '+esc(o.worker)+'</small>'
+        +'<p>'+esc(o.question)+' → <strong>'+esc(o.answer)+'</strong></p></div>');
     });
-    if(i+per>=list.length){
-      var unshared=unsharedAccidentVoices(s);
-      if(unshared.length){
-        h+='<div class="sr-note"><b>사고사례 안내 미인지 '+unshared.length+'건</b> — 과거 사고가 있는 매장인데 근로자가 해당 사례를 안내받지 못했다고 답했습니다. TBM에서 사고사례를 실제로 공유하고 있는지 확인이 필요합니다.</div>';
-      }
-      (s.tbmCrossCheckFlags||[]).forEach(function(f){ h+='<div class="sr-note">'+esc(f.message)+'</div>'; });
+    var unshared=unsharedAccidentVoices(s);
+    if(unshared.length){
+      blocks.push('<div class="sr-note"><b>사고사례 안내 미인지 '+unshared.length+'건</b> — 과거 사고가 있는 매장인데 근로자가 해당 사례를 안내받지 못했다고 답했습니다. TBM에서 사고사례를 실제로 공유하고 있는지 확인이 필요합니다.</div>');
     }
-    h+=footer("근로자 의견은 이름·사번 없이 익명으로 수집",NO)+'</div>';
-    out.push(sheet(out.length?"의견"+(out.length+1):"근로자 의견",h));
+    (s.tbmCrossCheckFlags||[]).forEach(function(f){ blocks.push('<div class="sr-note">'+esc(f.message)+'</div>'); });
   }
-  return out;
+  if(tasks.length){
+    var done=tasks.filter(function(t){return t.status==="조치완료"}).length;
+    var unseen=tasks.filter(function(t){return t.notObserved}).length;
+    blocks.push('<div class="sr-section-title"><div><small>FOLLOW-UP</small><h2>지난 지적사항 조치확인</h2></div>'
+      +'<span>'+tasks.length+'건 · 조치완료 '+done+' · 미조치 '+(tasks.length-done-unseen)+' · 확인 못함 '+unseen+'</span></div>');
+    tasks.forEach(function(t,i){blocks.push(taskCard(s,t,i))});
+  }
+  return buildPagedSheets({
+    label:(voices.length&&tasks.length)?"의견·조치확인":(voices.length?"근로자 의견":"조치확인"),
+    kicker:"VOICE & FOLLOW-UP",
+    title:(voices.length&&tasks.length)?"근로자 의견 · 조치확인":(voices.length?"근로자 의견청취":"지난 지적사항 조치확인"),
+    footerText:"근로자 의견은 이름·사번 없이 익명으로 수집 · 미조치 항목은 다음 방문에 다시 확인",
+    titleBar:function(){return ""},
+    blocks:blocks,
+    perFallback:4
+  });
 }
 
+/* 사고 위험등급(상/중/하)을 작업유형·미흡사항 카드와 같은 배지 색으로 맞춘다. */
+function riskLevelCls(level){
+  return level==="상"?"risk":(level==="중"?"warn":(level==="하"?"good":""));
+}
 /* ---------- 06 사고조사 (1건/장, 자동증가) ---------- */
 function sheetsAccident(s){
   var list=s.accidents||[];
@@ -733,11 +821,10 @@ function sheetsAccident(s){
     return rankAccident(b)-rankAccident(a);
   });
   return sorted.map(function(a,i){
-    var doneCls=a.status==="조치완료"?"good":"";
     var h=head("ACCIDENT PREVENTION","사고 재발방지 조사",NO)+'<div class="sr-body">'
       +'<div class="sr-section-title"><div><small>CASE '+pad2(i+1)+' / '+pad2(sorted.length)+'</small>'
       +'<h2>'+esc(a.type||"사고")+' · '+esc(a.status||"확인 전")+'</h2></div>'
-      +'<span class="sr-status '+doneCls+'">위험등급 '+esc(a.riskLevel||"-")+'</span></div>'
+      +'<span class="sr-wgrade '+riskLevelCls(a.riskLevel)+'">위험 '+esc(a.riskLevel||"-")+'</span></div>'
       +'<div class="sr-accident-summary">'
       +'<div><small>재해일자</small><b>'+dateDot(a.date)+'</b></div>'
       +'<div><small>재해유형</small><b>'+esc(a.type||"-")+(a.approved==="Y"?" (산재승인)":"")+'</b></div>'
@@ -775,40 +862,81 @@ function rankAccident(a){
   return r;
 }
 
-/* ---------- 07 상세결과 (미흡사항 6건/장, 자동증가) ---------- */
+/* ---------- 사다리 현황 (보유표 + 이상 항목 카드) ----------
+   예전에는 개선조치 계획 장 위쪽에 얹혀 있어서 사다리 사진이 뒤쪽 증빙 장으로 밀려 있었다.
+   독립 섹션으로 떼어내고 이상 항목을 카드로 만들어 사진을 그 안에 함께 싣는다. */
+function sheetsLadder(s){
+  var counts=(s.ladder&&s.ladder.counts)||{};
+  var typeStatus=(s.ladder&&s.ladder.typeStatus)||{};
+  var ladderF=findingsOf(s,"사다리");
+  var total=LADDER_ORDER.reduce(function(a,t){return a+Number(counts[t]||0)},0);
+  /* 보유도 없고 미흡도 없으면 장을 만들지 않는다. */
+  if(!total&&!ladderF.length)return [];
+
+  var inv='<div class="sr-section-title"><div><small>LADDER INVENTORY</small><h2>사다리 보유현황</h2></div>'
+    +'<span>'+(highRiskOwned(s).length?"고위험 유형 보유 · 관리기준 강화 대상":"고위험 유형 미보유")+'</span></div>'
+    +'<div class="sr-ladder">';
+  LADDER_ORDER.forEach(function(t){
+    var n=Number(counts[t]||0);
+    var stt=typeStatus[t]||"";
+    var mine=ladderF.filter(function(f){return f.area===t});
+    var cls=n<=0?"off":(stt==="bad"?"bad":"");
+    var note=n<=0?"대 · 미보유":(mine.length?"대 · "+mine.map(function(f){return esc(f.title)}).join(", ")+" 미흡":"대 · 양호");
+    inv+='<div class="'+cls+'"><small>'+esc(t)+(LADDER_HIGH_RISK.indexOf(t)>=0?" ⚠":"")+'</small><b>'+n+'</b> <i>'+note+'</i></div>';
+  });
+  inv+='</div>';
+  if(highRiskOwned(s).length){
+    inv+='<div class="sr-note"><b>고위험 유형 보유</b> — '+highRiskOwned(s).map(esc).join(", ")
+      +'. 반복 파손이 확인된 유형이므로 사용 전 발판·체결상태 점검을 일상점검에 포함하고 교체계획을 함께 검토해 주세요.</div>';
+  }
+
+  /* 보유현황표를 첫 블록으로 넣는다. 그래야 첫 장에만 나오고 이후 장은 카드로만 채워진다. */
+  var blocks=[inv];
+  if(ladderF.length){
+    blocks.push('<div class="sr-section-title"><div><small>FINDINGS</small><h2>사다리 이상 항목</h2></div>'
+      +'<span>'+ladderF.length+'건</span></div>');
+    ladderF.forEach(function(f,i){blocks.push(findingCard(s,f,i))});
+  }else if(total){
+    blocks.push('<div class="sr-note info">보유 사다리 '+total+'대 전부 양호로 확인되었습니다.</div>');
+  }
+  return buildPagedSheets({
+    label:"사다리",
+    kicker:"LADDER STATUS",
+    title:"사다리 현황",
+    footerText:"고위험 유형(구형 검정·A형)은 사용 전 발판·체결상태 점검 필수",
+    titleBar:function(){return ""},
+    blocks:blocks,
+    perFallback:2
+  });
+}
+
+/* ---------- 분야별 상세결과 (공통·시설 / 소방 / TBM / 기타) ----------
+   작업점검은 작업유형 장, 사다리는 사다리 장에서 이미 다뤘으므로 여기서는 제외한다.
+   표를 카드로 바꿔 위험등급·개선방향·사진을 한 항목 안에 모았다. */
 function sheetsFindings(s){
-  var fs=(s.findings||[]).slice().sort(function(a,b){ return rankFinding(b)-rankFinding(a) });
   var st=categoryStates(s);
+  var tail=sectionStateTable(s,st);
+  var fs=(s.findings||[]).filter(function(f){
+    return f.category!=="작업점검"&&f.category!=="사다리";
+  }).slice().sort(function(a,b){ return rankFinding(b)-rankFinding(a) });
   if(!fs.length){
-    var h0=head("DETAILED FINDINGS","분야별 상세결과",NO)+'<div class="sr-body">'
-      +'<div class="sr-note info">이번 점검에서 확인된 미흡사항이 없습니다. 전 분야 양호로 기록되었습니다.</div>'
-      +sectionStateTable(s,st)
-      +footer("양호 항목은 요약하고 위험·미흡 항목을 중심으로 기재",NO)+'</div>';
-    return [sheet("상세결과",h0)];
+    return [sheet("상세결과",head("DETAILED FINDINGS","분야별 상세결과",NO)+'<div class="sr-body">'
+      +'<div class="sr-note info">공통·시설, 소방, TBM, 기타사항에서 확인된 미흡사항이 없습니다.</div>'
+      +tail+footer("분야별 상태는 점수 대신 4단계로 표기",NO)+'</div>')];
   }
-  var per=6,out=[];
-  for(var i=0;i<fs.length;i+=per){
-    var chunk=fs.slice(i,i+per);
-    var h=head("DETAILED FINDINGS","분야별 상세결과",NO)+'<div class="sr-body">'
-      +'<div class="sr-section-title"><div><small>FINDINGS</small><h2>이번 점검 미흡사항</h2></div>'
-      +'<span>'+(i+1)+'–'+Math.min(i+per,fs.length)+' / '+fs.length+'건</span></div>'
-      +'<table class="sr-findings"><thead><tr><th style="width:130px">점검분야</th><th style="width:270px">확인 결과</th><th>위험요인 및 개선방향</th><th style="width:96px">상태</th></tr></thead><tbody>';
-    chunk.forEach(function(f){
-      var sub=[];
-      if(f.question)sub.push("문항: "+f.question);
-      if(f.note)sub.push(f.note);
-      h+='<tr><td>'+esc(f.category)+(f.area&&f.area!==f.category?'<div class="sr-sub">'+esc(f.area)+'</div>':"")+'</td>'
-        +'<td>'+esc(f.title)+(sub.length?'<div class="sr-sub">'+esc(sub.join(" / "))+'</div>':"")+'</td>'
-        +'<td>'+esc(improvementText(f))+hazPills(f.hazards||[])+'</td>'
-        +'<td>'+dot("")+'미흡</td></tr>';
-    });
-    h+='</tbody></table>';
-    /* 마지막 장에 분야별 상태 요약을 붙인다. */
-    if(i+per>=fs.length)h+=sectionStateTable(s,st);
-    h+=footer("양호 항목은 요약하고 위험·미흡 항목을 중심으로 기재",NO)+'</div>';
-    out.push(sheet(out.length?"상세결과"+(out.length+1):"상세결과",h));
-  }
-  return out;
+  return buildPagedSheets({
+    label:"상세결과",
+    kicker:"DETAILED FINDINGS",
+    title:"분야별 상세결과",
+    footerText:"공통·시설 / 소방 / TBM / 기타사항 · 사진은 항목 안에 함께 표시",
+    titleBar:function(range){
+      return '<div class="sr-section-title"><div><small>FINDINGS</small><h2>이번 점검 미흡사항</h2></div>'
+        +'<span>'+(range?esc(range):fs.length+"건")+'</span></div>';
+    },
+    blocks:fs.map(function(f,i){return findingCard(s,f,i)}),
+    tail:tail,
+    perFallback:3
+  });
 }
 function rankFinding(f){
   var r=0,t=f.title||"";
@@ -847,166 +975,92 @@ function sectionStateTable(s,st){
   return h+'</tbody></table>';
 }
 
-/* 조치확인 표의 "현재 상태 / 조치결과" 칸을 만든다. 두 곳(조치계획 장·재점검 장)에서 함께 쓴다.
-   · 현재 상태 문구가 지적사항 제목과 똑같으면(자동 기입값을 그대로 둔 경우) 왼쪽 칸과 겹치므로
-     다시 쓰지 않는다.
-   · 조치문구는 상태에 따라 "조치내용"과 "조치계획"으로 나눠 붙인다. 미조치인데 조치 문장만
-     덩그러니 보이면 상태 칸과 어긋나 보이기 때문이다(사고조사 장과 같은 방식). */
-function followupStateCell(t,unseenNote){
-  if(t.notObserved){
-    return esc("이번 방문 확인 못함")+'<div class="sr-sub">'+esc(unseenNote||"다음 방문 재확인")+'</div>';
-  }
-  var state=t.currentState||"";
-  var sameAsTitle=state&&state===t.title;
-  var label=t.status==="조치완료"?"조치내용":"조치계획";
-  return (sameAsTitle?"":esc(state||"-"))
-    +'<div class="sr-sub">'+esc(label+": "+(t.actionText||"-"))+'</div>';
-}
-
-/* ---------- 08 개선조치 계획 (+ 사다리 보유현황 / 지난 지적사항) ---------- */
-function sheetPlan(s){
+/* ---------- 마지막 장: 개선조치 계획 ----------
+   사다리 보유현황은 사다리 장으로, 지난 지적사항은 의견·조치확인 장으로 옮겼다.
+   이 장은 "그래서 무엇부터 하면 되는가"만 담는다. */
+function sheetsPlan(s){
   var pr=buildPriorities(s);
-  var counts=(s.ladder&&s.ladder.counts)||{};
-  var typeStatus=(s.ladder&&s.ladder.typeStatus)||{};
-  var ladderF=findingsOf(s,"사다리");
-
-  var h=head("ACTION PLAN","개선조치 계획",NO)+'<div class="sr-body">';
-
-  h+='<div class="sr-section-title"><div><small>LADDER INVENTORY</small><h2>사다리 보유현황</h2></div>'
-    +'<span>'+(highRiskOwned(s).length?"고위험 유형 보유 · 관리기준 강화 대상":"고위험 유형 미보유")+'</span></div>'
-    +'<div class="sr-ladder">';
-  LADDER_ORDER.forEach(function(t){
-    var n=Number(counts[t]||0);
-    var stt=typeStatus[t]||"";
-    var mine=ladderF.filter(function(f){return f.area===t});
-    var cls=n<=0?"off":(stt==="bad"?"bad":"");
-    var note=n<=0?"대 · 미보유":(mine.length?"대 · "+mine.map(function(f){return esc(f.title)}).join(", ")+" 미흡":"대 · 양호");
-    h+='<div class="'+cls+'"><small>'+esc(t)+(LADDER_HIGH_RISK.indexOf(t)>=0?" ⚠":"")+'</small><b>'+n+'</b> <i>'+note+'</i></div>';
-  });
-  h+='</div>';
-  if(highRiskOwned(s).length){
-    h+='<div class="sr-note"><b>고위험 유형 보유</b> — '+highRiskOwned(s).map(esc).join(", ")
-      +'. 반복 파손이 확인된 유형이므로 사용 전 발판·체결상태 점검을 일상점검에 포함하고 교체계획을 함께 검토해 주세요.</div>';
-  }
-
-  h+='<div class="sr-section-title"><div><small>ACTION PLAN</small><h2>조치 계획</h2></div>'
-    +'<span>담당·기한은 매장 협의 후 확정</span></div>';
+  var blocks=[];
+  blocks.push('<div class="sr-section-title"><div><small>ACTION PLAN</small><h2>조치 계획</h2></div>'
+    +'<span>담당·기한은 매장 협의 후 확정</span></div>');
   if(!pr.length){
-    h+='<div class="sr-note info">별도 조치계획이 필요한 항목이 없습니다.</div>';
+    blocks.push('<div class="sr-note info">별도 조치계획이 필요한 항목이 없습니다.</div>');
   }else{
     pr.forEach(function(p,i){
       var owner=p.status==="즉시조치"?"담당: 매장 자체조치 + 부서 협의 · 기한: 즉시"
               :(p.status==="확인필요"?"담당: 점검자 재확인 · 기한: 차기 방문":"담당: 매장 자체조치 · 기한: 7일 이내");
-      h+='<div class="sr-priority"><i>'+pad2(i+1)+'</i><div><b>'+p.title+'</b><small>'+owner+'</small></div>'
-        +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span></div>';
+      blocks.push('<div class="sr-priority"><i>'+pad2(i+1)+'</i><div><b>'+p.title+'</b><small>'+owner+'</small></div>'
+        +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span></div>');
     });
   }
-
-  /* 지난 지적사항 조치확인 — 사진은 뒤쪽 사진증빙 장에서 따로 싣고, 여기서는 장부형 목록으로 정리한다. */
-  if((s.tasks||[]).length){
-    h+='<div class="sr-section-title"><div><small>FOLLOW-UP</small><h2>지난 지적사항 조치확인</h2></div>'
-      +'<span>'+(s.tasks||[]).length+'건</span></div>'
-      +'<table class="sr-findings"><thead><tr><th style="width:250px">지적사항</th><th>현재 상태 / 조치결과</th><th style="width:110px">상태</th></tr></thead><tbody>';
-    (s.tasks||[]).forEach(function(t){
-      h+='<tr><td>'+esc(t.title)+'<div class="sr-sub">'+dateDot(t.date)+'</div></td>'
-        +'<td>'+followupStateCell(t)+'</td>'
-        +'<td>'+dot(t.status==="조치완료"?"good":"warn")+esc(t.notObserved?"확인 못함":(t.status||"-"))+'</td></tr>';
-    });
-    h+='</tbody></table>';
-  }
-
-  h+=footer("조치 완료 후 차기 점검에서 이행 여부를 재확인",NO)+'</div>';
-  return sheet("조치계획",h);
+  return buildPagedSheets({
+    label:"조치계획",
+    kicker:"ACTION PLAN",
+    title:"개선조치 계획",
+    footerText:"조치 완료 후 차기 점검에서 이행 여부를 재확인",
+    titleBar:function(){return ""},
+    blocks:blocks,
+    perFallback:8
+  });
 }
 
 /* 지적사항 재점검은 전체 체크리스트를 실시한 것이 아니므로 종합점수·분야별 양호판정을
    만들지 않고, 확인한 지적사항만 별도 결과표로 출력한다. */
-function sheetFollowup(s){
-  var list=s.tasks||[],done=list.filter(function(t){return t.status==="조치완료"}).length;
+function sheetsFollowupOnly(s){
+  var list=s.tasks||[];
+  var done=list.filter(function(t){return t.status==="조치완료"}).length;
   var unseen=list.filter(function(t){return t.notObserved}).length;
-  var h=head("FOLLOW-UP ONLY","지난 지적사항 재점검 결과",NO)+'<div class="sr-body">'
-    +'<div class="sr-section-title"><div><small>FOLLOW-UP SUMMARY</small><h2>'+esc(s.store.name)+' · '+dateDot(s.store.date)+'</h2></div><span>기준 점검 '+esc(s.sourceInspectionId||"-")+'</span></div>'
-    +'<div class="sr-kpi"><div><small>확인 대상</small><b>'+list.length+'건</b></div><div><small>조치완료</small><b>'+done+'건</b></div><div><small>미조치</small><b>'+(list.length-done-unseen)+'건</b></div><div><small>확인 못함</small><b>'+unseen+'건</b></div></div>'
-    +'<div class="sr-section-title"><div><small>FOLLOW-UP ITEMS</small><h2>항목별 확인 결과</h2></div><span>전체 체크리스트 미실시 · 지적사항만 재확인</span></div>'
-    +'<table class="sr-findings"><thead><tr><th style="width:250px">지적사항</th><th>현재 상태 / 조치내용</th><th style="width:110px">결과</th></tr></thead><tbody>';
-  list.forEach(function(t){
-    h+='<tr><td>'+esc(t.title)+'<div class="sr-sub">최초 지적 '+dateDot(t.date)+'</div></td>'
-      +'<td>'+followupStateCell(t,"미조치 유지 · 다음 방문 재확인")+'</td>'
-      +'<td>'+dot(t.status==="조치완료"?"good":"warn")+esc(t.notObserved?"확인 못함":(t.status||"미조치"))+'</td></tr>';
-  });
-  if(!list.length)h+='<tr><td colspan="3">재점검 대상 지적사항이 없습니다.</td></tr>';
-  h+='</tbody></table>'+footer("지적사항 재점검 전용 · 미조치/확인 못함 항목은 다음 방문에 다시 표시",NO)+'</div>';
-  return sheet("재점검 결과",h);
-}
-
-/* ---------- 09 사진증빙 (4건/장, 자동증가) ---------- */
-function sheetsEvidence(s){
-  var items=[];
-  /* 작업점검 사진은 작업유형 카드 안에 이미 실렸으므로 여기서 또 싣지 않는다. */
-  (s.findings||[]).filter(function(f){return f.category!=="작업점검"}).forEach(function(f){
-    items.push({photos:f.photos,label:f.category,title:f.title,
-      sub:[f.category,f.area&&f.area!==f.category?f.area:"",dateDot(s.store.date)].filter(Boolean).join(" · ")});
-  });
-  (s.accidents||[]).forEach(function(a){
-    items.push({photos:a.beforePhotos,label:"사고조사 조치 전",title:(a.type||"사고")+" 조치 전",
-      sub:"사고조사 · 조치 전 · "+dateDot(a.date)});
-    items.push({photos:a.afterPhotos,label:"사고조사 조치 후",title:(a.type||"사고")+" 조치 후",
-      sub:"사고조사 · "+(a.status||"확인 전")+" · "+dateDot(a.date)});
-  });
-  /* 조치확인 사진은 한 번만 싣는다. 예전에는 재점검 전용 모드에서 아래 블록까지 함께 실행돼
-     같은 사진이 두 번 들어가고 사진증빙 페이지가 두 배로 늘어났다. */
-  if(s.followupOnly){
-    (s.tasks||[]).forEach(function(t){
-      if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"과거 지적사진",title:t.title,sub:"재점검 참고자료"});
-      if((t.afterPhotos||[]).length)items.push({photos:t.afterPhotos,label:"조치 후 사진",title:t.title,sub:t.notObserved?"확인 못함":"조치결과 증빙"});
-    });
+  var blocks=[
+    '<div class="sr-section-title"><div><small>FOLLOW-UP SUMMARY</small><h2>'+esc(s.store.name)+' · '+dateDot(s.store.date)+'</h2></div>'
+      +'<span>기준 점검 '+esc(s.sourceInspectionId||"-")+'</span></div>'
+    +'<div class="sr-kpi"><div><small>확인 대상</small><b>'+list.length+'건</b></div>'
+      +'<div><small>조치완료</small><b>'+done+'건</b></div>'
+      +'<div><small>미조치</small><b>'+(list.length-done-unseen)+'건</b></div>'
+      +'<div><small>확인 못함</small><b>'+unseen+'건</b></div></div>'
+  ];
+  if(!list.length){
+    blocks.push('<div class="sr-note info">재점검 대상 지적사항이 없습니다.</div>');
   }else{
-    (s.tasks||[]).forEach(function(t){
-      if((t.beforePhotos||[]).length)items.push({photos:t.beforePhotos,label:"지난 지적 조치 전",title:t.title+" 조치 전",sub:"조치확인 · 조치 전"});
-      if((t.afterPhotos||[]).length)items.push({photos:t.afterPhotos,label:"지난 지적 조치 후",title:t.title+" 조치 후",sub:"조치확인 · 조치 후"});
-    });
+    blocks.push('<div class="sr-section-title"><div><small>FOLLOW-UP ITEMS</small><h2>항목별 확인 결과</h2></div>'
+      +'<span>전체 체크리스트 미실시 · 지적사항만 재확인</span></div>');
+    list.forEach(function(t,i){blocks.push(taskCard(s,t,i))});
   }
-  if(!items.length)return [];
-
-  var withPhoto=items.filter(function(x){return (x.photos||[]).some(function(p){return p&&p.dataUrl})}).length;
-  var per=4,out=[];
-  for(var i=0;i<items.length;i+=per){
-    var chunk=items.slice(i,i+per);
-    var h=head("PHOTO EVIDENCE","현장 사진 증빙",NO)+'<div class="sr-body">';
-    if(!withPhoto&&i===0){
-      h+='<div class="sr-note" style="margin-top:0"><b>첨부된 현장사진이 없습니다.</b> 미흡 답변에 사진을 첨부하면 아래 칸이 실제 이미지로 채워지고, 사진 수에 따라 페이지가 4장 단위로 자동 추가됩니다.</div>';
-    }
-    h+='<div class="sr-evidence" style="margin-top:14px">';
-    chunk.forEach(function(x,j){
-      h+='<figure>'+photoBox(x.photos,pad2(i+j+1)+" · "+x.label,"첨부된 사진 없음")
-        +'<figcaption><b>'+esc(x.title)+'</b>'+esc(x.sub)+'</figcaption></figure>';
-    });
-    h+='</div>'+footer("등록된 모든 사진은 페이지당 최대 4장으로 자동 추가 · object-fit: contain",NO)+'</div>';
-    out.push(sheet(out.length?"사진증빙"+(out.length+1):"사진증빙",h));
-  }
-  return out;
+  return buildPagedSheets({
+    label:"재점검 결과",
+    kicker:"FOLLOW-UP ONLY",
+    title:"지난 지적사항 재점검 결과",
+    footerText:"지적사항 재점검 전용 · 미조치/확인 못함 항목은 다음 방문에 다시 표시",
+    titleBar:function(){return ""},
+    blocks:blocks,
+    perFallback:3
+  });
 }
+
+/* 예전에 있던 sheetsEvidence(사진증빙 몰아넣기 장)는 없앴다.
+   사진이 항목 카드 안으로 들어가서, 보는 사람이 앞뒤로 넘겨가며 대조할 필요가 없어졌다. */
 
 /* ============ 전체 조립 ============ */
 function buildSheets(s){
   var list=[];
   if(s.followupOnly){
-    list.push(sheetFollowup(s));
-    list=list.concat(sheetsEvidence(s));
+    list=sheetsFollowupOnly(s);
     var followupTotal=list.length;
     list.forEach(function(x,i){var no=pad2(i+1)+" / "+pad2(followupTotal);x.html=x.html.split(NO).join(no);x.no=i+1});
     return list;
   }
+  /* 목차 순서: 요약 → 동선 → 작업유형 → 위험분석 → 사고조사 → 사다리 → 분야별 상세
+     → 의견·조치확인 → 조치계획.
+     사진은 각 섹션 항목 안에 들어가므로 뒤쪽에 사진증빙 장을 따로 두지 않는다. */
   list.push(sheetCover(s));
   list.push(sheetRoute(s));
-  /* 작업유형은 항목마다 사진과 위험등급이 붙어 분량이 크다. 필요한 만큼 장이 자동으로 늘어난다. */
+  /* 항목마다 사진과 위험등급이 붙어 분량이 크다. 필요한 만큼 장이 자동으로 늘어난다. */
   list=list.concat(sheetsWorkTypes(s));
   list.push(sheetRiskAnalysis(s));
-  list=list.concat(sheetsVoice(s));
   list=list.concat(sheetsAccident(s));   /* 사고이력 없으면 통째로 생략 */
+  list=list.concat(sheetsLadder(s));     /* 보유·미흡 모두 없으면 생략 */
   list=list.concat(sheetsFindings(s));
-  list.push(sheetPlan(s));
-  list=list.concat(sheetsEvidence(s));
+  list=list.concat(sheetsVoiceFollowup(s));
+  list=list.concat(sheetsPlan(s));
 
   /* 페이지 번호 치환 (전체 장수가 확정된 뒤) */
   var total=list.length;
