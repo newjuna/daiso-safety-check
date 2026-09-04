@@ -298,6 +298,10 @@ function summaryComment(s){
   if(lb&&lb.level!=="good")fourth.push("입고 평균 투입인원이 "+lb.avgPeople+"명(도우미 공백비율 "+lb.gapRatioPct+"%)으로 중량물 취급 부담이 큽니다");
   if(unsharedAccidentVoices(s).length)fourth.push("근로자가 사고사례 "+unsharedAccidentVoices(s).length+"건을 안내받지 못했다고 응답했습니다");
   if(fourth.length)out.push(fourth.join(". ")+".");
+  /* 5문장: 점검자 종합의견(근로자 의견과 현장 신호가 같은 방향인지 대조) — 조치계획을 이 페이지로
+     합치면서 여기로 함께 흡수했다. 별도 장으로 두지 않는다. */
+  var note=managementNote(s);
+  if(note)out.push(note);
   return out.join(" ");
 }
 /* 보유한 사다리 중 고위험 유형 */
@@ -734,12 +738,17 @@ function summaryRows(s){
   });
   return rows;
 }
+/* 요약 페이지의 «종합 진단결과» 블랙박스.
+   두 블랙박스를 나란히 두는 대신 하나로 합쳐 라벨(진단결과 / 종합 코멘트)로 구분한다.
+   가로 카드 두 개가 나란히 있으면 같은 정보처럼 보여 눈에 덜 띈다는 지적을 반영해
+   세로로 쌓고 진단결과를 더 크게 강조한다. */
 function sheetSummary(s){
   var pr=buildPriorities(s),dg=diagnosisLabel(s,pr);
   var rows=summaryRows(s);
-  var h='<div class="sr-sum-box">'
-    +'<div class="sr-sum-black"><small>종합 진단결과</small><b>'+esc(dg.label)+'</b><span>'+esc(dg.sub)+'</span></div>'
-    +'<div class="sr-sum-black"><small>종합 코멘트</small><p>'+esc(summaryComment(s))+'</p></div>'
+  var h='<div class="sr-sum-hero">'
+    +'<div class="sr-sum-hero-label">종합 진단결과</div>'
+    +'<div class="sr-sum-hero-verdict">'+esc(dg.label)+' <small>'+esc(dg.sub)+'</small></div>'
+    +'<p class="sr-sum-hero-comment">'+esc(summaryComment(s))+'</p>'
     +'</div>';
   h+='<div class="sr-sum-title">현장점검 동선 요약 <em>분야별 미흡건수 · 대표사진 1장</em></div>';
   h+='<div class="sr-sum-rows">';
@@ -750,6 +759,25 @@ function sheetSummary(s){
       +photoBox(r.photos,r.name,"사진 없음")+'</div>';
   });
   h+='</div>';
+  /* 개선조치 계획을 이 페이지 하단에 압축해서 함께 싣는다(독립 챕터로 두지 않음, 사용자 확정).
+     칸이 부족하면 상위 5건만 보여주고 나머지는 건수로만 표시한다. */
+  var SHOW=5;
+  h+='<div class="sr-sum-title">개선조치 계획 <em>'+(pr.length?pr.length+"건 · 담당·기한은 매장 협의 후 확정":"없음")+'</em></div>';
+  h+='<div class="sr-plan-fill">';
+  if(!pr.length){
+    h+='<div class="sr-plan-mini-empty">별도 조치계획이 필요한 항목이 없습니다. 현재 관리상태를 유지해 주세요.</div>';
+  }else{
+    h+='<div class="sr-plan-mini">';
+    pr.slice(0,SHOW).forEach(function(p,i){
+      h+='<div class="sr-plan-mini-row"><i>'+pad2(i+1)+'</i><b>'+p.title+'</b>'
+        +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span></div>';
+    });
+    if(pr.length>SHOW){
+      h+='<div class="sr-plan-mini-more">그 밖의 조치사항 '+(pr.length-SHOW)+'건은 각 챕터 상세에서 확인</div>';
+    }
+    h+='</div>';
+  }
+  h+='</div>';
   var sh=pageSheet("요약본","SUMMARY","점검결과 요약",h,esc(s.store.name)+" · 상세 내용은 각 챕터에서 확인");
   /* 요약 챕터는 구분장 없이 이 장부터 시작하므로 목차 페이지번호를 이 장에 붙인다. */
   sh.tocKey="summary";
@@ -757,8 +785,7 @@ function sheetSummary(s){
 }
 /* 요약 챕터는 구분장을 두지 않는다.
    표지 다음 장이 목차이고, 그 다음이 곧 요약이라 «요약 시작합니다» 구분장이 군더더기였다.
-   예전에 따로 있던 «핵심 위험요인 분석» 장도 없앴다. 우선순위는 마지막 조치계획 장에
-   담당·기한과 함께 나오므로 같은 내용을 두 번 보여줄 필요가 없다. */
+   개선조치 계획도 이 페이지 하단에 압축해서 넣었으므로 별도 챕터가 없다. */
 function chapterSummary(s){
   return [sheetSummary(s)];
 }
@@ -854,16 +881,20 @@ function ladderChapter(s){
     foot:"고위험 유형(구형 검정·A형)은 사용 전 발판·체결상태 점검 필수"
   }));
 
-  /* 보유현황 장 — 유형별 카드에 그 유형의 현장사진을 함께 넣는다.
-     "어떤 사다리가 몇 대 있고 어떤 상태인지"를 사진으로 바로 대조할 수 있게 하려는 것. */
+  /* 보유현황 장 — 유형별 카드에 이상항목 현장사진 대신 구글드라이브 가이드 사진(참고사진)을 넣는다.
+     "이 사다리가 몇 개 있구나"를 사진으로 바로 알아볼 수 있게 하려는 것(사용자 확정).
+     이상항목 사진은 아래 별도 상세 페이지에서 보여준다. */
+  var guideImgs=s.ladderTypeImages||{};
   var h='<div class="sr-ladder2">';
   LADDER_ORDER.forEach(function(t){
     var n=Number(counts[t]||0),stt=typeStatus[t]||"";
     var mine=ladderF.filter(function(f){return f.area===t});
     var cls=n<=0?"off":((stt==="bad"||mine.length)?"bad":"");
     var note=n<=0?"미보유":(mine.length?"이상 "+mine.length+"건":"양호");
+    var guide=guideImgs[t];
     h+='<div class="'+cls+'">'
-      +photoBox(firstPhotoOf(mine),t,n?"사진 없음":"미보유")
+      +(guide?'<div class="sr-photo" data-label="'+esc(t)+'"><img src="'+guide+'" alt="'+esc(t)+'"></div>'
+             :'<div class="sr-photo empty" data-label="'+esc(t)+'">가이드 사진 없음</div>')
       +'<small>'+esc(t)+(LADDER_HIGH_RISK.indexOf(t)>=0?" ⚠":"")+'</small>'
       +'<b>'+n+'</b><i>대 · '+esc(note)+'</i></div>';
   });
@@ -923,26 +954,12 @@ function ladderChapter(s){
 }
 
 /* ============================================================
-   챕터 03·04·05 · 공통·시설 / 소방 / TBM
-   구분장(전체 항목 + 양호/미흡) → 미흡 항목만 상세
+   챕터 03·04 · 공통·시설 / 소방
+   구분장(전체 항목 + 양호/미흡) → 미흡 항목만 상세(사이드바 + 2문항/페이지)
    ============================================================ */
-/* TBM은 «항목 체크»만으로는 실효성을 알 수 없다.
-   확인방법·실시시각·스트레칭 선행 여부·근로자 인지 여부를 상세 첫 장 위에 붙여 함께 보게 한다. */
-function tbmLead(s){
-  var gap=s.tbmStretchGap,out=[];
-  out.push('확인방법 «'+esc(s.tbmConfirmMethod||"-")+'»'
-    +(activeTbmTime(s)?" · 실시시각 "+esc(activeTbmTime(s)):""));
-  if(gap&&gap.gapMinutes>0){
-    out.push('<b>입고작업이 스트레칭(TBM)보다 '+gap.gapMinutes+'분 먼저 시작됩니다.</b> 스트레칭 없이 중량물 작업이 이뤄지고 있습니다.');
-  }
-  var un=unsharedAccidentVoices(s);
-  if(un.length)out.push('근로자 '+un.length+'건이 과거 사고사례를 «안내받지 못함»으로 응답했습니다.');
-  return out.join("<br>");
-}
 var CHECKLIST_META={
   common:{no:"03",title:"공통·시설",kicker:"COMMON & FACILITY",foot:"시설 이상은 사용 전 안전상태 확인 후 조치"},
-  fire:{no:"04",title:"소방",kicker:"FIRE SAFETY",foot:"소방설비는 화재 시 대피에 직결 · 즉시 조치 대상"},
-  tbm:{no:"05",title:"TBM",kicker:"TBM",foot:"TBM은 실시 여부와 함께 근로자 인지 여부를 교차확인"}
+  fire:{no:"04",title:"소방",kicker:"FIRE SAFETY",foot:"소방설비는 화재 시 대피에 직결 · 즉시 조치 대상"}
 };
 function checklistChapter(s,k){
   var meta=CHECKLIST_META[k];
@@ -971,7 +988,6 @@ function checklistChapter(s,k){
       kicker:meta.no+" · "+meta.title,
       title:meta.title+" 미흡사항",
       soloTitle:meta.no+") "+meta.title,
-      lead:k==="tbm"?tbmLead(s):"",
       sideKicker:"점검 체크리스트 · "+meta.no,
       sideTitle:meta.title+" "+items.length+"항목",
       sideItems:items.map(function(x){return {text:x.name,state:x.state}}),
@@ -998,13 +1014,75 @@ function checklistChapter(s,k){
 }
 
 /* ============================================================
+   챕터 05 · TBM
+   구분장(전체 항목 + 양호/미흡) → 1페이지 요약
+   (사이드바+2문항/페이지 상세는 두지 않는다 — 사용자 확정)
+
+   TBM은 항목 자체가 "실시했는지"를 묻는 형태라 미흡 항목 하나하나에
+   사진·해결방안을 붙이는 것보다, «확인방법 · 실시시각 · 스트레칭 순서 · 항목별 양호/미흡»을
+   한 장에 모아 보는 편이 실효성 판단에 더 유용하다.
+   사진은 직접참관 회차에만 있을 수 있다(인터뷰만인 회차는 실시 장면을 못 봤으므로 사진이 없다). */
+function tbmChapter(s){
+  var items=(s.checklists||{}).tbm||[];
+  var list=findingsOf(s,"TBM");
+  if(!items.length&&list.length){
+    items=list.map(function(f){return {name:f.title,state:"bad",note:f.note||"",photos:f.photos}});
+  }
+  var bad=items.filter(function(x){return x.state==="bad"});
+  var gap=s.tbmStretchGap;
+  var unshared=unsharedAccidentVoices(s);
+  var isDirect=s.tbmConfirmMethod!=="인터뷰만";
+  var photos=isDirect?(s.tbmPhotos||[]):[];
+
+  var out=[chapterSheet({
+    no:"05",key:"tbm",title:"TBM",kicker:"TBM",
+    sub:items.map(function(x,i){
+      return {i:pad2(i+1),text:x.name,
+        tag:x.state==="bad"?"미흡":(x.state==="na"?"해당없음":"양호"),
+        cls:x.state==="bad"?"bad":(x.state==="na"?"na":"")};
+    }),
+    foot:"TBM은 실시 여부와 함께 근로자 인지 여부를 교차확인"
+  })];
+
+  var h='<div class="sr-sum-box">'
+    +'<div class="sr-sum-black"><small>확인방법</small><b>«'+esc(s.tbmConfirmMethod||"-")+'»</b>'
+    +(activeTbmTime(s)?'<span>실시시각 '+esc(activeTbmTime(s))+'</span>':"")+'</div>'
+    +'<div class="sr-sum-black"><p>'
+    +(gap&&gap.gapMinutes>0
+      ?'<b>입고작업이 스트레칭(TBM)보다 '+gap.gapMinutes+'분 먼저 시작됩니다.</b> 스트레칭 없이 중량물 작업이 이뤄지고 있습니다.'
+      :'입고작업 전 스트레칭(TBM)이 정상 순서로 진행되었습니다.')
+    +(unshared.length?'<br>근로자 '+unshared.length+'건이 과거 사고사례를 «안내받지 못함»으로 응답했습니다.':'')
+    +'</p></div></div>';
+
+  /* 직접참관 회차만 실시 사진을 보여준다. 인터뷰만인 회차는 사진칸 자체를 만들지 않는다.
+     사진과 항목목록을 좌우로 나눠, 항목이 10개(TBM 문항 전체)여도 한 장을 넘기지 않는다. */
+  h+='<div class="sr-sum-title">항목별 확인 결과 <em>'+(bad.length?"미흡 "+bad.length+"건":"전 항목 양호")+'</em></div>';
+  h+='<div class="'+(isDirect?"sr-tbm-split":"")+'">';
+  if(isDirect){
+    h+='<div class="sr-tbm-photo-col"><div class="sr-sum-title" style="margin-top:0">TBM 실시 사진 <em>직접참관</em></div>'
+      +'<div class="sr-qphoto" style="min-height:0">'+photoBox(photos,"TBM 실시","첨부된 실시 사진 없음")+'</div></div>';
+  }
+  h+='<div class="sr-plan-mini'+(isDirect?" sr-tbm-list-col":"")+'">';
+  items.forEach(function(x,i){
+    var tag=x.state==="bad"?"미흡":(x.state==="na"?"해당없음":"양호");
+    var cls=x.state==="bad"?"":"good";
+    h+='<div class="sr-plan-mini-row"><i>'+pad2(i+1)+'</i><b>'+esc(x.name)+(x.note?' — '+esc(x.note):"")+'</b>'
+      +'<span class="sr-status '+cls+'">'+tag+'</span></div>';
+  });
+  h+='</div></div>';
+
+  out.push(pageSheet("TBM 요약","TBM","TBM 점검 요약",h,"TBM은 실시 여부와 함께 근로자 인지 여부를 교차확인"));
+  return out;
+}
+
+/* ============================================================
    챕터 06 · 근로자 의견청취
-   구분장 → 양호하지 않은 응답만 상세(근로자별). 사진이 없으므로 인용 박스로 높이를 채운다.
+   구분장 → 1페이지 요약 (근로자별로 «양호하지 않은 응답»만 목록으로 나열)
+   (사이드바+2문항/페이지 상세는 두지 않는다 — 사용자 확정. 사진도 넣지 않는다)
    ============================================================ */
 function voiceChapter(s){
   var detail=s.voiceDetail||[];
   var voices=s.workerOpinions||[];
-  var out=[];
   var unshared=unsharedAccidentVoices(s);
 
   /* 구분장 하위목록: 근로자별 양호/미흡 응답 수 */
@@ -1013,62 +1091,43 @@ function voiceChapter(s){
     return {i:pad2(i+1),text:"근로자 "+d.worker,tag:badN?"미흡 응답 "+badN+"건":"전 문항 양호",cls:badN?"bad":""};
   }):[{i:"01",text:"근로자 의견 응답",tag:voices.length?"미흡 응답 "+voices.length+"건":"전 문항 양호",cls:voices.length?"bad":""}];
 
-  out.push(chapterSheet({
+  var out=[chapterSheet({
     no:"06",key:"voice",title:"근로자 의견청취",kicker:"WORKER VOICE",
     sub:sub,
     foot:"근로자 의견은 이름·사번 없이 익명으로 수집 · 관리자 점검결과와 교차확인"
       +(unshared.length?" · 사고사례 안내 미인지 "+unshared.length+"건":"")
-  }));
+  })];
 
-  if(detail.length){
+  /* 미흡 응답이 많으면(근로자 여러 명 × 문항 다수) 글자·여백을 줄여 한 장을 넘기지 않게 한다. */
+  var dense=voices.length>12?" dense2":(voices.length>7?" dense":"");
+  var h='<div class="sr-sum-title">양호하지 않은 응답 <em>'+(voices.length?voices.length+"건":"없음")+' · 익명 수집</em></div>';
+  h+='<div class="sr-voice-fill'+dense+'">';
+  if(!voices.length){
+    h+='<div class="sr-plan-mini-empty">전 문항 양호 응답으로 특이사항이 없습니다.</div>';
+  }else if(detail.length){
     detail.forEach(function(d){
-      var cards=[];
-      d.answers.forEach(function(a,qi){
-        if(!a.answered||a.good)return;
-        cards.push({
-          sideIndex:qi,num:"문항 "+(qi+1),
-          title:a.q,
-          quote:a.answer||"응답 확인",
-          quoteSub:"근로자 "+d.worker+" 응답 · 익명 수집",
-          fix:/사고사례/.test(a.q)
-            ?"TBM에서 과거 사고사례를 실제로 공유하고 있는지 직접참관으로 확인합니다."
-            :"근로자가 지적한 내용을 현장에서 확인해 작업방법·시설·안내체계를 보완합니다."
-        });
+      var badAns=d.answers.filter(function(a){return a.answered&&!a.good});
+      if(!badAns.length)return;
+      h+='<div class="sr-voice-worker">근로자 '+d.worker+'</div><div class="sr-plan-mini">';
+      badAns.forEach(function(a){
+        h+='<div class="sr-plan-mini-row voice"><b>'+esc(a.q)+'</b><span class="sr-voice-ans">'+esc(a.answer)+'</span></div>';
       });
-      if(!cards.length)return;
-      out=out.concat(detailSheets({
-        label:"근로자"+d.worker+" 의견",
-        kicker:"06 · 근로자 의견청취",
-        title:"근로자 "+d.worker+" 응답",
-        soloTitle:"06) 근로자 "+d.worker+" 응답",
-        sideKicker:"의견청취 문항 · 근로자 "+d.worker,
-        sideTitle:d.answers.length+"문항",
-        sideItems:d.answers.map(function(a){
-          return {text:a.q,state:!a.answered?"na":(a.good?"good":"bad")};
-        }),
-        sideFoot:"첫 번째 보기가 가장 양호한 응답입니다. 다르게 답한 문항만 상세로 싣습니다.",
-        cards:cards,
-        footerText:"근로자 의견은 이름·사번 없이 익명으로 수집"
-      }));
+      h+='</div>';
     });
-  }else if(voices.length){
+  }else{
     /* 예전 캐시 대비: 근로자별 전 문항이 없으면 미흡 응답만으로 만든다. */
-    out=out.concat(detailSheets({
-      label:"근로자 의견",
-      kicker:"06 · 근로자 의견청취",
-      title:"양호하지 않은 응답",
-      sideKicker:"의견청취 응답",
-      sideTitle:voices.length+"건",
-      soloTitle:"06) 근로자 의견",
-      sideItems:voices.map(function(o){return {text:o.question,state:"bad"}}),
-      cards:voices.map(function(o,i){
-        return {sideIndex:i,num:"근로자 "+o.worker,title:o.question,
-          quote:o.answer,quoteSub:"익명 수집",
-          fix:"근로자가 지적한 내용을 현장에서 확인해 작업방법·시설·안내체계를 보완합니다."};
-      }),
-      footerText:"근로자 의견은 이름·사번 없이 익명으로 수집"
-    }));
+    h+='<div class="sr-plan-mini">';
+    voices.forEach(function(o){
+      h+='<div class="sr-plan-mini-row voice"><b>근로자'+esc(o.worker)+' · '+esc(o.question)+'</b><span class="sr-voice-ans">'+esc(o.answer)+'</span></div>';
+    });
+    h+='</div>';
   }
+  h+='</div>';
+  if(unshared.length){
+    h+='<div class="sr-note"><b>과거 사고사례를 안내받지 못했다는 응답이 '+unshared.length+'건</b> 있습니다. '
+      +'TBM에서 사고사례가 실제로 공유되는지 다음 방문 시 직접참관으로 확인이 필요합니다.</div>';
+  }
+  out.push(pageSheet("의견청취 요약","WORKER VOICE","근로자 의견청취 요약",h,"근로자 의견은 이름·사번 없이 익명으로 수집"));
   return out;
 }
 
@@ -1077,10 +1136,12 @@ function voiceChapter(s){
    ============================================================ */
 function otherChapter(s){
   var list=findingsOf(s,"기타사항");
+  /* 기타사항은 "정해진 문항 외에 점검자가 임의로 추가한 것"이라 대상이 없으면 챕터 자체를 스킵한다.
+     사다리·사고조사처럼 상시 확인해야 하는 위험노출 항목이 아니므로 «양호» 한 줄도 남기지 않는다. */
+  if(!list.length)return [];
   var out=[chapterSheet({
     no:"07",key:"other",title:"기타사항",kicker:"INSPECTOR NOTE",
-    sub:list.length?list.map(function(f,i){return {i:pad2(i+1),text:f.title,tag:"확인",cls:"bad"}})
-      :[{i:"01",text:"점검자 기타 특이사항",tag:"없음",cls:"na"}],
+    sub:list.map(function(f,i){return {i:pad2(i+1),text:f.title,tag:"확인",cls:"bad"}}),
     foot:"정해진 문항 외 현장 특이사항 · 개선과제 후보로 검토 후 차기 점검에서 재확인"
   })];
   if(list.length){
@@ -1114,20 +1175,21 @@ function otherChapter(s){
    ============================================================ */
 function taskChapter(s){
   var list=s.tasks||[];
+  /* 지난 지적사항이 없는 매장(첫 점검 등)이면 챕터 자체를 스킵한다.
+     이 챕터는 "재점검 대상"이 있을 때만 의미가 있으므로 «없음» 한 줄도 남기지 않는다. */
+  if(!list.length)return [];
   var done=list.filter(function(t){return t.status==="조치완료"}).length;
   var unseen=list.filter(function(t){return t.notObserved}).length;
   var open=list.length-done-unseen;
   var out=[chapterSheet({
     no:"08",key:"task",title:"지난 지적사항 조치확인",kicker:"FOLLOW-UP",
-    sub:list.length?list.map(function(t,i){
+    sub:list.map(function(t,i){
       return {i:pad2(i+1),text:t.title,
         tag:t.notObserved?"확인 못함":(t.status==="조치완료"?"조치완료":"미조치"),
         cls:t.notObserved?"na":(t.status==="조치완료"?"":"bad")};
-    }):[{i:"01",text:"지난 점검에서 남은 지적사항",tag:"없음",cls:"na"}],
-    foot:list.length
-      ?"확인 "+list.length+"건 · 조치완료 "+done+" · 미조치 "+open+" · 확인 못함 "+unseen
+    }),
+    foot:"확인 "+list.length+"건 · 조치완료 "+done+" · 미조치 "+open+" · 확인 못함 "+unseen
         +" · 미조치·확인 못함 항목은 다음 방문에 다시 표시됩니다"
-      :"지난 점검에서 남은 지적사항이 없습니다"
   })];
   list.slice().sort(function(a,b){
     function rank(t){return t.notObserved?1:(t.status==="조치완료"?0:2)}
@@ -1175,45 +1237,16 @@ function accidentChapter(s){
       :"등록된 과거 사고이력 없음")+" · 출퇴근 재해는 사고조사 대상에서 제외"
   }));
 
-  /* 이력 요약 장 — 이력이 0건이어도 만든다(항상 노출 규칙). */
-  var h="";
-  /* 사고가 많으면 카드 요약을 접고 아래 표만 남긴다(한 장을 넘기지 않게 하려는 것). */
-  if(list.length&&list.length<=4){
-    h+='<div class="sr-acc-hist">';
-    list.slice().sort(function(a,b){return rankAccident(b)-rankAccident(a)}).slice(0,4).forEach(function(a){
-      var cls=a.status==="조치완료"?"done":(a.status==="확인 못함"?"warn":"");
-      h+='<div class="sr-acc-card"><div class="sr-acc-top"><span>'+esc(a.type||"사고")+' · '+esc(dateDot(a.date))+'</span>'
-        +'<em class="'+cls+'">'+esc(a.status||"확인 전")+'</em></div>'
-        +'<p>'+esc(a.content||"등록된 사고내용이 없습니다.")+'</p></div>';
-    });
-    h+='</div>';
-    if(open){
-      h+='<div class="sr-note"><b>미조치 '+open+'건 재확인 필요</b> — 재발방지 조치가 확인되지 않은 사고입니다. '
-        +'이번 점검에서 확인된 같은 재해유형의 미흡사항과 함께 조치해 주세요.</div>';
-    }else{
-      h+='<div class="sr-note info">등록된 사고 전 건이 조치완료로 확인되었습니다. 동일 유형 재발 여부를 차기 점검에서 계속 확인합니다.</div>';
-    }
-  }
-  h+='<div class="sr-sum-title">사고이력 상세요약 <em>'+(list.length?list.length+"건":"이력 없음")+'</em></div>';
-  h+='<div class="sr-sum-rows">';
+  /* 이력이 0건일 때만 "이력 없음" 요약 한 장을 만든다(사다리와 같은 항상노출 규칙).
+     이력이 1건 이상이면 요약 페이지 없이 건별 상세(조치 전/후)로 바로 들어간다(사용자 확정) —
+     상세 페이지 안에 재해유형·날짜·위험등급·사고내용이 이미 다 있어서 요약이 중복이었다. */
   if(!list.length){
-    h+='<div class="sr-sum-row good"><b>사고이력</b><span>등록된 과거 사고이력이 없습니다. 출퇴근 재해는 사고조사 대상에서 제외됩니다. '
+    var h0='<div class="sr-sum-row good"><b>사고이력</b><span>등록된 과거 사고이력이 없습니다. 출퇴근 재해는 사고조사 대상에서 제외됩니다. '
       +'이력이 없어도 이 챕터는 재발방지 확인 목적으로 항상 표시됩니다.</span>'
       +'<span class="sr-cnt">0건</span>'+photoBox([],"사고이력","해당 없음")+'</div>';
-  }else{
-    list.slice().sort(function(a,b){return rankAccident(b)-rankAccident(a)}).forEach(function(a){
-      var bad=a.status==="미조치"||a.riskLevel==="상";
-      h+='<div class="sr-sum-row '+(bad?"bad":"good")+'"><b>'+esc(a.type||"사고")+'</b>'
-        +'<span>'+esc(dateDot(a.date))+" · 기인물 "+esc(a.source||"미등록")
-        +" · 위험등급 "+esc(a.riskLevel||"-")+" · "+esc(a.status||"확인 전")
-        +(a.hazardText?" · "+esc(a.hazardText):"")+'</span>'
-        +'<span class="sr-cnt">'+esc(a.riskLevel||"-")+'</span>'
-        +photoBox((a.beforePhotos||[]).concat(a.afterPhotos||[]),a.type||"사고","사진 없음")+'</div>';
-    });
+    out.push(pageSheet("사고이력 요약","ACCIDENT · 항상 노출","사고이력 및 재발방지",
+      '<div class="sr-sum-rows">'+h0+'</div>',"사고이력은 조치완료 여부와 무관하게 항상 표시"));
   }
-  h+='</div>';
-  out.push(pageSheet("사고이력 요약","ACCIDENT · 항상 노출","사고이력 및 재발방지",h,
-    "사고이력은 조치완료 여부와 무관하게 항상 표시"));
 
   /* 사고 1건씩 상세 (조치 전·후 사진 좌우) */
   list.slice().sort(function(a,b){return rankAccident(b)-rankAccident(a)}).forEach(function(a,i){
@@ -1237,52 +1270,6 @@ function accidentChapter(s){
     }
     out.push(pageSheet("사고 "+(i+1),"09 · 사고조사 "+(i+1)+" / "+list.length,
       (a.type||"사고")+" · "+dateDot(a.date),h2,"출퇴근 재해는 사고조사 대상에서 제외"));
-  });
-  return out;
-}
-
-/* ============================================================
-   챕터 10 · 개선조치 계획 (마지막 장)
-   ============================================================ */
-function planChapter(s){
-  var pr=buildPriorities(s);
-  var out=[chapterSheet({
-    no:"10",key:"plan",title:"개선조치 계획",kicker:"ACTION PLAN",
-    sub:pr.length?pr.map(function(p,i){return {i:pad2(i+1),text:p.key,tag:p.status,cls:p.status==="즉시조치"?"bad":""}})
-      :[{i:"01",text:"별도 조치계획",tag:"없음",cls:"na"}],
-    foot:"담당·기한은 매장 협의 후 확정 · 조치 완료 후 차기 점검에서 이행 여부를 재확인"
-  })];
-  /* 예전 «핵심 위험요인 분석» 장에 있던 점검자 종합의견을 이 챕터로 옮겼다.
-     "무엇부터 하면 되는가"와 "왜 그렇게 봤는가"를 같이 읽는 게 자연스럽다. */
-  var note='<div class="sr-plan-note"><small>점검자 종합의견</small><p>'+esc(managementNote(s))+'</p>'
-    +(s.resultNote?'<p class="sr-plan-memo">점검자 메모 — '+esc(s.resultNote)+'</p>':"")
-    +'</div>';
-
-  if(!pr.length){
-    out.push(pageSheet("조치계획","ACTION PLAN","개선조치 계획",
-      '<div class="sr-note info">별도 조치계획이 필요한 항목이 없습니다. 현재 관리상태를 유지해 주세요.</div>'+note,
-      "조치 완료 후 차기 점검에서 이행 여부를 재확인"));
-    return out;
-  }
-  /* 조치항목이 많으면 한 장에 다 넣으면 넘친다. 6건씩 나누고 종합의견은 마지막 장에만 붙인다. */
-  var PER=6,pages=[];
-  for(var i=0;i<pr.length;i+=PER)pages.push(pr.slice(i,i+PER));
-  pages.forEach(function(g,gi){
-    var last=gi===pages.length-1;
-    var h='<div class="sr-plan-rows">';
-    g.forEach(function(p,j){
-      var no=gi*PER+j+1;
-      var owner=p.status==="즉시조치"?"담당: 매장 자체조치 + 부서 협의 · 기한: 즉시"
-              :(p.status==="확인필요"?"담당: 점검자 재확인 · 기한: 차기 방문":"담당: 매장 자체조치 · 기한: 7일 이내");
-      h+='<div class="sr-plan-row"><i>'+pad2(no)+'</i><div><b>'+p.title+'</b><small>'+p.detail+'</small>'
-        +'<small>'+esc(owner)+'</small></div>'
-        +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span></div>';
-    });
-    h+='</div>';
-    if(last)h+=note;
-    var range=pages.length>1?" "+(gi*PER+1)+"–"+(gi*PER+g.length)+" / "+pr.length:"";
-    out.push(pageSheet("조치계획"+(pages.length>1?"-"+(gi+1):""),
-      "ACTION PLAN","개선조치 계획"+range,h,"조치 완료 후 차기 점검에서 이행 여부를 재확인"));
   });
   return out;
 }
@@ -1358,7 +1345,7 @@ function buildSheets(s){
        tocTag:tagOf(findingsOf(s,"공통·시설").length,"미흡 "+findingsOf(s,"공통·시설").length+"건","양호")},
       {key:"fire",no:"04",title:"소방",sheets:checklistChapter(s,"fire"),
        tocTag:tagOf(findingsOf(s,"소방").length,"미흡 "+findingsOf(s,"소방").length+"건","양호")},
-      {key:"tbm",no:"05",title:"TBM",sheets:checklistChapter(s,"tbm"),
+      {key:"tbm",no:"05",title:"TBM",sheets:tbmChapter(s),
        tocTag:tagOf(findingsOf(s,"TBM").length,"미흡 "+findingsOf(s,"TBM").length+"건","양호")},
       {key:"voice",no:"06",title:"근로자 의견청취",sheets:voiceChapter(s),
        tocTag:tagOf((s.workerOpinions||[]).length,(s.workerOpinions||[]).length+"건","양호")},
@@ -1371,10 +1358,11 @@ function buildSheets(s){
       {key:"accident",no:"09",title:"사고조사",sheets:accidentChapter(s),
        tocTag:tagOf((s.accidents||[]).filter(function(a){return a.status==="미조치"}).length,
               "미조치 "+(s.accidents||[]).filter(function(a){return a.status==="미조치"}).length+"건",
-              (s.accidents||[]).length?"전 건 완료":"이력 없음")},
-      {key:"plan",no:"10",title:"개선조치 계획",sheets:planChapter(s),
-       tocTag:tagOf(buildPriorities(s).length,buildPriorities(s).length+"건","없음")}
+              (s.accidents||[]).length?"전 건 완료":"이력 없음")}
     ];
+    /* 기타사항·조치확인은 대상이 0건이면 챕터를 만들지 않는다(사용자 확정).
+       목차에도 아예 나오지 않아야 하므로 sheets가 빈 챕터는 목차 배열에서 제외한다. */
+    chapters=chapters.filter(function(c){return c.sheets.length>0});
     list.push(sheetCover(s));
     list.push(sheetToc(s,chapters));
     chapters.forEach(function(c){ c.sheets.forEach(function(x){list.push(x)}) });
