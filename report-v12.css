@@ -411,14 +411,8 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-chapter-sub em{font-style:normal;font-size:10px;flex:none;padding:2px 8px;border-radius:999px;background:var(--sr-green-soft);color:var(--sr-green)}
 .sr-report .sr-chapter-sub em.bad{background:var(--sr-red-soft);color:var(--sr-red)}
 .sr-report .sr-chapter-sub em.na{background:var(--sr-line);color:var(--sr-muted)}
-.sr-report .sr-chapter-note{margin-top:28px;padding:16px 20px;background:var(--sr-soft);border-left:4px solid var(--sr-navy);font-size:12.5px;line-height:1.7;max-width:660px}
-.sr-report .sr-chapter-note b{font-weight:500;color:var(--sr-navy)}
-.sr-report .sr-chapter-good{margin-top:28px;display:inline-flex;align-items:center;gap:10px;padding:13px 22px;background:var(--sr-green-soft);color:var(--sr-green);border-radius:10px;font-size:15px;font-weight:500;align-self:flex-start}
-.sr-report .sr-chapter-count{margin-top:28px;display:flex;gap:10px;flex-wrap:wrap}
-.sr-report .sr-chapter-count div{padding:13px 18px;background:var(--sr-soft);border-bottom:2px solid var(--sr-line);min-width:118px}
-.sr-report .sr-chapter-count div.bad{border-color:var(--sr-red)}
-.sr-report .sr-chapter-count small{display:block;font-size:10px;color:var(--sr-muted)}
-.sr-report .sr-chapter-count b{font-size:22px;font-weight:500}
+/* 구분장에는 숫자 카드박스·규칙 설명문을 넣지 않는다(사용자 확정).
+   챕터 제목 + 하위목차만 남기고, 관련 클래스(.sr-chapter-note/-good/-count)는 없앴다. */
 .sr-report .sr-chapter-foot{margin-top:auto;font-size:10px;color:var(--sr-muted)}
 
 /* ---------- 사이드바형 상세 (작업점검·시설·소방·TBM·의견·조치확인 공통) ---------- */
@@ -448,6 +442,8 @@ body{margin:0;background:#eef1f5}
 /* 2문항/페이지 · 가운데 주름선 */
 .sr-report .sr-split2{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:0;position:relative}
 .sr-report .sr-split2:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:repeating-linear-gradient(to bottom,var(--sr-line) 0,var(--sr-line) 5px,transparent 5px,transparent 10px)}
+/* 단독 페이지는 2열 격자를 쓰지 않는다. 1열로 펼쳐야 사진이 페이지 가운데에 온다. */
+.sr-report .sr-split2.one{grid-template-columns:1fr}
 .sr-report .sr-split2.one:before{display:none}
 .sr-report .sr-qcol{padding:0 20px;min-width:0;display:flex;flex-direction:column}
 .sr-report .sr-qcol:first-child{padding-left:0}
@@ -461,46 +457,60 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-qphoto{flex:1 1 auto;min-height:150px;margin-bottom:11px}
 .sr-report .sr-qphoto .sr-photo{height:100%;min-height:150px}
 .sr-report .sr-qcol .sr-hazards{flex:none;margin:0 0 9px}
+/* 위험요인에 관한 해결방안.
+   1안/2안/3안이 여러 개면(.multi) 한 줄에 가로로 나열한다(PPT 예시와 같은 형태). */
 .sr-report .sr-fix{flex:none;background:var(--sr-soft);border-radius:8px;padding:11px 13px}
-.sr-report .sr-fix-title{font-size:9.5px;font-weight:500;color:var(--sr-muted);margin-bottom:7px;letter-spacing:.04em}
+.sr-report .sr-fix-title{font-size:10px;font-weight:500;color:var(--sr-ink);margin-bottom:7px;letter-spacing:.02em}
 .sr-report .sr-fix-opt{font-size:10.5px;line-height:1.55;margin-bottom:5px;padding-left:30px;position:relative}
 .sr-report .sr-fix-opt:last-child{margin-bottom:0}
 .sr-report .sr-fix-opt:before{content:attr(data-n);position:absolute;left:0;top:0;font-weight:500;color:var(--sr-navy);font-size:10px}
+.sr-report .sr-fix.multi .sr-fix-opts{display:flex;flex-wrap:wrap;gap:6px 26px}
+.sr-report .sr-fix.multi .sr-fix-opt{margin-bottom:0;padding-left:32px}
+.sr-report .sr-solo .sr-fix{padding:12px 15px}
+.sr-report .sr-solo .sr-fix-title{font-size:11px}
+.sr-report .sr-solo .sr-fix-opt{font-size:11.5px}
 
-/* 홀수로 1개만 남을 때: 가운데정렬 + 사진 확대 (왼쪽정렬 금지) */
-.sr-report .sr-solo{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;text-align:center;max-width:720px;margin:0 auto;width:100%}
-.sr-report .sr-solo-badge{flex:none;display:inline-block;background:var(--sr-ink);color:#ffe4a3;font-size:9px;font-weight:500;padding:4px 12px;border-radius:999px;margin-bottom:10px}
-.sr-report .sr-solo .sr-qnum,.sr-report .sr-solo .sr-qtitle,.sr-report .sr-solo .sr-qanswer,.sr-report .sr-solo .sr-qmeta{width:100%}
-.sr-report .sr-solo .sr-qtitle{font-size:17px}
-.sr-report .sr-solo .sr-qanswer{font-size:13px}
-.sr-report .sr-solo .sr-qphoto{width:100%;max-width:620px;min-height:280px}
-.sr-report .sr-solo .sr-qphoto .sr-photo{min-height:280px}
-.sr-report .sr-solo .sr-hazards{justify-content:center}
-.sr-report .sr-solo .sr-fix{text-align:left;width:100%;max-width:620px}
+/* 홀수로 1개만 남을 때 (단독 페이지)
+   «가운데 정렬»은 사진에만 적용한다. 대제목·문항·지적사항·해결방안은 왼쪽에 그대로 둔다.
+   (사용자 확정: 글까지 가운데로 모으면 읽는 순서가 흐트러진다) */
+.sr-report .sr-solo{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;width:100%;text-align:left}
+.sr-report .sr-solo-head{flex:none}
+.sr-report .sr-solo-main{margin:0 0 7px;font-size:19px;font-weight:500;line-height:1.35}
+.sr-report .sr-solo-q{margin:0 0 3px;font-size:14px;color:var(--sr-muted);line-height:1.5}
+.sr-report .sr-solo .sr-qanswer{margin:0;font-size:15px;font-weight:500}
+.sr-report .sr-solo .sr-qmeta{margin:5px 0 0;font-size:10.5px}
+/* 사진만 가운데. 남는 높이를 전부 흡수해 아래 여백이 생기지 않는다. */
+.sr-report .sr-solo-photo{flex:1 1 auto;min-height:240px;width:58%;align-self:center;margin:14px auto 12px}
+.sr-report .sr-solo-photo .sr-photo{height:100%;min-height:240px}
+.sr-report .sr-solo-foot{flex:none}
+.sr-report .sr-solo-foot .sr-hazards{margin:0 0 8px}
 
 /* ---------- 요약본 ---------- */
 .sr-report .sr-sum-box{display:grid;grid-template-columns:290px 1fr;gap:16px;flex:none}
 .sr-report .sr-sum-black{background:var(--sr-ink);color:#fff;border-radius:14px;padding:20px 22px}
-.sr-report .sr-sum-black small{opacity:.6;font-size:10px;letter-spacing:.08em}
+.sr-report .sr-sum-black small{display:block;opacity:.6;font-size:10px;letter-spacing:.08em}
 .sr-report .sr-sum-black b{display:block;margin-top:9px;font-size:26px;font-weight:500;line-height:1.25}
 .sr-report .sr-sum-black span{display:block;margin-top:8px;font-size:11px;opacity:.82;line-height:1.6}
-.sr-report .sr-sum-black p{margin:0;font-size:12.5px;line-height:1.75;opacity:.92}
+.sr-report .sr-sum-black p{margin:9px 0 0;font-size:12px;line-height:1.75;opacity:.92}
 .sr-report .sr-sum-title{font-size:13.5px;font-weight:500;margin:18px 0 8px;display:flex;align-items:center;gap:9px;flex:none}
 .sr-report .sr-sum-title em{font-style:normal;background:var(--sr-red);color:#fff;font-size:9.5px;padding:3px 9px;border-radius:999px}
 .sr-report .sr-sum-rows{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-.sr-report .sr-sum-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:112px 1fr 74px 116px;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--sr-line)}
+.sr-report .sr-sum-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:112px 1fr 74px 116px;gap:12px;align-items:center;padding:6px 0;border-top:1px solid var(--sr-line)}
 .sr-report .sr-sum-row:first-child{border-top:0}
 .sr-report .sr-sum-row>b{font-size:12.5px;font-weight:500}
 .sr-report .sr-sum-row>span{font-size:11px;color:var(--sr-muted);line-height:1.5}
 .sr-report .sr-sum-row .sr-cnt{text-align:center;font-weight:500;font-size:15px}
 .sr-report .sr-sum-row.bad .sr-cnt{color:var(--sr-red)}
 .sr-report .sr-sum-row.good .sr-cnt{color:var(--sr-green)}
-.sr-report .sr-sum-row .sr-photo{height:100%;min-height:56px;font-size:9px}
+.sr-report .sr-sum-row .sr-photo{height:100%;min-height:42px;font-size:9px}
 .sr-report .sr-sum-row .sr-photo:after{left:5px;bottom:5px;padding:2px 5px;font-size:7px}
 
-/* ---------- 사다리 보유현황 (항상 노출) ---------- */
+/* ---------- 사다리 보유현황 (항상 노출) ----------
+   유형별 카드 안에 그 유형의 현장사진을 함께 넣는다(어떤 사다리인지 사진으로 바로 대조). */
 .sr-report .sr-ladder2{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;flex:none}
-.sr-report .sr-ladder2>div{background:var(--sr-soft);border-radius:10px;padding:14px;text-align:center}
+.sr-report .sr-ladder2>div{background:var(--sr-soft);border-radius:10px;padding:12px;text-align:center;overflow:hidden}
+.sr-report .sr-ladder2 .sr-photo{height:104px;border-radius:7px;margin-bottom:9px;font-size:9.5px}
+.sr-report .sr-ladder2 .sr-photo:after{left:5px;bottom:5px;padding:2px 5px;font-size:7px}
 .sr-report .sr-ladder2>div.bad{background:var(--sr-red-soft)}
 .sr-report .sr-ladder2>div.off{opacity:.45}
 .sr-report .sr-ladder2 small{display:block;font-size:9.5px;color:var(--sr-muted);line-height:1.4}
@@ -531,6 +541,11 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-plan-row b{display:block;font-size:13.5px;font-weight:500}
 .sr-report .sr-plan-row small{display:block;margin-top:3px;color:var(--sr-muted);font-size:10.5px}
 .sr-report .sr-plan-fill{flex:1 1 auto;min-height:0}
+/* 조치계획 장 하단 점검자 종합의견 (예전 «핵심 위험요인 분석» 장에서 옮겨온 것) */
+.sr-report .sr-plan-note{flex:none;margin-top:16px;padding:16px 18px;background:var(--sr-soft);border-top:3px solid var(--sr-navy)}
+.sr-report .sr-plan-note>small{display:block;font-size:10px;color:var(--sr-red);letter-spacing:.08em;margin-bottom:6px}
+.sr-report .sr-plan-note p{margin:0;font-size:12px;line-height:1.7}
+.sr-report .sr-plan-note .sr-plan-memo{margin-top:8px;padding-top:8px;border-top:1px solid var(--sr-line);font-size:11px;color:var(--sr-muted)}
 
 /* ============================================================
    위 신규 컴포넌트의 PDF 캡처 / 모바일 / 인쇄 보정
@@ -547,7 +562,8 @@ body{margin:0;background:#eef1f5}
  .sr-report .sr-sum-box,.sr-report .sr-acc-hist,.sr-report .sr-ba{grid-template-columns:1fr}
  .sr-report .sr-split2:before{display:none}
  .sr-report .sr-ladder2{grid-template-columns:1fr 1fr}
- .sr-report .sr-qphoto,.sr-report .sr-solo .sr-qphoto{min-height:200px}
+ .sr-report .sr-qphoto{min-height:200px}
+ .sr-report .sr-solo-photo{width:100%;min-height:220px}
  .sr-report .sr-sum-row{grid-template-columns:1fr;gap:4px}
  .sr-report .sr-toc-main,.sr-report .sr-chapter-main{padding:36px 22px}
  .sr-report .sr-cover2{padding:36px 22px}
@@ -563,10 +579,11 @@ body{margin:0;background:#eef1f5}
 .sr-capture .sr-acc-hist,.sr-capture .sr-ba{grid-template-columns:1fr 1fr}
 .sr-capture .sr-sum-box{grid-template-columns:290px 1fr}
 .sr-capture .sr-split2:before{display:block}
+.sr-capture .sr-split2.one{grid-template-columns:1fr}
 .sr-capture .sr-split2.one:before{display:none}
 .sr-capture .sr-ladder2{grid-template-columns:repeat(5,1fr)}
 .sr-capture .sr-qphoto{min-height:150px}
-.sr-capture .sr-solo .sr-qphoto{min-height:280px}
+.sr-capture .sr-solo-photo{width:58%;min-height:240px}
 .sr-capture .sr-sum-row{grid-template-columns:112px 1fr 74px 116px;gap:12px}
 .sr-capture .sr-toc-main,.sr-capture .sr-chapter-main{padding:70px 60px 44px}
 .sr-capture .sr-cover2{padding:64px 60px 44px}
@@ -580,6 +597,7 @@ body{margin:0;background:#eef1f5}
  .sr-report .sr-toc-list,.sr-report .sr-chapter-sub,.sr-report .sr-split2,
  .sr-report .sr-acc-hist,.sr-report .sr-ba{grid-template-columns:1fr 1fr}
  .sr-report .sr-sum-box{grid-template-columns:64mm 1fr}
+ .sr-report .sr-split2.one{grid-template-columns:1fr}
  .sr-report .sr-split2.one:before{display:none}
  .sr-report .sr-ladder2{grid-template-columns:repeat(5,1fr)}
  .sr-report .sr-sum-row{grid-template-columns:24mm 1fr 16mm 25mm;gap:3mm}
