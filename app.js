@@ -12,7 +12,10 @@
  */
 const $=s=>document.querySelector(s),root=$('#app'),KEY='daiso_safety_v9';
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const fresh=()=>({screen:'start',store:null,inspectionMode:'new',followupOnly:false,sourceInspectionId:'',basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',delivery:'',inboundBoxes:'',hasStairs:'무',hasElevator:'무',hasEscalator:'무',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:''},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:'',amTime:'08:00',pmTime:'13:45'},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
+/* 입고·하차 상단 정보는 TBM 시각(amTime/pmTime)처럼 "흔한 값"을 기본값으로 미리 채워둔다.
+   점검자가 실제 값에 맞게 눌러서 고치면 그 값으로 덮어써진다(수정 가능, 강제 아님). */
+const INBOUND_DEFAULTS={delivery:'오전',inboundStart:'07:00',inboundEnd:'09:00',inboundStaff:'3',inboundHelpers:'2',inboundHelperOutAt:'09:00',inboundBoxes:'200'};
+const fresh=()=>({screen:'start',store:null,inspectionMode:'new',followupOnly:false,sourceInspectionId:'',basic:{date:new Date().toISOString().slice(0,10),inspector:'',hq:'',dept:'',team:'',people:'',size:'',floors:'',hasStairs:'무',hasElevator:'무',hasEscalator:'무',...INBOUND_DEFAULTS},wi:0,wa:{},ladder:{types:[],counts:{},otherType:'',issues:[],guideSeen:false,step:1,status:''},common:{issues:[],status:''},fire:{issues:[],status:''},tbm:{issues:[],status:'',amTime:'08:00',pmTime:'13:45'},workers:[{answers:{}}],worker:0,others:[],tasks:[],accidents:[]});
 let S=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){return fresh()}})();
 function normalizeState(){
   const f=fresh();
@@ -608,7 +611,9 @@ function selectStore(){
   if(!SEL.store)return uiError('매장까지 모두 선택하세요');
   if(!SEL.date)return uiError('점검일을 선택하세요');
   var n=SEL.store;
-  var meta={name:n,hq:SEL.division,dept:SEL.dept,team:SEL.team,people:'',size:'',floors:'',delivery:'',inboundBoxes:'',hasStairs:'무',hasElevator:'무',hasEscalator:'무',inboundHelpers:'',inboundStart:'',inboundEnd:'',inboundStaff:'',inboundHelperOutAt:'',inspector:SEL.inspector,date:SEL.date};
+  /* 입고 관련 필드는 여기서 빈 값으로 넣지 않는다. fresh()가 이미 기본값(INBOUND_DEFAULTS)을
+     채워뒀으므로, 그대로 두고 매장·조직 정보만 얹는다. */
+  var meta={name:n,hq:SEL.division,dept:SEL.dept,team:SEL.team,people:'',size:'',floors:'',hasStairs:'무',hasElevator:'무',hasEscalator:'무',inspector:SEL.inspector,date:SEL.date};
   S=fresh();
   S.store={...meta,accidentRecords:[],accidents:[],openIssues:[],tasks:[]};
   Object.assign(S.basic,meta);
@@ -1046,20 +1051,25 @@ function timeSelectHtml(key){
   if(d.h&&!d.m)h+='<small class="time-hint">분까지 선택하면 저장됩니다.</small>';
   return h;
 }
+/* 입고·하차 상단 정보를 한 카드, 두 줄로 압축했다.
+   입력 종류별로 줄을 나눴다(값 종류가 같으면 눈이 훑기 편하다).
+     1행: 입고시간대 · 입고 물량 · 임직원 · 도우미     (선택/숫자 입력 4개, 폭이 비슷함)
+     2행: 입고 시작 · 입고 종료 · 도우미 퇴근          (시각 입력 3개만 따로 모음)
+   결과 배지는 그 아래 한 줄로 붙인다. */
 function inboundWorkFields(){
   const b=S.basic;
-  return `<div class="inbound-meta">
-    <div class="field"><label>입고시간대</label><select onchange="S.basic.delivery=this.value;save()"><option value="">선택</option><option ${b.delivery==='오전'?'selected':''}>오전</option><option ${b.delivery==='오후(야간)'?'selected':''}>오후(야간)</option></select></div>
-    <div class="field"><label>입고 물량 <span class="req">*</span></label><div class="number-suffix"><input type="number" min="1" inputmode="numeric" placeholder="0" value="${esc(b.inboundBoxes)}" onchange="S.basic.inboundBoxes=this.value;save()"><span>박스</span></div></div>
-  </div>
-  <div class="inbound-labor">
-    <div class="inbound-labor-head">입고 인력부담 측정 <small>(피로도 정량화 · 근골격계 위험신호에 자동 반영)</small></div>
-    <div class="inbound-labor-grid">
-      <div class="field"><label>입고 시작시간</label>${timeSelectHtml('inboundStart')}</div>
-      <div class="field"><label>입고 종료시간</label>${timeSelectHtml('inboundEnd')}</div>
-      <div class="field"><label>임직원 투입인원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundStaff)}" onchange="S.basic.inboundStaff=this.value;save();work()"><span>명</span></div></div>
-      <div class="field"><label>입고도우미 인원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundHelpers)}" onchange="S.basic.inboundHelpers=this.value;save();work()"><span>명</span></div></div>
-      <div class="field"><label>도우미 퇴근시간 <small>(도우미 없으면 비워두기)</small></label>${timeSelectHtml('inboundHelperOutAt')}</div>
+  return `<div class="inbound-card">
+    <div class="inbound-card-head">입고·하차 정보 <small>(TBM 기준값이 기본 입력되어 있습니다 · 눌러서 수정)</small></div>
+    <div class="inbound-row4">
+      <div class="field"><label>입고시간대</label><select onchange="S.basic.delivery=this.value;save();work()"><option value="">선택</option><option ${b.delivery==='오전'?'selected':''}>오전</option><option ${b.delivery==='오후(야간)'?'selected':''}>오후(야간)</option></select></div>
+      <div class="field"><label>입고 물량 <span class="req">*</span></label><div class="number-suffix"><input type="number" min="1" inputmode="numeric" placeholder="0" value="${esc(b.inboundBoxes)}" onchange="S.basic.inboundBoxes=this.value;save()"><span>박스</span></div></div>
+      <div class="field"><label>임직원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundStaff)}" onchange="S.basic.inboundStaff=this.value;save();work()"><span>명</span></div></div>
+      <div class="field"><label>입고도우미</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundHelpers)}" onchange="S.basic.inboundHelpers=this.value;save();work()"><span>명</span></div></div>
+    </div>
+    <div class="inbound-row3">
+      <div class="field"><label>입고 시작</label>${timeSelectHtml('inboundStart')}</div>
+      <div class="field"><label>입고 종료</label>${timeSelectHtml('inboundEnd')}</div>
+      <div class="field"><label>도우미 퇴근</label>${timeSelectHtml('inboundHelperOutAt')}</div>
     </div>
     ${inboundLaborResultBadge()}
   </div>`;
@@ -2467,6 +2477,80 @@ function buildSubmitPayload(){
     resultNote:S.resultNote||'', issues
   };
 }
+/* ============ 결과보고서 체크리스트 사이드바용 데이터 ============
+   결과보고서(report.js)는 팝업(report.html)에서도 열리는데 그 창은 data.js를 불러오지 않는다.
+   그래서 "전체 문항 목록 + 항목별 양호/미흡" 은 여기(앱 화면)에서 미리 만들어 스냅샷에 넣어준다.
+   보고서 상세페이지 왼쪽 사이드바가 이 배열을 그대로 그린다. */
+function checklistSnapshotOf(k){
+  const st=S[k]||{};
+  return (D[k]||[]).map(function(item){
+    const name=typeof item==='string'?item:item.name;
+    const found=(st.issues||[]).find(function(x){return x.item===name});
+    const isNA=!!(st.naItems||{})[name];
+    return {
+      name:name,
+      state:found?'bad':(isNA?'na':'good'),
+      note:found?(found.note||''):'',
+      photos:found?resolvePhotos(found.files):[]
+    };
+  });
+}
+/* 작업점검은 항목명이 아니라 문항 단위다. 문항 전체와 고른 답변·위험여부·사진을 함께 넘긴다. */
+function workDetailSnapshot(){
+  return D.works.map(function(w,wi){
+    const answers=S.wa[wi]||{};
+    return {
+      name:w[0],
+      na:!!(S.workNA&&S.workNA[wi]),
+      questions:(w[1]||[]).map(function(q,qi){
+        const a=answers[qi];
+        const picked=(a&&Number.isFinite(Number(a.oi)))?((q[1]||[])[a.oi]||''):'';
+        return {
+          q:q[0],
+          answer:picked,
+          risk:!!(a&&a.risk),
+          answered:!!a,
+          hazards:(a&&a.hazards)||q[2]||[],
+          photos:a?resolvePhotos(a.files):[]
+        };
+      })
+    };
+  });
+}
+/* 사다리는 유형별 보유대수·상태·이상항목을 한 묶음으로 넘긴다. */
+function ladderDetailSnapshot(){
+  const counts=S.ladder.counts||{},typeStatus=S.ladder.typeStatus||{};
+  return (D.ladderTypes||[]).map(function(t){
+    return {
+      type:t,
+      count:Number(counts[t]||0),
+      status:typeStatus[t]||'',
+      highRisk:!!(D.ladderHighRiskTypes||{})[t],
+      issues:(S.ladder.issues||[]).filter(function(x){return (x.type||x.typeKey)===t}).map(function(x){
+        return {item:x.item||'이상사항',note:x.note||'',photos:resolvePhotos(x.files)};
+      })
+    };
+  });
+}
+/* 의견청취는 근로자별 전 문항 응답을 넘긴다(0번 보기가 양호). */
+function voiceDetailSnapshot(){
+  const qs=voiceQuestions();
+  return (S.workers||[]).map(function(w,i){
+    return {
+      worker:i+1,
+      answers:qs.map(function(q,qi){
+        const a=(w.answers||{})[qi],oi=a?Number(a.oi):NaN;
+        return {
+          q:q[0],
+          answer:Number.isFinite(oi)?((q[1]||[])[oi]||a.text||''):'',
+          answered:Number.isFinite(oi),
+          good:oi===0
+        };
+      })
+    };
+  });
+}
+
 /* 가로형 공유보고서에 넘길 실제 점검 데이터.
    점수 기준이 확정되기 전까지는 임의 점수 대신 건수와 상태만 전달한다. */
 function getLandscapeReportSnapshot(){
@@ -2516,6 +2600,11 @@ function getLandscapeReportSnapshot(){
     work,findings,hazards:Object.entries(hazards).sort((a,b)=>b[1]-a[1]),accidents,workerOpinions,
     sections:{common:(S.common.issues||[]).length,fire:(S.fire.issues||[]).length,tbm:(S.tbm.issues||[]).length,ladder:(S.ladder.issues||[]).length},
     ladder:{counts:{...(S.ladder.counts||{})},typeStatus:{...(S.ladder.typeStatus||{})}},
+    /* 결과보고서 상세페이지 사이드바(전체 문항 + 양호/미흡 표기)용 원본 목록 */
+    workDetail:workDetailSnapshot(),
+    checklists:{common:checklistSnapshotOf('common'),fire:checklistSnapshotOf('fire'),tbm:checklistSnapshotOf('tbm')},
+    ladderDetail:ladderDetailSnapshot(),
+    voiceDetail:voiceDetailSnapshot(),
     tasks:(S.tasks||[]).filter(x=>x.include).map(x=>({title:x.title,date:x.date,status:x.status,currentState:x.currentState||'',actionText:x.actionText||'',notObserved:!!x.notObserved,beforePhotos:resolvePhotos(x.beforeFiles),afterPhotos:resolvePhotos(x.afterFiles)})),resultNote:S.resultNote||'',
     score:summary.score,grade:summary.grade,scoreParts:summary.parts,hasAccidentScore:summary.hasAccident,
     inboundLabor:labor?{level:labor.level,avgPeople:Math.round(labor.avgPeople*10)/10,gapRatioPct:Math.round(labor.gapRatio*100)}:null,
@@ -2534,7 +2623,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=17','_blank');
+  const win=window.open('report.html?v=18','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2656,7 +2745,7 @@ function loadReportCssOnce(){
   return new Promise((resolve,reject)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report-v12.css?v=4';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report-v12.css?v=5';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();
     el.onerror=()=>{
       /* 배포 누락·캐시 문제에 대비해 기존 이름을 한 번 더 시도한다.
