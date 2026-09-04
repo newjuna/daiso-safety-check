@@ -492,7 +492,7 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-sum-black b{display:block;margin-top:9px;font-size:26px;font-weight:500;line-height:1.25}
 .sr-report .sr-sum-black span{display:block;margin-top:8px;font-size:11px;opacity:.82;line-height:1.6}
 .sr-report .sr-sum-black p{margin:9px 0 0;font-size:12px;line-height:1.75;opacity:.92}
-.sr-report .sr-sum-title{font-size:13.5px;font-weight:500;margin:18px 0 8px;display:flex;align-items:center;gap:9px;flex:none}
+.sr-report .sr-sum-title{font-size:13.5px;font-weight:500;margin:14px 0 7px;display:flex;align-items:center;gap:9px;flex:none}
 .sr-report .sr-sum-title em{font-style:normal;background:var(--sr-red);color:#fff;font-size:9.5px;padding:3px 9px;border-radius:999px}
 .sr-report .sr-sum-rows{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .sr-report .sr-sum-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:112px 1fr 74px 116px;gap:12px;align-items:center;padding:6px 0;border-top:1px solid var(--sr-line)}
@@ -533,19 +533,44 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-ba-col .sr-qphoto{margin-bottom:8px}
 .sr-report .sr-ba-col p{flex:none;margin:0;font-size:10.5px;line-height:1.6;padding:9px 11px;background:var(--sr-soft);border-radius:6px}
 
-/* ---------- 조치계획 ---------- */
-.sr-report .sr-plan-rows{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-.sr-report .sr-plan-row{flex:0 0 auto;display:grid;grid-template-columns:34px 1fr 118px;gap:13px;align-items:center;padding:14px 0;border-top:1px solid var(--sr-line)}
-.sr-report .sr-plan-row:first-child{border-top:0}
-.sr-report .sr-plan-row>i{font-style:normal;width:32px;height:32px;border-radius:9px;background:var(--sr-navy-soft);color:var(--sr-navy);display:grid;place-items:center;font-size:12px;font-weight:500}
-.sr-report .sr-plan-row b{display:block;font-size:13.5px;font-weight:500}
-.sr-report .sr-plan-row small{display:block;margin-top:3px;color:var(--sr-muted);font-size:10.5px}
-.sr-report .sr-plan-fill{flex:1 1 auto;min-height:0}
-/* 조치계획 장 하단 점검자 종합의견 (예전 «핵심 위험요인 분석» 장에서 옮겨온 것) */
-.sr-report .sr-plan-note{flex:none;margin-top:16px;padding:16px 18px;background:var(--sr-soft);border-top:3px solid var(--sr-navy)}
-.sr-report .sr-plan-note>small{display:block;font-size:10px;color:var(--sr-red);letter-spacing:.08em;margin-bottom:6px}
-.sr-report .sr-plan-note p{margin:0;font-size:12px;line-height:1.7}
-.sr-report .sr-plan-note .sr-plan-memo{margin-top:8px;padding-top:8px;border-top:1px solid var(--sr-line);font-size:11px;color:var(--sr-muted)}
+/* ---------- 요약 페이지 히어로 (종합 진단결과 + 종합 코멘트를 하나로) ----------
+   가로로 나란한 두 블랙박스 대신 세로로 쌓아 진단결과를 크게 강조한다(사용자 확정). */
+.sr-report .sr-sum-hero{flex:none;background:var(--sr-ink);color:#fff;border-radius:14px;padding:20px 24px;margin-bottom:14px}
+.sr-report .sr-sum-hero-label{font-size:10px;letter-spacing:.1em;opacity:.6}
+.sr-report .sr-sum-hero-verdict{margin:8px 0 0;font-size:24px;font-weight:500}
+.sr-report .sr-sum-hero-verdict small{font-size:11px;font-weight:400;opacity:.75;margin-left:8px}
+.sr-report .sr-sum-hero-comment{margin:10px 0 0;font-size:12px;line-height:1.75;opacity:.92}
+
+/* ---------- 조치계획 압축형 (요약 페이지 하단에 병합) ---------- */
+.sr-report .sr-plan-mini{display:flex;flex-direction:column}
+.sr-report .sr-plan-mini-row{display:grid;grid-template-columns:26px 1fr 84px;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--sr-line);font-size:11.5px}
+.sr-report .sr-plan-mini-row:first-child{border-top:0}
+.sr-report .sr-plan-mini-row>i{font-style:normal;width:24px;height:24px;border-radius:7px;background:var(--sr-navy-soft);color:var(--sr-navy);display:grid;place-items:center;font-size:10px;font-weight:500}
+.sr-report .sr-plan-mini-row b{font-weight:500}
+.sr-report .sr-plan-mini-row .sr-status{font-size:9.5px;padding:3px 8px}
+.sr-report .sr-plan-mini-row.voice{grid-template-columns:1fr auto}
+.sr-report .sr-plan-mini-row.voice b{font-size:11px}
+.sr-report .sr-voice-ans{color:var(--sr-red);font-weight:500;font-size:11px}
+.sr-report .sr-plan-mini-more{margin-top:8px;font-size:10.5px;color:var(--sr-muted)}
+.sr-report .sr-plan-mini-empty{padding:12px 14px;background:var(--sr-soft);border-radius:8px;font-size:11.5px;color:var(--sr-muted)}
+.sr-report .sr-plan-fill{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.sr-report .sr-voice-worker{margin:10px 0 4px;font-size:10.5px;font-weight:500;color:var(--sr-navy)}
+.sr-report .sr-voice-worker:first-child{margin-top:0}
+
+/* ---------- TBM 요약: 실시 사진(직접참관) + 항목 목록을 좌우로 나눠 한 장에 담는다 ---------- */
+.sr-report .sr-tbm-split{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:280px 1fr;gap:20px}
+.sr-report .sr-tbm-photo-col{display:flex;flex-direction:column;min-height:0}
+.sr-report .sr-tbm-photo-col .sr-qphoto{flex:1 1 auto;min-height:0}
+.sr-report .sr-tbm-list-col{overflow:hidden}
+.sr-report .sr-plan-mini{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* 근로자 의견청취 요약: 미흡 응답이 많으면(근로자 여러 명) 넘치지 않게 밀도를 줄인다. */
+.sr-report .sr-voice-fill{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.sr-report .sr-voice-fill.dense .sr-plan-mini-row{padding:5px 0;font-size:10.5px}
+.sr-report .sr-voice-fill.dense .sr-voice-worker{margin:7px 0 3px;font-size:9.5px}
+.sr-report .sr-voice-fill.dense2 .sr-plan-mini-row{padding:3px 0;font-size:9.5px}
+.sr-report .sr-voice-fill.dense2 .sr-voice-worker{margin:5px 0 2px;font-size:9px}
+.sr-report .sr-voice-fill.dense2 .sr-voice-ans{font-size:9.5px}
 
 /* ============================================================
    위 신규 컴포넌트의 PDF 캡처 / 모바일 / 인쇄 보정
