@@ -89,6 +89,9 @@ function normalizeState(){
   S.tbm.status=S.tbm.status||'';
   /* TBM 확인방법: 직접참관(기본) / 인터뷰만. 서류확인은 운용하지 않는다. */
   S.tbm.confirmMethod=S.tbm.confirmMethod==='인터뷰만'?'인터뷰만':'직접참관';
+  /* 직접참관일 때만 "실제로 하는 모습" 사진을 붙일 수 있게 한다. 인터뷰만으로 확인한 경우는
+     실시 장면을 본 게 아니므로 사진칸 자체를 두지 않는다(결과보고서 TBM 요약 페이지에서 이 사진을 쓴다). */
+  S.tbm.photoFiles=Array.isArray(S.tbm.photoFiles)?S.tbm.photoFiles:[];
   /* TBM 실시시각(오전/오후). 입고 시작시간보다 TBM이 늦으면 "스트레칭 없이 입고작업 시작"으로 보고
      근골격계 위험신호에 자동 반영한다. */
   S.tbm.amTime=S.tbm.amTime||'';
@@ -324,6 +327,7 @@ function removePhotoAt(kind,arg,i){
   else if(kind==='accidentAfter')list=S.accidents[Number(arg)].afterFiles;
   else if(kind==='taskBefore')list=S.tasks[Number(arg)].beforeFiles;
   else if(kind==='taskAfter')list=S.tasks[Number(arg)].afterFiles;
+  else if(kind==='tbmPhoto')list=S.tbm.photoFiles;
   var removed=list&&list[i];if(removed)deletePersistedPhoto(removed.id);
   if(kind==='work'){const o=getObj('work',arg);o.files.splice(i,1);save();work();return}
   if(kind==='issue'){
@@ -336,6 +340,14 @@ function removePhotoAt(kind,arg,i){
   if(kind==='accidentAfter'){S.accidents[Number(arg)].afterFiles.splice(i,1);save();accident();return}
   if(kind==='taskBefore'){S.tasks[Number(arg)].beforeFiles.splice(i,1);save();tasks();return}
   if(kind==='taskAfter'){S.tasks[Number(arg)].afterFiles.splice(i,1);save();tasks();return}
+  if(kind==='tbmPhoto'){S.tbm.photoFiles.splice(i,1);save();checklist('tbm');return}
+}
+async function pickTbmPhotos(input){
+  const n=input.files.length;toast('사진 압축 중...');
+  const added=await attachPhotos(input.files);
+  S.tbm.photoFiles=[...(S.tbm.photoFiles||[]),...added];save();
+  toast(`${n}개 사진 선택됨`);
+  checklist('tbm');
 }
 async function attachPhotos(fileList){
   const compressed=await compressAll(fileList);
@@ -1356,13 +1368,15 @@ function checklist(k){
 
   /* TBM만 '이번 점검을 어떻게 확인했는지'를 추가로 기록한다. 서류확인은 운용하지 않는다. */
   const tbmMethod=k==='tbm'?`<div class="field tbm-confirm-method"><label>이번 TBM 점검은 어떻게 확인했습니까?</label><div class="answers">${['직접참관','인터뷰만'].map(m=>`<button class="ans ${st.confirmMethod===m||(!st.confirmMethod&&m==='직접참관')?'sel':''}" onclick="setTbmConfirmMethod('${m}')">${m}</button>`).join('')}</div><small class="muted">인터뷰만으로 확인한 경우 이번 TBM 점수 인정 비율이 낮아집니다.</small></div>`:'';
+  /* 직접참관일 때만 실시 사진칸을 보여준다. 인터뷰만인 회차는 실시 장면을 못 봤으므로 사진을 붙이지 않는다. */
+  const tbmPhoto=(k==='tbm'&&st.confirmMethod!=='인터뷰만')?`<div class="field"><label>TBM 실시 사진</label><div class="inline-photo-strip" aria-label="TBM 실시 사진"><label class="lad-cam" title="사진 추가">📷<input class="photo-input" type="file" accept="image/*" multiple onchange="pickTbmPhotos(this)"></label>${renderPhotoList(st.photoFiles,'tbmPhoto','')}</div><small class="muted">TBM(스트레칭·조회) 하는 모습을 촬영해 주세요. 결과보고서 요약 페이지에 실립니다.</small></div>`:'';
   /* TBM(스트레칭 포함) 실시시각. 입고 시작시간보다 늦으면 스트레칭 없이 작업을 시작한 것으로 보고
      근골격계 위험신호에 자동 반영한다. */
   const tbmTime=k==='tbm'?`<div class="tbm-time-fields"><div class="field"><label>오전 TBM 실시시각</label>${timeSelectHtml('tbmAm')}</div><div class="field"><label>오후 TBM 실시시각</label>${timeSelectHtml('tbmPm')}</div></div>${tbmStretchGapNotice()}`:'';
 
   const body=`<div class="card"><div class="step-head"><span>${title}</span><b>양호가 기본 선택 · 미흡만 바꾸세요</b></div>
     <div class="summary"><h2>${title} 점검</h2><div class="heading-actions"><span class="pill ${bad?'bad':''}">${bad?`미흡 ${bad}건 · 해당없음 ${naCount}건`:`양호 ${total-naCount}항목 · 해당없음 ${naCount}건`}</span>${k==='tbm'?'':`<button class="guide-btn" onclick="checklistGuide('${k}')">ⓘ 점검 가이드</button>`}</div></div>
-    ${tbmMethod}${tbmTime}
+    ${tbmMethod}${tbmTime}${tbmPhoto}
     <div class="form-list">${rows}</div>
     <div class="navrow"><button class="secondary" onclick="go('${PREV_BEFORE[k]}')">← 이전</button><button class="primary" onclick="finishChecklist('${k}')">${k==='tbm'?'의견청취':CHECKLIST_TITLE[NEXT_AFTER[k]]} →</button></div></div>`;
 
@@ -2424,6 +2438,10 @@ function buildSubmitPayload(){
   (S.tbm.issues||[]).forEach(x=>{
     issues.push({issueId:S.inspectionId+'-tbm-'+x.id,category:'TBM',itemName:x.item||'미흡사항',note:x.note||'',hazard:'안전관리',photos:resolvePhotos(x.files)});
   });
+  /* TBM 실시 사진(직접참관일 때만)도 드라이브에 저장한다. 미흡 여부와 무관하게 실시 증빙이다. */
+  if(S.tbm.confirmMethod!=='인터뷰만'&&(S.tbm.photoFiles||[]).length){
+    issues.push({issueId:S.inspectionId+'-tbm-photo',category:'TBM',itemName:'TBM 실시 사진',note:'',hazard:'안전관리',photos:resolvePhotos(S.tbm.photoFiles)});
+  }
   S.others.forEach(x=>{
     issues.push({issueId:S.inspectionId+'-other-'+x.id,category:'기타사항',itemName:x.text||'기타사항',note:'',hazard:'기타',photos:resolvePhotos(x.files)});
   });
@@ -2604,6 +2622,9 @@ function getLandscapeReportSnapshot(){
     workDetail:workDetailSnapshot(),
     checklists:{common:checklistSnapshotOf('common'),fire:checklistSnapshotOf('fire'),tbm:checklistSnapshotOf('tbm')},
     ladderDetail:ladderDetailSnapshot(),
+    /* 사다리 보유현황 카드에 이상항목 사진 대신 구글드라이브 가이드 사진(유형별 참고사진)을 쓴다.
+       "이 사다리가 몇 개 있구나"를 한눈에 보게 하려는 것(사용자 확정). */
+    ladderTypeImages:{...(D.ladderTypeImages||{})},
     voiceDetail:voiceDetailSnapshot(),
     tasks:(S.tasks||[]).filter(x=>x.include).map(x=>({title:x.title,date:x.date,status:x.status,currentState:x.currentState||'',actionText:x.actionText||'',notObserved:!!x.notObserved,beforePhotos:resolvePhotos(x.beforeFiles),afterPhotos:resolvePhotos(x.afterFiles)})),resultNote:S.resultNote||'',
     score:summary.score,grade:summary.grade,scoreParts:summary.parts,hasAccidentScore:summary.hasAccident,
@@ -2613,6 +2634,8 @@ function getLandscapeReportSnapshot(){
     transport:{floors:Number(S.basic.floors)||0,stairs:S.basic.hasStairs==='유'?'유':'무',elevator:S.basic.hasElevator==='유'?'유':'무',escalator:S.basic.hasEscalator==='유'?'유':'무'},
     tbmConfirmMethod:S.tbm.confirmMethod||'직접참관',tbmCrossCheckFlags:tbmCrossCheckFlags(),
     tbmTimes:{am:S.tbm.amTime||'',pm:S.tbm.pmTime||''},
+    /* 직접참관일 때만 사진이 있을 수 있다(인터뷰만은 사진칸 자체가 없음). 결과보고서 TBM 요약에서 쓴다. */
+    tbmPhotos:S.tbm.confirmMethod!=='인터뷰만'?resolvePhotos(S.tbm.photoFiles):[],
     tbmStretchGap:stretchGap?{level:stretchGap.level,gapMinutes:stretchGap.gapMinutes}:null
   };
 }
@@ -2623,7 +2646,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=19','_blank');
+  const win=window.open('report.html?v=20','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2745,7 +2768,7 @@ function loadReportCssOnce(){
   return new Promise((resolve,reject)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report-v12.css?v=6';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report-v12.css?v=7';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();
     el.onerror=()=>{
       /* 배포 누락·캐시 문제에 대비해 기존 이름을 한 번 더 시도한다.
