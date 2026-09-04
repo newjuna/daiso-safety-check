@@ -183,12 +183,26 @@ button{cursor:pointer}
 @keyframes riskAlert{0%{background:#fff;transform:scale(1)}35%{background:#fff1f4;box-shadow:0 0 0 6px rgba(231,44,84,.16);transform:scale(1.01)}100%{background:#fff;transform:scale(1)}}
 @keyframes detailReveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes photoInlineIn{from{opacity:.65;transform:scale(.992)}to{opacity:1;transform:none}}
-.inbound-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:8px 0 10px;padding:12px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
-.inbound-meta .field{margin:0}
+/* 입고·하차 상단 정보를 한 카드로 압축했다.
+   예전에는 "입고시간대/물량" 박스와 "인력부담 측정" 박스가 따로 떨어져 있어
+   화면이 위아래로 길고 시선이 흩어졌다. 지금은 카드 하나 안에 3줄로 모은다. */
+.inbound-card{margin:8px 0 14px;padding:13px 14px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
+.inbound-card-head{font-size:13px;font-weight:900;margin-bottom:9px}
+.inbound-card-head small{font-weight:600;color:var(--muted)}
+.inbound-card .field{margin:0}
+.inbound-card .field label{white-space:nowrap}
+.inbound-row4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:9px}
+.inbound-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:9px}
+@media (max-width:520px){
+  .inbound-row4{grid-template-columns:1fr 1fr}
+  .inbound-row3{grid-template-columns:1fr 1fr}
+}
+@media (max-width:360px){
+  .inbound-row4{grid-template-columns:1fr}
+}
 .number-suffix{position:relative}
 .number-suffix input{padding-right:42px}
 .number-suffix span{position:absolute;right:15px;top:50%;transform:translateY(-50%);font-weight:900;color:var(--muted)}
-@media (max-width:680px){.inbound-meta{grid-template-columns:1fr}}
 .inbound-route-card{margin:0 0 10px;padding:12px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
 .transport-facility-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.transport-facility-grid .field{margin:0}
 @media(max-width:680px){.transport-facility-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -202,14 +216,11 @@ button{cursor:pointer}
 .inbound-route-help{margin:9px 0 0;color:var(--muted);font-size:10.5px;font-weight:750;line-height:1.5}
 @media(max-width:520px){.inbound-choice-grid,.inbound-choice-grid.route{grid-template-columns:repeat(2,minmax(0,1fr))}.inbound-choice{font-size:11px;padding:6px}}
 
-/* 입고 인력부담 측정 (시작·종료시간, 투입인원, 도우미 퇴근시간 → 인시 계산) */
-.inbound-labor{margin:0 0 14px;padding:12px;border-radius:16px;background:#f7f8fb;border:1px solid var(--line)}
+/* .inbound-labor-head/.inbound-labor-badge는 운반 작업공간 카드(transportFacilityFields)와
+   계산 결과 배지(inboundLaborResultBadge, tbmStretchGapNotice)에서 계속 쓴다. */
 .inbound-labor-head{font-size:13px;font-weight:900;margin-bottom:8px}
 .inbound-labor-head small{font-weight:600;color:var(--muted)}
-.inbound-labor-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.inbound-labor-grid .field{margin:0}
-@media (max-width:520px){.inbound-labor-grid{grid-template-columns:1fr}}
-.inbound-labor-badge{margin-top:10px;padding:10px 12px;border-radius:12px;background:#eef1f6;display:flex;align-items:center;gap:10px;font-size:13px}
+.inbound-labor-badge{margin-top:0;padding:10px 12px;border-radius:12px;background:#eef1f6;display:flex;align-items:center;gap:10px;font-size:13px}
 .inbound-labor-badge b{font-size:14px}
 .inbound-labor-badge.warn{background:#fff3d6;color:#8a5800}
 .inbound-labor-badge.bad{background:#fff0f3;color:var(--bad)}

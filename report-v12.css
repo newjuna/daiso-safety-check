@@ -348,3 +348,263 @@ body{margin:0;background:#eef1f5}
  }
  .sr-report:not(.sr-capture) .sr-score{background:#0f1114}
 }
+
+/* ============================================================
+   시안D 확정흐름 구조 (2026-09 대개편)
+
+   흐름: 표지 → 목차 → [챕터구분장 → 상세…] × 전 분야 → 조치계획
+   규칙 (사용자 확정, 변경 금지)
+     · 모든 챕터는 스킵 없음. 미흡 0건이면 구분장 + "양호" 한 줄만 남기고 상세는 만들지 않는다.
+     · 예외: 사다리·사고조사는 미흡/이력 0건이어도 보유현황·이력요약을 항상 노출한다.
+     · 상세는 2문항/페이지 고정. 짝수는 좌우 반반 + 가운데 주름선.
+       홀수로 1개만 남으면 왼쪽정렬 금지 → 가운데정렬 + 사진 확대.
+     · 여백 금지: 페이지 높이(880px)가 남으면 사진 영역이 flex로 늘어나 채운다.
+   ============================================================ */
+
+/* ---------- 공통: 한 장을 세로 flex로 잡아 남는 높이를 내용이 흡수하게 한다 ---------- */
+.sr-report .sr-page{display:flex;flex-direction:column;height:880px;min-height:880px;overflow:hidden}
+.sr-report .sr-page>.sr-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.sr-report .sr-page .sr-footer{margin-top:auto}
+
+/* ---------- 표지 ---------- */
+.sr-report .sr-cover2{height:880px;min-height:880px;display:flex;flex-direction:column;padding:64px 60px 44px;position:relative;overflow:hidden;background:var(--sr-paper)}
+.sr-report .sr-cover2:before{content:"";position:absolute;left:0;top:0;bottom:0;width:14px;background:var(--sr-red)}
+.sr-report .sr-cover2-kicker{font-size:11px;letter-spacing:.16em;color:var(--sr-muted)}
+.sr-report .sr-cover2 h1{font-size:42px;margin:18px 0 0;font-weight:500;line-height:1.24;color:var(--sr-ink)}
+.sr-report .sr-cover2-sub{margin:14px 0 0;font-size:13px;color:var(--sr-muted)}
+.sr-report .sr-cover2-rule{height:5px;background:var(--sr-red);width:100%;margin:28px 0 0}
+.sr-report .sr-cover2-verdict{margin-top:34px;padding:22px 26px;background:var(--sr-ink);color:#fff;border-radius:16px;max-width:760px}
+.sr-report .sr-cover2-verdict small{font-size:10px;letter-spacing:.1em;opacity:.6}
+.sr-report .sr-cover2-verdict b{display:block;margin:9px 0 0;font-size:26px;font-weight:500;line-height:1.3}
+.sr-report .sr-cover2-verdict p{margin:11px 0 0;font-size:12.5px;line-height:1.7;opacity:.9}
+.sr-report .sr-cover2-meta{display:flex;gap:34px;margin-top:auto;flex-wrap:wrap}
+.sr-report .sr-cover2-meta div{font-size:11px;color:var(--sr-muted)}
+.sr-report .sr-cover2-meta b{display:block;font-size:15px;color:var(--sr-ink);margin-top:5px;font-weight:500}
+
+/* ---------- 목차 ---------- */
+.sr-report .sr-toc{display:flex;height:880px;min-height:880px;overflow:hidden}
+.sr-report .sr-toc-side{width:150px;flex:none;background:var(--sr-red)}
+.sr-report .sr-toc-main{flex:1;min-width:0;padding:70px 60px;display:flex;flex-direction:column}
+.sr-report .sr-toc-main .sr-cover2-kicker{margin-bottom:0}
+.sr-report .sr-toc-main h1{font-size:34px;margin:12px 0 30px;font-weight:500}
+.sr-report .sr-toc-list{display:grid;grid-template-columns:1fr 1fr;gap:6px 50px;align-content:start}
+.sr-report .sr-toc-row{display:flex;align-items:baseline;gap:14px;font-size:15px;font-weight:500;padding:11px 0;border-bottom:1px solid var(--sr-line)}
+.sr-report .sr-toc-row i{font-style:normal;color:var(--sr-muted);font-size:12.5px;font-weight:500;width:26px;flex:none}
+.sr-report .sr-toc-row span{flex:1;min-width:0}
+.sr-report .sr-toc-row em{font-style:normal;font-size:10.5px;color:var(--sr-muted);flex:none}
+.sr-report .sr-toc-row em.bad{color:var(--sr-red)}
+.sr-report .sr-toc-row em.good{color:var(--sr-green)}
+.sr-report .sr-toc-foot{margin-top:auto;padding-top:20px;font-size:10.5px;color:var(--sr-muted);line-height:1.7}
+
+/* ---------- 챕터 구분장 ---------- */
+.sr-report .sr-chapter{display:flex;height:880px;min-height:880px;overflow:hidden}
+.sr-report .sr-chapter-side{width:150px;flex:none;background:var(--sr-red);position:relative}
+.sr-report .sr-chapter-side b{position:absolute;left:0;right:0;bottom:34px;text-align:center;color:#fff;font-size:44px;font-weight:500;opacity:.5}
+.sr-report .sr-chapter-main{flex:1;min-width:0;padding:80px 60px 44px;display:flex;flex-direction:column}
+.sr-report .sr-chapter-main small{font-size:11px;letter-spacing:.16em;color:var(--sr-muted)}
+.sr-report .sr-chapter-main h1{font-size:38px;margin:12px 0 0;font-weight:500}
+.sr-report .sr-chapter-rule{height:3px;background:var(--sr-ink);width:180px;margin:24px 0 32px;flex:none}
+.sr-report .sr-chapter-sub{display:grid;grid-template-columns:1fr 1fr;gap:10px 50px;align-content:start}
+.sr-report .sr-chapter-sub div{display:flex;align-items:baseline;gap:13px;font-size:14px;font-weight:500}
+.sr-report .sr-chapter-sub i{font-style:normal;color:var(--sr-muted);font-size:12px;font-weight:500;width:24px;flex:none}
+.sr-report .sr-chapter-sub span{flex:1;min-width:0}
+.sr-report .sr-chapter-sub em{font-style:normal;font-size:10px;flex:none;padding:2px 8px;border-radius:999px;background:var(--sr-green-soft);color:var(--sr-green)}
+.sr-report .sr-chapter-sub em.bad{background:var(--sr-red-soft);color:var(--sr-red)}
+.sr-report .sr-chapter-sub em.na{background:var(--sr-line);color:var(--sr-muted)}
+.sr-report .sr-chapter-note{margin-top:28px;padding:16px 20px;background:var(--sr-soft);border-left:4px solid var(--sr-navy);font-size:12.5px;line-height:1.7;max-width:660px}
+.sr-report .sr-chapter-note b{font-weight:500;color:var(--sr-navy)}
+.sr-report .sr-chapter-good{margin-top:28px;display:inline-flex;align-items:center;gap:10px;padding:13px 22px;background:var(--sr-green-soft);color:var(--sr-green);border-radius:10px;font-size:15px;font-weight:500;align-self:flex-start}
+.sr-report .sr-chapter-count{margin-top:28px;display:flex;gap:10px;flex-wrap:wrap}
+.sr-report .sr-chapter-count div{padding:13px 18px;background:var(--sr-soft);border-bottom:2px solid var(--sr-line);min-width:118px}
+.sr-report .sr-chapter-count div.bad{border-color:var(--sr-red)}
+.sr-report .sr-chapter-count small{display:block;font-size:10px;color:var(--sr-muted)}
+.sr-report .sr-chapter-count b{font-size:22px;font-weight:500}
+.sr-report .sr-chapter-foot{margin-top:auto;font-size:10px;color:var(--sr-muted)}
+
+/* ---------- 사이드바형 상세 (작업점검·시설·소방·TBM·의견·조치확인 공통) ---------- */
+.sr-report .sr-detail{display:flex;height:880px;min-height:880px;overflow:hidden}
+.sr-report .sr-side{width:268px;flex:none;background:var(--sr-soft);border-right:1px solid var(--sr-line);padding:22px 16px;overflow:hidden;display:flex;flex-direction:column}
+.sr-report .sr-side-head{font-size:9.5px;letter-spacing:.08em;color:var(--sr-muted);margin-bottom:11px;line-height:1.5}
+.sr-report .sr-side-head b{display:block;font-size:12px;letter-spacing:0;color:var(--sr-ink);font-weight:500;margin-top:3px}
+.sr-report .sr-side-item{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;margin-bottom:4px;font-size:11px;line-height:1.45;background:var(--sr-paper)}
+.sr-report .sr-side-item.on{background:var(--sr-navy);color:#fff}
+.sr-report .sr-side-item.na{opacity:.55}
+.sr-report .sr-side-item span{flex:1;min-width:0}
+.sr-report .sr-side-item i{flex:none;font-style:normal;font-size:9px;font-weight:500;padding:2px 7px;border-radius:999px;background:var(--sr-green-soft);color:var(--sr-green)}
+.sr-report .sr-side-item i.bad{background:var(--sr-red-soft);color:var(--sr-red)}
+.sr-report .sr-side-item i.na{background:var(--sr-line);color:var(--sr-muted)}
+.sr-report .sr-side-item.on i{background:rgba(255,255,255,.22);color:#fff}
+.sr-report .sr-side-foot{margin-top:auto;padding-top:12px;font-size:9px;color:var(--sr-muted);line-height:1.6}
+.sr-report .sr-side-more{padding:7px 10px;font-size:9.5px;color:var(--sr-muted)}
+
+.sr-report .sr-main{flex:1;min-width:0;padding:24px 30px 22px;display:flex;flex-direction:column}
+.sr-report .sr-main-head{padding-bottom:9px;border-bottom:2px solid var(--sr-ink);margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex:none}
+.sr-report .sr-main-head small{color:var(--sr-red);font-size:9.5px;letter-spacing:.1em}
+.sr-report .sr-main-head h2{margin:4px 0 0;font-size:19px;font-weight:500}
+.sr-report .sr-main-head .sr-page-no{font-size:10.5px}
+.sr-report .sr-main-lead{flex:none;margin:0 0 12px;padding:11px 14px;background:var(--sr-soft);border-left:3px solid var(--sr-navy);font-size:11px;line-height:1.6}
+.sr-report .sr-main-lead b{font-weight:500;color:var(--sr-navy)}
+
+/* 2문항/페이지 · 가운데 주름선 */
+.sr-report .sr-split2{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:0;position:relative}
+.sr-report .sr-split2:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:repeating-linear-gradient(to bottom,var(--sr-line) 0,var(--sr-line) 5px,transparent 5px,transparent 10px)}
+.sr-report .sr-split2.one:before{display:none}
+.sr-report .sr-qcol{padding:0 20px;min-width:0;display:flex;flex-direction:column}
+.sr-report .sr-qcol:first-child{padding-left:0}
+.sr-report .sr-qcol:last-child{padding-right:0}
+.sr-report .sr-qnum{flex:none;font-size:10px;color:var(--sr-muted);font-weight:500;margin-bottom:3px}
+.sr-report .sr-qtitle{flex:none;font-size:14px;font-weight:500;margin:0 0 4px;line-height:1.4}
+.sr-report .sr-qanswer{flex:none;font-size:11.5px;color:var(--sr-red);font-weight:500;margin:0 0 5px;line-height:1.5}
+.sr-report .sr-qanswer.good{color:var(--sr-green)}
+.sr-report .sr-qmeta{flex:none;font-size:9.5px;color:var(--sr-muted);margin:0 0 9px;line-height:1.5}
+/* 사진이 남는 높이를 전부 흡수한다 → 페이지 아래 여백이 생기지 않는다 */
+.sr-report .sr-qphoto{flex:1 1 auto;min-height:150px;margin-bottom:11px}
+.sr-report .sr-qphoto .sr-photo{height:100%;min-height:150px}
+.sr-report .sr-qcol .sr-hazards{flex:none;margin:0 0 9px}
+.sr-report .sr-fix{flex:none;background:var(--sr-soft);border-radius:8px;padding:11px 13px}
+.sr-report .sr-fix-title{font-size:9.5px;font-weight:500;color:var(--sr-muted);margin-bottom:7px;letter-spacing:.04em}
+.sr-report .sr-fix-opt{font-size:10.5px;line-height:1.55;margin-bottom:5px;padding-left:30px;position:relative}
+.sr-report .sr-fix-opt:last-child{margin-bottom:0}
+.sr-report .sr-fix-opt:before{content:attr(data-n);position:absolute;left:0;top:0;font-weight:500;color:var(--sr-navy);font-size:10px}
+
+/* 홀수로 1개만 남을 때: 가운데정렬 + 사진 확대 (왼쪽정렬 금지) */
+.sr-report .sr-solo{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;text-align:center;max-width:720px;margin:0 auto;width:100%}
+.sr-report .sr-solo-badge{flex:none;display:inline-block;background:var(--sr-ink);color:#ffe4a3;font-size:9px;font-weight:500;padding:4px 12px;border-radius:999px;margin-bottom:10px}
+.sr-report .sr-solo .sr-qnum,.sr-report .sr-solo .sr-qtitle,.sr-report .sr-solo .sr-qanswer,.sr-report .sr-solo .sr-qmeta{width:100%}
+.sr-report .sr-solo .sr-qtitle{font-size:17px}
+.sr-report .sr-solo .sr-qanswer{font-size:13px}
+.sr-report .sr-solo .sr-qphoto{width:100%;max-width:620px;min-height:280px}
+.sr-report .sr-solo .sr-qphoto .sr-photo{min-height:280px}
+.sr-report .sr-solo .sr-hazards{justify-content:center}
+.sr-report .sr-solo .sr-fix{text-align:left;width:100%;max-width:620px}
+
+/* ---------- 요약본 ---------- */
+.sr-report .sr-sum-box{display:grid;grid-template-columns:290px 1fr;gap:16px;flex:none}
+.sr-report .sr-sum-black{background:var(--sr-ink);color:#fff;border-radius:14px;padding:20px 22px}
+.sr-report .sr-sum-black small{opacity:.6;font-size:10px;letter-spacing:.08em}
+.sr-report .sr-sum-black b{display:block;margin-top:9px;font-size:26px;font-weight:500;line-height:1.25}
+.sr-report .sr-sum-black span{display:block;margin-top:8px;font-size:11px;opacity:.82;line-height:1.6}
+.sr-report .sr-sum-black p{margin:0;font-size:12.5px;line-height:1.75;opacity:.92}
+.sr-report .sr-sum-title{font-size:13.5px;font-weight:500;margin:18px 0 8px;display:flex;align-items:center;gap:9px;flex:none}
+.sr-report .sr-sum-title em{font-style:normal;background:var(--sr-red);color:#fff;font-size:9.5px;padding:3px 9px;border-radius:999px}
+.sr-report .sr-sum-rows{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.sr-report .sr-sum-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:112px 1fr 74px 116px;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--sr-line)}
+.sr-report .sr-sum-row:first-child{border-top:0}
+.sr-report .sr-sum-row>b{font-size:12.5px;font-weight:500}
+.sr-report .sr-sum-row>span{font-size:11px;color:var(--sr-muted);line-height:1.5}
+.sr-report .sr-sum-row .sr-cnt{text-align:center;font-weight:500;font-size:15px}
+.sr-report .sr-sum-row.bad .sr-cnt{color:var(--sr-red)}
+.sr-report .sr-sum-row.good .sr-cnt{color:var(--sr-green)}
+.sr-report .sr-sum-row .sr-photo{height:100%;min-height:56px;font-size:9px}
+.sr-report .sr-sum-row .sr-photo:after{left:5px;bottom:5px;padding:2px 5px;font-size:7px}
+
+/* ---------- 사다리 보유현황 (항상 노출) ---------- */
+.sr-report .sr-ladder2{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;flex:none}
+.sr-report .sr-ladder2>div{background:var(--sr-soft);border-radius:10px;padding:14px;text-align:center}
+.sr-report .sr-ladder2>div.bad{background:var(--sr-red-soft)}
+.sr-report .sr-ladder2>div.off{opacity:.45}
+.sr-report .sr-ladder2 small{display:block;font-size:9.5px;color:var(--sr-muted);line-height:1.4}
+.sr-report .sr-ladder2 b{display:block;font-size:22px;margin:5px 0 2px;font-weight:500}
+.sr-report .sr-ladder2 i{font-style:normal;font-size:9px;color:var(--sr-muted)}
+
+/* ---------- 사고이력 요약 (항상 노출) ---------- */
+.sr-report .sr-acc-hist{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:none}
+.sr-report .sr-acc-card{background:var(--sr-soft);border-radius:10px;padding:14px 16px}
+.sr-report .sr-acc-card .sr-acc-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:500;margin-bottom:6px}
+.sr-report .sr-acc-card .sr-acc-top em{font-style:normal;font-size:9.5px;padding:3px 9px;border-radius:999px;flex:none;background:var(--sr-red-soft);color:var(--sr-red)}
+.sr-report .sr-acc-card .sr-acc-top em.done{background:var(--sr-green-soft);color:var(--sr-green)}
+.sr-report .sr-acc-card .sr-acc-top em.warn{background:var(--sr-orange-soft);color:var(--sr-orange)}
+.sr-report .sr-acc-card p{margin:0;font-size:10.5px;color:var(--sr-muted);line-height:1.6}
+
+/* ---------- 조치확인 · 사고조사 상세: 전/후 사진 좌우 ---------- */
+.sr-report .sr-ba{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.sr-report .sr-ba-col{display:flex;flex-direction:column;min-width:0}
+.sr-report .sr-ba-col>small{flex:none;font-size:9.5px;color:var(--sr-muted);letter-spacing:.08em;margin-bottom:5px}
+.sr-report .sr-ba-col .sr-qphoto{margin-bottom:8px}
+.sr-report .sr-ba-col p{flex:none;margin:0;font-size:10.5px;line-height:1.6;padding:9px 11px;background:var(--sr-soft);border-radius:6px}
+
+/* ---------- 조치계획 ---------- */
+.sr-report .sr-plan-rows{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.sr-report .sr-plan-row{flex:0 0 auto;display:grid;grid-template-columns:34px 1fr 118px;gap:13px;align-items:center;padding:14px 0;border-top:1px solid var(--sr-line)}
+.sr-report .sr-plan-row:first-child{border-top:0}
+.sr-report .sr-plan-row>i{font-style:normal;width:32px;height:32px;border-radius:9px;background:var(--sr-navy-soft);color:var(--sr-navy);display:grid;place-items:center;font-size:12px;font-weight:500}
+.sr-report .sr-plan-row b{display:block;font-size:13.5px;font-weight:500}
+.sr-report .sr-plan-row small{display:block;margin-top:3px;color:var(--sr-muted);font-size:10.5px}
+.sr-report .sr-plan-fill{flex:1 1 auto;min-height:0}
+
+/* ============================================================
+   위 신규 컴포넌트의 PDF 캡처 / 모바일 / 인쇄 보정
+   (파일 앞쪽 @media 규칙보다 뒤에 와야 우선순위가 이긴다)
+   ============================================================ */
+@media(max-width:900px){
+ .sr-report .sr-page,.sr-report .sr-cover2,.sr-report .sr-toc,
+ .sr-report .sr-chapter,.sr-report .sr-detail{height:auto;min-height:0}
+ .sr-report .sr-toc,.sr-report .sr-chapter,.sr-report .sr-detail{flex-direction:column}
+ .sr-report .sr-toc-side,.sr-report .sr-chapter-side{width:100%;height:10px}
+ .sr-report .sr-chapter-side b{display:none}
+ .sr-report .sr-side{width:100%;border-right:0;border-bottom:1px solid var(--sr-line)}
+ .sr-report .sr-toc-list,.sr-report .sr-chapter-sub,.sr-report .sr-split2,
+ .sr-report .sr-sum-box,.sr-report .sr-acc-hist,.sr-report .sr-ba{grid-template-columns:1fr}
+ .sr-report .sr-split2:before{display:none}
+ .sr-report .sr-ladder2{grid-template-columns:1fr 1fr}
+ .sr-report .sr-qphoto,.sr-report .sr-solo .sr-qphoto{min-height:200px}
+ .sr-report .sr-sum-row{grid-template-columns:1fr;gap:4px}
+ .sr-report .sr-toc-main,.sr-report .sr-chapter-main{padding:36px 22px}
+ .sr-report .sr-cover2{padding:36px 22px}
+ .sr-report .sr-cover2 h1{font-size:28px}
+}
+.sr-capture .sr-page,.sr-capture .sr-cover2,.sr-capture .sr-toc,
+.sr-capture .sr-chapter,.sr-capture .sr-detail{height:880px;min-height:880px}
+.sr-capture .sr-toc,.sr-capture .sr-chapter,.sr-capture .sr-detail{flex-direction:row}
+.sr-capture .sr-toc-side,.sr-capture .sr-chapter-side{width:150px;height:auto}
+.sr-capture .sr-chapter-side b{display:block}
+.sr-capture .sr-side{width:268px;border-right:1px solid var(--sr-line);border-bottom:0}
+.sr-capture .sr-toc-list,.sr-capture .sr-chapter-sub,.sr-capture .sr-split2,
+.sr-capture .sr-acc-hist,.sr-capture .sr-ba{grid-template-columns:1fr 1fr}
+.sr-capture .sr-sum-box{grid-template-columns:290px 1fr}
+.sr-capture .sr-split2:before{display:block}
+.sr-capture .sr-split2.one:before{display:none}
+.sr-capture .sr-ladder2{grid-template-columns:repeat(5,1fr)}
+.sr-capture .sr-qphoto{min-height:150px}
+.sr-capture .sr-solo .sr-qphoto{min-height:280px}
+.sr-capture .sr-sum-row{grid-template-columns:112px 1fr 74px 116px;gap:12px}
+.sr-capture .sr-toc-main,.sr-capture .sr-chapter-main{padding:70px 60px 44px}
+.sr-capture .sr-cover2{padding:64px 60px 44px}
+.sr-capture .sr-cover2 h1{font-size:42px}
+@media print{
+ .sr-report .sr-page,.sr-report .sr-cover2,.sr-report .sr-toc,
+ .sr-report .sr-chapter,.sr-report .sr-detail{height:210mm;min-height:0}
+ .sr-report .sr-toc,.sr-report .sr-chapter,.sr-report .sr-detail{flex-direction:row}
+ .sr-report .sr-toc-side,.sr-report .sr-chapter-side{width:34mm;height:auto}
+ .sr-report .sr-side{width:60mm;border-right:1px solid var(--sr-line);border-bottom:0}
+ .sr-report .sr-toc-list,.sr-report .sr-chapter-sub,.sr-report .sr-split2,
+ .sr-report .sr-acc-hist,.sr-report .sr-ba{grid-template-columns:1fr 1fr}
+ .sr-report .sr-sum-box{grid-template-columns:64mm 1fr}
+ .sr-report .sr-split2.one:before{display:none}
+ .sr-report .sr-ladder2{grid-template-columns:repeat(5,1fr)}
+ .sr-report .sr-sum-row{grid-template-columns:24mm 1fr 16mm 25mm;gap:3mm}
+}
+
+/* 머리글은 줄어들지 않게 고정하고, 남는 높이는 본문이 흡수한다 */
+.sr-report .sr-page>.sr-page-head{flex:none}
+/* 사진이 없는 항목(근로자 의견 등)은 빈 사진칸 대신 인용 박스가 높이를 채운다 */
+.sr-report .sr-qquote{flex:1 1 auto;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:18px;background:var(--sr-soft);border-radius:8px;margin-bottom:11px;text-align:center}
+.sr-report .sr-qquote b{font-size:15px;font-weight:500;line-height:1.55}
+.sr-report .sr-qquote small{font-size:10.5px;color:var(--sr-muted);line-height:1.6}
+
+/* ---------- 항목이 많을 때 밀도 조절 (한 장 880px을 넘기지 않기 위한 안전장치) ----------
+   report.js가 항목 수를 보고 dense / dense2 를 붙인다. */
+.sr-report .sr-chapter-sub.dense{gap:7px 40px}
+.sr-report .sr-chapter-sub.dense div{font-size:12.5px}
+.sr-report .sr-chapter-sub.dense em{font-size:9px;padding:2px 7px}
+.sr-report .sr-chapter-sub.dense2{gap:4px 34px}
+.sr-report .sr-chapter-sub.dense2 div{font-size:11.5px}
+.sr-report .sr-chapter-sub.dense2 i{font-size:10.5px;width:20px}
+.sr-report .sr-chapter-sub.dense2 em{font-size:8.5px;padding:1px 6px}
+
+.sr-report .sr-side.dense .sr-side-item{padding:6px 9px;margin-bottom:3px;font-size:10.5px;line-height:1.4}
+.sr-report .sr-side.dense .sr-side-item i{font-size:8.5px;padding:2px 6px}
+.sr-report .sr-side.dense2{padding:18px 13px}
+.sr-report .sr-side.dense2 .sr-side-item{padding:5px 8px;margin-bottom:2px;font-size:9.5px;line-height:1.35}
+.sr-report .sr-side.dense2 .sr-side-item i{font-size:8px;padding:1px 5px}
+.sr-report .sr-side.dense2 .sr-side-foot{font-size:8.5px}
