@@ -35,7 +35,7 @@
 (function(){
   var ENDPOINTS={
     /* 운영: 실제 점검 결과가 쌓이는 곳 */
-    prod:{url:'PASTE_YOUR_APPS_SCRIPT_WEBAPP_URL_HERE', key:'daiso-safety-2026', label:''},
+    prod:{url:'https://script.google.com/macros/s/AKfycbyjUgbbLVXyxaBhBsCKexNhViEHAYoVPMm93-zd0031DJSKL8ZNdoISxn9afO_3iJrTYA/exec', key:'daiso-safety-2026', label:''},
     /* 테스트: 사본 스프레드시트에 연결된 별도 배포 주소를 넣는다 */
     test:{url:'PASTE_YOUR_TEST_APPS_SCRIPT_WEBAPP_URL_HERE', key:'daiso-safety-2026', label:'테스트 서버'},
     /* 목업: 서버를 아예 부르지 않는다. 주소는 필요 없다 */
