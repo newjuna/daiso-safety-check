@@ -422,7 +422,16 @@ function writeStoreCache(list){try{localStorage.setItem(STORE_CACHE_KEY,JSON.str
 function readPrepCache(store){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}'),x=all[store];return x&&Date.now()-x.at<PREP_TTL?x.data:null}catch(e){return null}}
 function writePrepCache(store,data){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}');all[store]={at:Date.now(),data:data};localStorage.setItem(PREP_CACHE_KEY,JSON.stringify(all))}catch(e){}}
 function clearPrepCache(store){try{var all=JSON.parse(localStorage.getItem(PREP_CACHE_KEY)||'{}');delete all[store];localStorage.setItem(PREP_CACHE_KEY,JSON.stringify(all));delete STORE_PREP[store]}catch(e){}}
-function isCommuteAccident(a){var text=[a&&a.category,a&&a.type,a&&a.content].filter(Boolean).join('').replace(/\s+/g,'');return /출퇴근재해|출근재해|퇴근재해/.test(text)}
+/* 서버 필터(Sheets.gs getStoreAccidentHistory)를 한 번 더 통과시키는 안전망이다.
+   재해유형(a.type)처럼 분류값은 "출퇴근" 한 단어만 있어도 확실한 표기이므로 느슨하게 보고,
+   사고내용(a.content)처럼 자유 서술문은 "출퇴근길에 다쳤다"처럼 업무 중 사고를 설명하며
+   그 단어가 우연히 들어갈 수 있어 "재해"가 붙은 더 엄격한 표현만 본다. */
+function isCommuteAccident(a){
+  var category=[a&&a.category,a&&a.type].filter(Boolean).join('').replace(/\s+/g,'');
+  var content=String((a&&a.content)||'').replace(/\s+/g,'');
+  var pattern=/출퇴근|출근재해|퇴근재해/;
+  return pattern.test(category)||/출퇴근재해|출근재해|퇴근재해/.test(content);
+}
 function inspectionAccidents(list){return (list||[]).filter(function(a){return !isCommuteAccident(a)})}
 
 function start(){
