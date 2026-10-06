@@ -2534,13 +2534,15 @@ function checklistSnapshotOf(k){
     const found=(st.issues||[]).find(function(x){return x.item===name});
     const isNA=!!(st.naItems||{})[name];
     const hazard=k==='common'?'시설':(k==='fire'?'화재':'안전관리');
+    const title=CHECKLIST_TITLE[k]||k;
     return {
       name:name,
       state:found?'bad':(isNA?'na':'good'),
       note:found?(found.note||''):'',
       photos:found?resolvePhotos(found.files):[],
-      /* 점검자가 «해결방안 확인» 화면에서 고친 문장. 없으면 자동 초안이 들어간다. */
-      fix:found?fixTextOf(k+':'+name,{category:CHECKLIST_TITLE[k]||k,title:name,hazards:[hazard]}):''
+      /* 점검자가 «해결방안 확인» 화면에서 고친 문장. 없으면 문구표 → 규칙문구 순서로 들어간다.
+         TBM은 보고서에 해결방안 자리가 없으므로 값이 쓰이지 않는다(계산만 하고 버려짐). */
+      fix:found?fixTextOf(k+':'+name,{category:title,area:title,title:name,hazards:[hazard]}):''
     };
   });
 }
@@ -2563,7 +2565,7 @@ function workDetailSnapshot(){
           hazards:(a&&a.hazards)||q[2]||[],
           photos:a?resolvePhotos(a.files):[],
           /* 미흡 문항만 해결방안을 싣는다. 점검자가 고친 문장이 있으면 그것이 들어간다. */
-          fix:risk?fixTextOf('w:'+wi+':'+qi,{category:'작업점검',title:picked||q[0],hazards:(a&&a.hazards)||q[2]||[]}):''
+          fix:risk?fixTextOf('w:'+wi+':'+qi,{category:'작업점검',area:w[0],question:q[0],title:picked||q[0],hazards:(a&&a.hazards)||q[2]||[]}):''
         };
       })
     };
@@ -2624,7 +2626,11 @@ function isFixEdited(key){
   return typeof v==='string'&&!!v.trim();
 }
 /* 해결방안을 적을 대상 목록. 미흡으로 기록된 항목만 모은다.
-   키는 결과보고서 스냅샷에서 같은 항목을 찾을 때 쓰는 값이므로 생성 규칙을 바꾸면 양쪽을 함께 바꿔야 한다. */
+   키는 결과보고서 스냅샷에서 같은 항목을 찾을 때 쓰는 값이므로 생성 규칙을 바꾸면 양쪽을 함께 바꿔야 한다.
+
+   TBM과 근로자 의견청취는 넣지 않는다. 결과보고서의 그 두 장은
+   «항목별 양호/미흡» 한 페이지 요약이라 해결방안이 들어가는 자리가 없다.
+   보이지도 않을 문구를 점검자에게 쓰게 하면 시간만 버린다. (2026-10-06 사용자 확정) */
 function solutionItems(){
   const out=[];
   D.works.forEach((w,wi)=>{
@@ -2636,21 +2642,22 @@ function solutionItems(){
       const picked=(q[1]||[])[a.oi]||q[0];
       out.push({key:'w:'+wi+':'+qi,group:'작업점검',area:w[0],
         title:q[0],detail:picked,files:a.files,
-        ctx:{category:'작업점검',title:picked,hazards:a.hazards||q[2]||[]}});
+        /* area·question·title 세 가지가 있어야 문구표(solutions.js)를 찾을 수 있다 */
+        ctx:{category:'작업점검',area:w[0],question:q[0],title:picked,hazards:a.hazards||q[2]||[]}});
     });
   });
   (S.ladder.issues||[]).forEach(x=>{
     const type=x.type||x.typeKey||'사다리',item=x.item||'이상사항';
     out.push({key:'ladder:'+type+'|'+item,group:'사다리',area:type,
       title:item,detail:x.note||'떨어짐 위험',files:x.files,
-      ctx:{category:'사다리',title:item,hazards:['떨어짐']}});
+      ctx:{category:'사다리',area:type,title:item,hazards:['떨어짐']}});
   });
-  [['common','공통·시설','시설'],['fire','소방','화재'],['tbm','TBM','안전관리']].forEach(p=>{
+  [['common','공통·시설','시설'],['fire','소방','화재']].forEach(p=>{
     ((S[p[0]]||{}).issues||[]).forEach(x=>{
       const item=x.item||x.text||'미흡사항';
       out.push({key:p[0]+':'+item,group:p[1],area:p[1],
         title:item,detail:x.note||'현장에서 미흡 확인',files:x.files,
-        ctx:{category:p[1],title:item,hazards:[p[2]]}});
+        ctx:{category:p[1],area:p[1],title:item,hazards:[p[2]]}});
     });
   });
   (S.others||[]).forEach((x,i)=>{
@@ -2766,14 +2773,14 @@ function getLandscapeReportSnapshot(){
       if(!x||!x.risk)return;
       const q=w[1][qi]||['미흡사항',[]],answer=(q[1]||[])[x.oi]||q[0];
       findings.push({category:'작업점검',area:w[0],title:answer,question:q[0],hazards:x.hazards||[],photos:resolvePhotos(x.files),
-        fix:fixTextOf('w:'+wi+':'+qi,{category:'작업점검',title:answer,hazards:x.hazards||[]})});
+        fix:fixTextOf('w:'+wi+':'+qi,{category:'작업점검',area:w[0],question:q[0],title:answer,hazards:x.hazards||[]})});
     });
   });
   const addIssues=(list,category,hazard,keyPrefix,byIndex)=>{
     (list||[]).forEach((x,i)=>{
       const title=x.item||x.text||'미흡사항';
       findings.push({category,area:category,title:title,note:x.note||'',hazards:[hazard],photos:resolvePhotos(x.files),
-        fix:fixTextOf(keyPrefix+':'+(byIndex?i:title),{category,title:title,hazards:[hazard]})});
+        fix:fixTextOf(keyPrefix+':'+(byIndex?i:title),{category,area:category,title:title,hazards:[hazard]})});
     });
   };
   /* 사다리는 어떤 유형의 이상인지가 중요하므로 area에 유형명을 넣는다.
@@ -2783,7 +2790,7 @@ function getLandscapeReportSnapshot(){
     findings.push({
       category:'사다리',area:type,title:item,
       note:x.note||'',hazards:['떨어짐'],photos:resolvePhotos(x.files),
-      fix:fixTextOf('ladder:'+type+'|'+item,{category:'사다리',title:item,hazards:['떨어짐']})
+      fix:fixTextOf('ladder:'+type+'|'+item,{category:'사다리',area:type,title:item,hazards:['떨어짐']})
     });
   });
   addIssues(S.common.issues,'공통·시설','시설','common');
@@ -2843,7 +2850,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=21','_blank');
+  const win=window.open('report.html?v=22','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2973,7 +2980,7 @@ function loadReportCssOnce(){
   return new Promise((resolve,reject)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report-v12.css?v=8';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report-v12.css?v=9';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();
     el.onerror=()=>{
       /* 배포 누락·캐시 문제에 대비해 기존 이름을 한 번 더 시도한다.
