@@ -106,6 +106,12 @@ function normalizeState(){
   }
   S.workNA=S.workNA||{};
   S.guides=S.guides||{};
+  /* 입고도우미가 0명이면 «도우미 퇴근» 값은 의미가 없다.
+     진행 중이던 점검(이미 저장된 기본값 09:00이 남아 있는 상태)도 여기서 함께 정리한다. */
+  if(!(Number(S.basic&&S.basic.inboundHelpers)>0)&&S.basic)S.basic.inboundHelperOutAt='';
+  /* 위험요인별 해결방안. 자동 초안을 점검자가 제출 직전에 고칠 수 있고, 그 결과를 여기 담는다.
+     키는 solutionItems()가 만든다(작업점검은 w:작업유형:문항, 나머지는 분야:항목명). */
+  S.fixTexts=(S.fixTexts&&typeof S.fixTexts==='object')?S.fixTexts:{};
   /* 시간 입력(시/분 분리 드롭다운)에서 고르던 중인 임시값.
      "시"만 고른 상태를 화면을 다시 그려도 유지하려면 저장소가 필요하다. */
   S.timeDrafts=S.timeDrafts||{};
@@ -1063,26 +1069,43 @@ function timeSelectHtml(key){
   if(d.h&&!d.m)h+='<small class="time-hint">분까지 선택하면 저장됩니다.</small>';
   return h;
 }
+/* 입고도우미 인원이 바뀌면 «도우미 퇴근» 시각을 함께 정리한다.
+   도우미를 쓰지 않는 매장(0명)인데 퇴근시각이 남아 있으면
+   인력부담 계산과 결과보고서에 의미 없는 값("도우미 09:00 퇴근")이 따라붙는다. */
+function setInboundHelpers(v){
+  S.basic.inboundHelpers=v;
+  if(Number(v)>0){
+    /* 0명이었다가 인원이 생기면 기본 퇴근시각을 다시 채워준다(점검자가 눌러서 수정 가능). */
+    if(!S.basic.inboundHelperOutAt)S.basic.inboundHelperOutAt=INBOUND_DEFAULTS.inboundHelperOutAt;
+  }else{
+    S.basic.inboundHelperOutAt='';
+  }
+  save();work();
+}
 /* 입고·하차 상단 정보를 한 카드, 두 줄로 압축했다.
    입력 종류별로 줄을 나눴다(값 종류가 같으면 눈이 훑기 편하다).
      1행: 입고시간대 · 입고 물량 · 임직원 · 도우미     (선택/숫자 입력 4개, 폭이 비슷함)
-     2행: 입고 시작 · 입고 종료 · 도우미 퇴근          (시각 입력 3개만 따로 모음)
+     2행: 입고 시작 · 입고 종료 · (도우미 퇴근)        (시각 입력만 따로 모음)
+   «도우미 퇴근»은 입고도우미가 1명 이상일 때만 나온다.
+   도우미가 없는 매장에서는 물어볼 값 자체가 없으므로 칸을 만들지 않는다(사용자 지적).
    결과 배지는 그 아래 한 줄로 붙인다. */
 function inboundWorkFields(){
   const b=S.basic;
+  const hasHelpers=Number(b.inboundHelpers)>0;
   return `<div class="inbound-card">
     <div class="inbound-card-head">입고·하차 정보 <small>(TBM 기준값이 기본 입력되어 있습니다 · 눌러서 수정)</small></div>
     <div class="inbound-row4">
       <div class="field"><label>입고시간대</label><select onchange="S.basic.delivery=this.value;save();work()"><option value="">선택</option><option ${b.delivery==='오전'?'selected':''}>오전</option><option ${b.delivery==='오후(야간)'?'selected':''}>오후(야간)</option></select></div>
       <div class="field"><label>입고 물량 <span class="req">*</span></label><div class="number-suffix"><input type="number" min="1" inputmode="numeric" placeholder="0" value="${esc(b.inboundBoxes)}" onchange="S.basic.inboundBoxes=this.value;save()"><span>박스</span></div></div>
       <div class="field"><label>임직원</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundStaff)}" onchange="S.basic.inboundStaff=this.value;save();work()"><span>명</span></div></div>
-      <div class="field"><label>입고도우미</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundHelpers)}" onchange="S.basic.inboundHelpers=this.value;save();work()"><span>명</span></div></div>
+      <div class="field"><label>입고도우미</label><div class="number-suffix"><input type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(b.inboundHelpers)}" onchange="setInboundHelpers(this.value)"><span>명</span></div></div>
     </div>
-    <div class="inbound-row3">
+    <div class="${hasHelpers?'inbound-row3':'inbound-row2'}">
       <div class="field"><label>입고 시작</label>${timeSelectHtml('inboundStart')}</div>
       <div class="field"><label>입고 종료</label>${timeSelectHtml('inboundEnd')}</div>
-      <div class="field"><label>도우미 퇴근</label>${timeSelectHtml('inboundHelperOutAt')}</div>
+      ${hasHelpers?`<div class="field"><label>도우미 퇴근</label>${timeSelectHtml('inboundHelperOutAt')}</div>`:''}
     </div>
+    ${hasHelpers?'':'<div class="inbound-helper-none">입고도우미가 없는 매장으로 기록됩니다. 도우미 퇴근시각은 입력하지 않습니다.</div>'}
     ${inboundLaborResultBadge()}
   </div>`;
 }
@@ -1167,7 +1190,12 @@ function inboundLaborResultBadge(){
   if(!r)return `<div class="inbound-labor-badge muted">시간·인원을 모두 입력하면 인력부담이 자동 계산됩니다.</div>`;
   const label=r.level==='good'?'양호':r.level==='minor'?'위험(경미)':'위험(심각)';
   const cls=r.level==='good'?'':r.level==='minor'?'warn':'bad';
-  return `<div class="inbound-labor-badge ${cls}"><b>${label}</b><span>평균 투입인원 ${r.avgPeople.toFixed(1)}명 · 도우미 공백비율 ${Math.round(r.gapRatio*100)}%</span></div>`;
+  /* 도우미가 없으면 «공백비율»이라는 개념이 성립하지 않는다(항상 0%로 찍혀 오해를 준다). */
+  const helpers=Number(S.basic.inboundHelpers)||0;
+  const detail=helpers>0
+    ?`평균 투입인원 ${r.avgPeople.toFixed(1)}명 · 도우미 공백비율 ${Math.round(r.gapRatio*100)}%`
+    :`평균 투입인원 ${r.avgPeople.toFixed(1)}명 · 입고도우미 미운영`;
+  return `<div class="inbound-labor-badge ${cls}"><b>${label}</b><span>${detail}</span></div>`;
 }
 function question(q,qi,v){
   return `<div class="q" data-required="q${qi}"><h3>${qi+1}. ${q[0]} <span class="req">*</span></h3><div class="answers">${q[1].map((o,oi)=>{
@@ -2505,11 +2533,14 @@ function checklistSnapshotOf(k){
     const name=typeof item==='string'?item:item.name;
     const found=(st.issues||[]).find(function(x){return x.item===name});
     const isNA=!!(st.naItems||{})[name];
+    const hazard=k==='common'?'시설':(k==='fire'?'화재':'안전관리');
     return {
       name:name,
       state:found?'bad':(isNA?'na':'good'),
       note:found?(found.note||''):'',
-      photos:found?resolvePhotos(found.files):[]
+      photos:found?resolvePhotos(found.files):[],
+      /* 점검자가 «해결방안 확인» 화면에서 고친 문장. 없으면 자동 초안이 들어간다. */
+      fix:found?fixTextOf(k+':'+name,{category:CHECKLIST_TITLE[k]||k,title:name,hazards:[hazard]}):''
     };
   });
 }
@@ -2523,13 +2554,16 @@ function workDetailSnapshot(){
       questions:(w[1]||[]).map(function(q,qi){
         const a=answers[qi];
         const picked=(a&&Number.isFinite(Number(a.oi)))?((q[1]||[])[a.oi]||''):'';
+        const risk=!!(a&&a.risk);
         return {
           q:q[0],
           answer:picked,
-          risk:!!(a&&a.risk),
+          risk:risk,
           answered:!!a,
           hazards:(a&&a.hazards)||q[2]||[],
-          photos:a?resolvePhotos(a.files):[]
+          photos:a?resolvePhotos(a.files):[],
+          /* 미흡 문항만 해결방안을 싣는다. 점검자가 고친 문장이 있으면 그것이 들어간다. */
+          fix:risk?fixTextOf('w:'+wi+':'+qi,{category:'작업점검',title:picked||q[0],hazards:(a&&a.hazards)||q[2]||[]}):''
         };
       })
     };
@@ -2569,30 +2603,193 @@ function voiceDetailSnapshot(){
   });
 }
 
+/* ============ 위험요인별 해결방안 (자동 초안 + 점검자 수정) ============
+   결과보고서의 «위험요인에 관한 해결방안»은 report.js가 규칙으로 초안을 만든다.
+   그 초안이 현장과 안 맞는 경우가 있어서, 제출 직전에 한 번 읽고 고칠 기회를 둔다(사용자 요청).
+   고친 문장은 S.fixTexts[키]에 저장되고 결과보고서 화면·PDF 양쪽에 그대로 들어간다.
+
+   문구 생성 규칙은 report.js 한 곳에만 둔다(window.autoImprovementText).
+   앱과 보고서가 서로 다른 초안을 만들면 «내가 본 문장과 보고서 문장이 다르다»가 되기 때문이다. */
+function autoFixText(ctx){
+  return (typeof window.autoImprovementText==='function')
+    ? window.autoImprovementText(ctx||{})
+    : '해당 위험요인을 제거하거나 노출을 줄일 수 있도록 현장 조치 후 재확인합니다.';
+}
+function fixTextOf(key,ctx){
+  const v=(S.fixTexts||{})[key];
+  return (typeof v==='string'&&v.trim())?v.trim():autoFixText(ctx);
+}
+function isFixEdited(key){
+  const v=(S.fixTexts||{})[key];
+  return typeof v==='string'&&!!v.trim();
+}
+/* 해결방안을 적을 대상 목록. 미흡으로 기록된 항목만 모은다.
+   키는 결과보고서 스냅샷에서 같은 항목을 찾을 때 쓰는 값이므로 생성 규칙을 바꾸면 양쪽을 함께 바꿔야 한다. */
+function solutionItems(){
+  const out=[];
+  D.works.forEach((w,wi)=>{
+    if(S.workNA&&S.workNA[wi])return;   /* 해당 작업 없음으로 기록한 유형은 묻지 않는다 */
+    const answers=S.wa[wi]||{};
+    (w[1]||[]).forEach((q,qi)=>{
+      const a=answers[qi];
+      if(!a||!a.risk)return;
+      const picked=(q[1]||[])[a.oi]||q[0];
+      out.push({key:'w:'+wi+':'+qi,group:'작업점검',area:w[0],
+        title:q[0],detail:picked,files:a.files,
+        ctx:{category:'작업점검',title:picked,hazards:a.hazards||q[2]||[]}});
+    });
+  });
+  (S.ladder.issues||[]).forEach(x=>{
+    const type=x.type||x.typeKey||'사다리',item=x.item||'이상사항';
+    out.push({key:'ladder:'+type+'|'+item,group:'사다리',area:type,
+      title:item,detail:x.note||'떨어짐 위험',files:x.files,
+      ctx:{category:'사다리',title:item,hazards:['떨어짐']}});
+  });
+  [['common','공통·시설','시설'],['fire','소방','화재'],['tbm','TBM','안전관리']].forEach(p=>{
+    ((S[p[0]]||{}).issues||[]).forEach(x=>{
+      const item=x.item||x.text||'미흡사항';
+      out.push({key:p[0]+':'+item,group:p[1],area:p[1],
+        title:item,detail:x.note||'현장에서 미흡 확인',files:x.files,
+        ctx:{category:p[1],title:item,hazards:[p[2]]}});
+    });
+  });
+  (S.others||[]).forEach((x,i)=>{
+    if(!String(x.text||'').trim())return;
+    out.push({key:'other:'+i,group:'기타사항',area:'기타사항',
+      title:x.text,detail:x.task?'개선과제 후보':'현장 확인 특이사항',files:x.files,
+      ctx:{category:'기타사항',title:x.text,hazards:['기타']}});
+  });
+  return out;
+}
+/* 화면에 그린 목록을 그대로 기억해 둔다.
+   textarea의 onchange에 한글·«|»가 든 키를 그대로 박으면 따옴표 때문에 깨질 수 있으므로
+   순번으로만 주고받는다. */
+var SOLUTION_CACHE=[];
+function setFixTextAt(i,v){
+  const it=SOLUTION_CACHE[i];
+  if(!it)return;
+  S.fixTexts=S.fixTexts||{};
+  const t=String(v==null?'':v).trim();
+  /* 비우면 «수정 안 함»으로 되돌린다(자동 초안이 다시 쓰인다). */
+  if(t)S.fixTexts[it.key]=t; else delete S.fixTexts[it.key];
+  save();
+}
+function resetFixAt(i){
+  const it=SOLUTION_CACHE[i];
+  if(!it)return;
+  if(S.fixTexts)delete S.fixTexts[it.key];
+  save();solutionReview();
+  toast('자동 문구로 되돌렸습니다.');
+}
+/* 제출 직전 화면. 미흡 항목마다 사진·지적내용과 함께 해결방안을 보여주고 고칠 수 있게 한다. */
+function solutionReview(){
+  S.screen='solution';
+  const items=solutionItems();
+  SOLUTION_CACHE=items;
+  const edited=items.filter(x=>isFixEdited(x.key)).length;
+
+  let h='<div class="card"><div class="work-card-heading"><div><small>SOLUTION REVIEW</small>'
+    +'<h2>위험요인 해결방안 확인</h2>'
+    +'<span class="pill'+(edited?'':' bad')+'">'+items.length+'건 · 직접 수정 '+edited+'건</span>'
+    +'</div></div>';
+  h+='<p class="muted">아래 문장이 결과보고서의 «위험요인에 관한 해결방안»으로 그대로 들어갑니다. '
+    +'자동으로 만든 초안이니 현장에 맞게 고쳐 주세요. 비우면 자동 문구가 다시 쓰입니다.</p>';
+
+  if(!items.length){
+    h+='<div class="other-empty"><i>✓</i><b>미흡으로 기록된 항목이 없습니다</b>'
+      +'<span>해결방안을 적을 대상이 없어 그대로 제출하면 됩니다.</span></div>';
+  }else{
+    let lastGroup='';
+    items.forEach((x,i)=>{
+      if(x.group!==lastGroup){
+        h+='<div class="sol-group">'+esc(x.group)+'</div>';
+        lastGroup=x.group;
+      }
+      const text=fixTextOf(x.key,x.ctx);
+      const mine=isFixEdited(x.key);
+      h+='<article class="sol-item'+(mine?' edited':'')+'">'
+        +'<header><i>'+String(i+1).padStart(2,'0')+'</i>'
+        +'<span><small>'+esc(x.area)+'</small><b>'+esc(x.title)+'</b></span>'
+        +'<em>'+(mine?'수정됨':'자동 초안')+'</em></header>'
+        +'<div class="sol-finding">'+esc(x.detail)+'</div>'
+        +((x.files&&x.files.length)?'<div class="sol-photos">'+renderSolutionPhotos(x.files)+'</div>':'')
+        +'<label>위험요인에 관한 해결방안</label>'
+        +'<textarea rows="3" data-sol="'+i+'" placeholder="해결방안을 입력하세요." '
+        +'onchange="setFixTextAt('+i+',this.value)">'+esc(text)+'</textarea>'
+        +'<div class="sol-actions"><button class="sol-reset" onclick="resetFixAt('+i+')">↺ 자동 문구로 되돌리기</button></div>'
+        +'</article>';
+    });
+  }
+  h+='<div class="nav"><button class="secondary" onclick="flushSolutionEdits();solutionBack()">← 점검화면으로</button>'
+    +'<button class="primary" onclick="flushSolutionEdits();submitFinalNow()">확인했습니다 · 제출 →</button></div>';
+  h+='</div>';
+  SUPPRESS_FIX_BAR=true;
+  frame(h,'해결방안 확인','보고서에 들어갈 해결방안을 수정할 수 있습니다.');
+}
+/* 화면을 떠나기 전 textarea 값을 모두 반영한다.
+   onchange는 포커스가 빠질 때 발생하므로, 마지막으로 고치던 칸이
+   저장되지 않은 채 제출되는 일을 막기 위해 버튼을 누를 때 한 번 더 긁어온다. */
+function flushSolutionEdits(){
+  var list=document.querySelectorAll('textarea[data-sol]');
+  for(var i=0;i<list.length;i++){
+    setFixTextAt(Number(list[i].getAttribute('data-sol')),list[i].value);
+  }
+}
+/* 해결방안 검토 화면에서만 쓰는 읽기 전용 썸네일(삭제 버튼 없음). */
+function renderSolutionPhotos(files){
+  var out='';
+  (files||[]).slice(0,4).forEach(function(f){
+    var stored=(f&&f.id)?PHOTO_STORE.get(f.id):null;
+    out+='<div class="sol-thumb">'
+      +(stored?('<img src="'+stored.dataUrl+'" alt="'+esc(f.name||'')+'">'):'<span>📷</span>')
+      +'</div>';
+  });
+  if((files||[]).length>4)out+='<div class="sol-thumb more">+'+((files||[]).length-4)+'</div>';
+  return out;
+}
+function solutionBack(){render(lastSectionScreenName())}
+function lastSectionScreenName(){
+  if(hasOpenIssues())return 'tasks';
+  if(hasAccidents())return 'accident';
+  return 'other';
+}
+
 /* 가로형 공유보고서에 넘길 실제 점검 데이터.
    점수 기준이 확정되기 전까지는 임의 점수 대신 건수와 상태만 전달한다. */
 function getLandscapeReportSnapshot(){
   const findings=[];
   D.works.forEach((w,wi)=>{
+    /* 해당 작업 없음으로 기록한 유형은 보고서에 미흡으로 올리지 않는다.
+       (예전에는 NA로 바꿔도 그 전에 고른 위험답변이 미흡으로 남아 보고서에 실렸다) */
+    if(S.workNA&&S.workNA[wi])return;
     Object.entries(S.wa[wi]||{}).forEach(([qi,x])=>{
       if(!x||!x.risk)return;
       const q=w[1][qi]||['미흡사항',[]],answer=(q[1]||[])[x.oi]||q[0];
-      findings.push({category:'작업점검',area:w[0],title:answer,question:q[0],hazards:x.hazards||[],photos:resolvePhotos(x.files)});
+      findings.push({category:'작업점검',area:w[0],title:answer,question:q[0],hazards:x.hazards||[],photos:resolvePhotos(x.files),
+        fix:fixTextOf('w:'+wi+':'+qi,{category:'작업점검',title:answer,hazards:x.hazards||[]})});
     });
   });
-  const addIssues=(list,category,hazard)=>{
-    (list||[]).forEach(x=>findings.push({category,area:category,title:x.item||x.text||'미흡사항',note:x.note||'',hazards:[hazard],photos:resolvePhotos(x.files)}));
+  const addIssues=(list,category,hazard,keyPrefix,byIndex)=>{
+    (list||[]).forEach((x,i)=>{
+      const title=x.item||x.text||'미흡사항';
+      findings.push({category,area:category,title:title,note:x.note||'',hazards:[hazard],photos:resolvePhotos(x.files),
+        fix:fixTextOf(keyPrefix+':'+(byIndex?i:title),{category,title:title,hazards:[hazard]})});
+    });
   };
   /* 사다리는 어떤 유형의 이상인지가 중요하므로 area에 유형명을 넣는다.
      (보고서에서 "구형 사다리(검정) 외관상태 미흡"처럼 유형까지 함께 보여주기 위함) */
-  (S.ladder.issues||[]).forEach(x=>findings.push({
-    category:'사다리',area:x.type||x.typeKey||'사다리',title:x.item||'이상사항',
-    note:x.note||'',hazards:['떨어짐'],photos:resolvePhotos(x.files)
-  }));
-  addIssues(S.common.issues,'공통·시설','시설');
-  addIssues(S.fire.issues,'소방','화재');
-  addIssues(S.tbm.issues,'TBM','안전관리');
-  addIssues(S.others,'기타사항','기타');
+  (S.ladder.issues||[]).forEach(x=>{
+    const type=x.type||x.typeKey||'사다리',item=x.item||'이상사항';
+    findings.push({
+      category:'사다리',area:type,title:item,
+      note:x.note||'',hazards:['떨어짐'],photos:resolvePhotos(x.files),
+      fix:fixTextOf('ladder:'+type+'|'+item,{category:'사다리',title:item,hazards:['떨어짐']})
+    });
+  });
+  addIssues(S.common.issues,'공통·시설','시설','common');
+  addIssues(S.fire.issues,'소방','화재','fire');
+  addIssues(S.tbm.issues,'TBM','안전관리','tbm');
+  addIssues(S.others,'기타사항','기타','other',true);
   const hazards={};findings.forEach(f=>(f.hazards||[]).forEach(h=>hazards[h]=(hazards[h]||0)+1));
   const work=D.works.map((w,wi)=>{
     const own=findings.filter(f=>f.category==='작업점검'&&f.area===w[0]);
@@ -2646,7 +2843,7 @@ function openLandscapeReport(){
   try{localStorage.setItem('daiso_landscape_report_v1',JSON.stringify(snapshot,(k,v)=>k==='dataUrl'?null:v))}catch(e){}
   window.__LANDSCAPE_REPORT__=snapshot;
   /* 사고이력 유무에 따라 파일을 나누지 않는다. report.html 한 파일이 내부에서 분기 처리한다. */
-  const win=window.open('report.html?v=20','_blank');
+  const win=window.open('report.html?v=21','_blank');
   if(!win)toast('팝업을 허용한 뒤 다시 눌러 주세요.');
 }
 /* 최종 제출.
@@ -2658,6 +2855,14 @@ function finalSubmit(){
   exitFixMode();
   syncTasks();
   if(hasAccidents())syncAccidents();
+  /* 바로 제출하지 않고 «해결방안 확인» 화면을 한 번 거친다(사용자 요청).
+     보고서에 들어갈 자동 초안을 읽고 고칠 시간을 주기 위한 단계다.
+     미흡 항목이 하나도 없으면 고칠 것이 없으므로 그대로 제출로 넘어간다. */
+  if(!isFollowupOnly()&&solutionItems().length){solutionReview();return}
+  submitFinalNow();
+}
+/* 실제 제출. «해결방안 확인» 화면의 [제출] 버튼이 이것을 부른다. */
+function submitFinalNow(){
   if(!S.inspectionId)S.inspectionId='INSP-'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'-'+uid();
   S.submittedAt=new Date().toISOString();S.submittedBy=S.basic?.inspector||'';save();
   submitToServer();
@@ -2768,7 +2973,7 @@ function loadReportCssOnce(){
   return new Promise((resolve,reject)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report-v12.css?v=7';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report-v12.css?v=8';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();
     el.onerror=()=>{
       /* 배포 누락·캐시 문제에 대비해 기존 이름을 한 번 더 시도한다.
@@ -3158,7 +3363,7 @@ function loadDashStoreHistory(name){
     if(el)el.innerHTML='<div class="notice">이력을 불러오지 못했습니다: '+esc(err&&err.message?err.message:String(err))+'</div>';
   });
 }
-function render(x){({start,preparing:prepareSelectedStore,history:historyReview,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,result:report}[x]||start)()}
+function render(x){({start,preparing:prepareSelectedStore,history:historyReview,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,solution:solutionReview,result:report}[x]||start)()}
 try{
   render(S.screen);
   restorePersistedPhotos();
