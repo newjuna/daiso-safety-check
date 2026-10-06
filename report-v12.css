@@ -495,15 +495,20 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-sum-title{font-size:13.5px;font-weight:500;margin:14px 0 7px;display:flex;align-items:center;gap:9px;flex:none}
 .sr-report .sr-sum-title em{font-style:normal;background:var(--sr-red);color:#fff;font-size:9.5px;padding:3px 9px;border-radius:999px}
 .sr-report .sr-sum-rows{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-.sr-report .sr-sum-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:112px 1fr 74px 116px;gap:12px;align-items:center;padding:6px 0;border-top:1px solid var(--sr-line)}
+/* 조치계획을 다음 장으로 떼어냈으므로 이 표가 페이지 높이를 거의 전부 쓴다.
+   한 행이 눌려 보이던 문제(사용자 지적: «칸이 좁다»)를 줄이려고 세로 여백과 줄간격을 키웠다. */
+.sr-report .sr-sum-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:112px 1fr 74px 116px;gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--sr-line)}
 .sr-report .sr-sum-row:first-child{border-top:0}
-.sr-report .sr-sum-row>b{font-size:12.5px;font-weight:500}
-.sr-report .sr-sum-row>span{font-size:11px;color:var(--sr-muted);line-height:1.5}
+.sr-report .sr-sum-row>b{font-size:13px;font-weight:500}
+.sr-report .sr-sum-row>span{font-size:11.5px;color:var(--sr-muted);line-height:1.6}
 .sr-report .sr-sum-row .sr-cnt{text-align:center;font-weight:500;font-size:15px}
 .sr-report .sr-sum-row.bad .sr-cnt{color:var(--sr-red)}
 .sr-report .sr-sum-row.good .sr-cnt{color:var(--sr-green)}
-.sr-report .sr-sum-row .sr-photo{height:100%;min-height:42px;font-size:9px}
+.sr-report .sr-sum-row .sr-photo{height:100%;min-height:48px;font-size:9px}
 .sr-report .sr-sum-row .sr-photo:after{left:5px;bottom:5px;padding:2px 5px;font-size:7px}
+/* 사진이 없는 행(양호·미보유)에는 점선 빈칸을 두지 않는다.
+   점선 칸이 남아 있으면 «사진을 넣어야 하는데 비워둔 자리»로 보인다(사용자 지적). */
+.sr-report .sr-sum-nophoto{display:grid;place-items:center;height:100%;color:#c9ccd2;font-size:12px;letter-spacing:.1em}
 
 /* ---------- 사다리 보유현황 (항상 노출) ----------
    유형별 카드 안에 그 유형의 현장사진을 함께 넣는다(어떤 사다리인지 사진으로 바로 대조). */
@@ -554,6 +559,24 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-plan-mini-more{margin-top:8px;font-size:10.5px;color:var(--sr-muted)}
 .sr-report .sr-plan-mini-empty{padding:12px 14px;background:var(--sr-soft);border-radius:8px;font-size:11.5px;color:var(--sr-muted)}
 .sr-report .sr-plan-fill{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+
+/* ---------- 개선조치 계획 전용 장 (요약 챕터의 둘째 장) ----------
+   요약 한 장에 눌러 담던 것을 독립 장으로 분리했다. 건수 제한 없이 전부 싣고,
+   한 장에 PLAN_PER_PAGE(6)건씩 나눠 담는다. 행은 flex로 페이지 높이를 균등 분배한다. */
+.sr-report .sr-plan2{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.sr-report .sr-plan2-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:40px 1fr 92px 108px;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--sr-line)}
+.sr-report .sr-plan2-row:first-child{border-top:0}
+.sr-report .sr-plan2-row>i{font-style:normal;width:36px;height:36px;border-radius:9px;background:var(--sr-navy-soft);color:var(--sr-navy);display:grid;place-items:center;font-size:12.5px;font-weight:500}
+.sr-report .sr-plan2-text{min-width:0}
+.sr-report .sr-plan2-text b{display:block;font-size:13px;font-weight:500;line-height:1.45}
+.sr-report .sr-plan2-text small{display:block;margin-top:5px;font-size:10.5px;color:var(--sr-muted);line-height:1.6}
+.sr-report .sr-plan2-row .sr-status{font-size:10px;padding:4px 9px;text-align:center}
+/* 담당·기한은 매장과 협의해 적는 칸이므로 보고서에는 빈 서식으로만 둔다. */
+.sr-report .sr-plan2-blank{border-bottom:1px solid var(--sr-line);padding-bottom:3px;font-size:9px;color:#c3c6cb;letter-spacing:.06em;text-align:center}
+.sr-report .sr-plan-empty{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:22px 24px;background:var(--sr-soft);border-radius:10px}
+.sr-report .sr-plan-empty b{font-size:15px;font-weight:500}
+.sr-report .sr-plan-empty span{font-size:12px;color:var(--sr-muted);line-height:1.7}
+
 .sr-report .sr-voice-worker{margin:10px 0 4px;font-size:10.5px;font-weight:500;color:var(--sr-navy)}
 .sr-report .sr-voice-worker:first-child{margin-top:0}
 
@@ -590,6 +613,8 @@ body{margin:0;background:#eef1f5}
  .sr-report .sr-qphoto{min-height:200px}
  .sr-report .sr-solo-photo{width:100%;min-height:220px}
  .sr-report .sr-sum-row{grid-template-columns:1fr;gap:4px}
+ .sr-report .sr-plan2-row{grid-template-columns:1fr;gap:6px}
+ .sr-report .sr-plan2-blank{display:none}
  .sr-report .sr-toc-main,.sr-report .sr-chapter-main{padding:36px 22px}
  .sr-report .sr-cover2{padding:36px 22px}
  .sr-report .sr-cover2 h1{font-size:28px}
@@ -610,6 +635,8 @@ body{margin:0;background:#eef1f5}
 .sr-capture .sr-qphoto{min-height:150px}
 .sr-capture .sr-solo-photo{width:58%;min-height:240px}
 .sr-capture .sr-sum-row{grid-template-columns:112px 1fr 74px 116px;gap:12px}
+.sr-capture .sr-plan2-row{grid-template-columns:40px 1fr 92px 108px;gap:14px}
+.sr-capture .sr-plan2-blank{display:block}
 .sr-capture .sr-toc-main,.sr-capture .sr-chapter-main{padding:70px 60px 44px}
 .sr-capture .sr-cover2{padding:64px 60px 44px}
 .sr-capture .sr-cover2 h1{font-size:42px}
@@ -626,6 +653,8 @@ body{margin:0;background:#eef1f5}
  .sr-report .sr-split2.one:before{display:none}
  .sr-report .sr-ladder2{grid-template-columns:repeat(5,1fr)}
  .sr-report .sr-sum-row{grid-template-columns:24mm 1fr 16mm 25mm;gap:3mm}
+ .sr-report .sr-plan2-row{grid-template-columns:9mm 1fr 20mm 24mm;gap:3mm}
+ .sr-report .sr-plan2-blank{display:block}
 }
 
 /* 머리글은 줄어들지 않게 고정하고, 남는 높이는 본문이 흡수한다 */
