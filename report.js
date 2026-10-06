@@ -8,11 +8,13 @@
      화면과 PDF가 100% 같은 모양이 되는 이유가 이것이다.
 
    ── 확정된 흐름 (사용자 승인 · 변경 금지)
-     1p 표지 → 2p 목차 → [챕터 구분장 → 상세…] × 전 챕터 → 마지막 조치계획
+     1p 표지 → 2p 목차 → [챕터 구분장 → 상세…] × 전 챕터
      챕터 순서
        00 점검결과 요약   01 작업점검   02 사다리   03 공통·시설   04 소방
        05 TBM             06 근로자 의견청취        07 기타사항
-       08 지난 지적사항 조치확인       09 사고조사  10 개선조치 계획
+       08 지난 지적사항 조치확인       09 사고조사
+     «개선조치 계획»은 독립 챕터가 아니라 00 요약 챕터의 둘째 장이다.
+     (요약 한 장에 전부 넣으니 칸이 좁아 보인다는 지적으로 장을 나눴다)
      규칙
        · 모든 챕터는 스킵 없음. 미흡 0건이면 구분장 + "양호" 한 줄만 남기고 상세는 만들지 않는다.
        · 예외: 사다리·사고조사는 미흡/이력이 0건이어도 보유현황·이력요약을 항상 노출한다.
@@ -61,9 +63,21 @@ function inboundFacts(s){
   if(t.floors)parts.push("작업공간 "+t.floors+"층");
   if(t.floors)parts.push("계단 "+(t.stairs||"무")+" · E/V "+(t.elevator||"무")+" · E/S "+(t.escalator||"무"));
   if(x.start||x.end)parts.push((x.start||"-")+"~"+(x.end||"-"));
-  if(x.staff||x.helpers)parts.push("임직원 "+(+x.staff||0)+"명 · 도우미 "+(+x.helpers||0)+"명");
-  if(x.helperOutAt)parts.push("도우미 "+x.helperOutAt+" 퇴근");
+  /* 입고도우미가 없는 매장은 «도우미 0명 · 도우미 00:00 퇴근»처럼 의미 없는 값이 따라붙었다.
+     도우미를 쓰지 않는 매장이면 그 사실만 한 번 적고 퇴근시각은 아예 넣지 않는다. */
+  var helpers=+x.helpers||0;
+  if(x.staff||helpers)parts.push("임직원 "+(+x.staff||0)+"명 · "+(helpers>0?"입고도우미 "+helpers+"명":"입고도우미 없음"));
+  if(helpers>0&&x.helperOutAt)parts.push("도우미 "+x.helperOutAt+" 퇴근");
   return parts.join(" · ");
+}
+/* 입고 인력부담 판정 근거 한 줄.
+   도우미가 없는 매장에서는 «공백비율»이라는 개념 자체가 성립하지 않으므로 문구를 바꾼다. */
+function laborDetail(s){
+  var lb=s.inboundLabor;
+  if(!lb)return "";
+  var helpers=+((s.inbound||{}).helpers)||0;
+  return "평균 투입인원 "+lb.avgPeople+"명"
+    +(helpers>0?" · 도우미 공백비율 "+lb.gapRatioPct+"%":" · 입고도우미 미운영");
 }
 function activeTbmTime(s){
   var x=s.inbound||{},t=s.tbmTimes||{};
@@ -123,10 +137,44 @@ function unsharedAccidentVoices(s){
   });
 }
 
-/* ============ 개선방향 문구 (카테고리·키워드 기반 자동 생성) ============
-   ※ 위험요인별 해결방안 1~3안은 현장 문구를 확정한 뒤 넣기로 했다(사용자 결정).
-      그때까지는 아래 규칙 기반 한 줄을 '개선방향'으로 싣는다. AI가 임의로 안을 늘리지 않는다. */
+/* ============ 위험요인별 해결방안 문구 ============
+
+   문구가 정해지는 순서 (앞에 있는 것이 이긴다)
+     1) 점검자가 제출 직전 «해결방안 확인» 화면에서 직접 고친 문장   → fixOf()
+     2) 현장에서 확정한 문구표 (solutions.js = 해결방안_문구표.xlsx) → solutionFor()
+     3) 아래 규칙 기반 자동 문구                                      → ruleText()
+
+   2)는 사장님이 엑셀로 문구를 확정해 넣은 것이라 규칙 문구보다 항상 우선한다.
+   값이 배열이면 fixBox()가 «1안./2안./3안.»으로 나란히 렌더한다.
+
+   TBM·근로자 의견청취는 문구표에 없다. 보고서의 그 두 장은 항목별 양호/미흡
+   한 페이지 요약이라 해결방안을 넣는 자리(fixBox)가 아예 없기 때문이다.
+   기타사항은 점검자 자유입력이라 미리 정할 수 없어 3)으로 간다. */
+
+/* 문구표 조회. solutions.js 가 없으면(옛 배포본) 조용히 null을 돌려 3)으로 넘긴다. */
+function solutionFor(f){
+  var T=null;
+  try{ T=window.SOLUTIONS||null; }catch(e){}
+  if(!T||!f)return null;
+  var cat=f.category;
+  /* 작업점검은 같은 문항도 «고른 답변»마다 문구가 다르므로 셋을 묶어 키로 쓴다.
+     (키 생성 규칙을 바꾸면 도구\해결방안엑셀_읽기.js 도 함께 바꿔야 한다) */
+  if(cat==="작업점검"){
+    if(!f.area||!f.question||!f.title)return null;
+    return (T.work&&T.work[f.area+"|"+f.question+"|"+f.title])||null;
+  }
+  if(cat==="사다리")return (T.ladder&&T.ladder[f.title])||null;
+  if(cat==="공통·시설")return (T.common&&T.common[f.title])||null;
+  if(cat==="소방")return (T.fire&&T.fire[f.title])||null;
+  return null;
+}
 function improvementText(f){
+  var fromTable=solutionFor(f);
+  if(fromTable)return fromTable;
+  return ruleText(f||{});
+}
+/* 문구표에 없는 항목(기타사항 등)에 쓰는 규칙 기반 한 줄. */
+function ruleText(f){
   var t=f.title||"";
   if(f.category==="사다리")return "이상 사다리 사용 여부를 확인하고, 사용 전 발판·체결상태 점검 후 필요한 조치를 실시합니다.";
   if(f.category==="소방")return "소화기 등 소방설비 상태를 재확인하고 정기점검 및 유지관리 기준에 따라 조치합니다.";
@@ -140,6 +188,14 @@ function improvementText(f){
   if(f.category==="공통·시설")return "시설물의 이상상태를 확인하고 사용 전 안전상태가 유지되도록 보수·정리합니다.";
   if(f.category==="기타사항")return "확인된 특이사항의 위험 노출을 줄이도록 현장 조치 후 재확인합니다.";
   return "해당 위험요인을 제거하거나 노출을 줄일 수 있도록 현장 조치 후 재확인합니다.";
+}
+/* app.js의 «해결방안 검토» 화면이 초안을 만들 때 이 함수를 쓴다(문구 생성 규칙을 한 곳에 둔다). */
+window.autoImprovementText=improvementText;
+/* 점검자가 고친 문장이 있으면 그것을, 없으면 자동 초안을 쓴다. */
+function fixOf(edited,f){
+  if(Array.isArray(edited))return edited.length?edited:improvementText(f);
+  if(typeof edited==="string"&&edited.trim())return edited.trim();
+  return improvementText(f);
 }
 
 /* ============ 우선 조치사항 산출 ============
@@ -181,7 +237,7 @@ function buildPriorities(s){
     out.push({
       w:30,key:"입고 인력부담",
       title:"입고 인력부담 완화 (투입인원·작업방법 조정)",
-      detail:(inboundFacts(s)?inboundFacts(s)+" · ":"")+"평균 투입인원 "+lb.avgPeople+"명 · 도우미 공백비율 "+lb.gapRatioPct+"%",
+      detail:(inboundFacts(s)?inboundFacts(s)+" · ":"")+laborDetail(s),
       status:lb.level==="severe"?"즉시조치":"개선필요",cls:lb.level==="severe"?"":"warn"
     });
   }
@@ -295,13 +351,17 @@ function summaryComment(s){
   /* 4문장: 측정값으로 드러난 구조적 문제 */
   var gap=s.tbmStretchGap,lb=s.inboundLabor,fourth=[];
   if(gap&&gap.gapMinutes>0)fourth.push("입고작업이 스트레칭(TBM)보다 "+gap.gapMinutes+"분 먼저 시작됩니다");
-  if(lb&&lb.level!=="good")fourth.push("입고 평균 투입인원이 "+lb.avgPeople+"명(도우미 공백비율 "+lb.gapRatioPct+"%)으로 중량물 취급 부담이 큽니다");
+  if(lb&&lb.level!=="good"){
+    var helpers=+((s.inbound||{}).helpers)||0;
+    fourth.push("입고 평균 투입인원이 "+lb.avgPeople+"명"
+      +(helpers>0?"(도우미 공백비율 "+lb.gapRatioPct+"%)":"(입고도우미 미운영)")
+      +"으로 중량물 취급 부담이 큽니다");
+  }
   if(unsharedAccidentVoices(s).length)fourth.push("근로자가 사고사례 "+unsharedAccidentVoices(s).length+"건을 안내받지 못했다고 응답했습니다");
   if(fourth.length)out.push(fourth.join(". ")+".");
-  /* 5문장: 점검자 종합의견(근로자 의견과 현장 신호가 같은 방향인지 대조) — 조치계획을 이 페이지로
-     합치면서 여기로 함께 흡수했다. 별도 장으로 두지 않는다. */
-  var note=managementNote(s);
-  if(note)out.push(note);
+  /* 점검자 종합의견(managementNote)은 여기에 붙이지 않는다.
+     한 장에 전부 밀어 넣으니 요약 칸이 좁아진다는 지적이 있어서,
+     종합의견은 다음 장인 «개선조치 계획» 하단으로 옮겼다. */
   return out.join(" ");
 }
 /* 보유한 사다리 중 고위험 유형 */
@@ -338,7 +398,7 @@ function verdictBody(s){
   var gap=s.tbmStretchGap;
   if(gap&&gap.gapMinutes>0)out.push("입고작업이 스트레칭(TBM)보다 "+gap.gapMinutes+"분 먼저 시작됩니다.");
   var lb=s.inboundLabor;
-  if(lb&&lb.level!=="good")out.push("입고 평균 투입인원은 "+lb.avgPeople+"명(도우미 공백비율 "+lb.gapRatioPct+"%)으로 중량물 취급 부담이 큽니다.");
+  if(lb&&lb.level!=="good")out.push("입고 "+laborDetail(s)+"으로 중량물 취급 부담이 큽니다.");
   var fc=(s.findings||[]).length;
   if(fc)out.push("이번 점검에서 확인된 미흡사항은 "+fc+"건입니다.");
   if(!out.length)out.push("확인된 미흡사항과 미조치 사고가 없어 현재 관리상태를 유지하면 됩니다.");
@@ -442,6 +502,16 @@ function photoBox(photos,label,caption){
   }
   var more=list.length>1?'<span class="sr-more">+'+(list.length-1)+'</span>':"";
   return '<div class="sr-photo" data-label="'+esc(label)+'"><img src="'+list[0].dataUrl+'" alt="'+esc(label)+'">'+more+'</div>';
+}
+/* 요약표(.sr-sum-row) 오른쪽 사진 칸.
+   photoBox()는 사진이 없으면 «점선 빈칸»을 남긴다. 항목 카드에서는 그게 맞다(사진을 찍어야 하는 자리니까).
+   그런데 요약표·사다리 보유현황처럼 «양호»인 행에도 점선 빈칸이 생기면
+   사진을 넣어야 하는 칸을 비워둔 것처럼 보인다(사용자 지적).
+   그래서 요약표에서는 사진이 실제로 있을 때만 칸을 만들고, 없으면 조용한 «—»로 둔다. */
+function sumPhotoCell(photos,label){
+  var list=(photos||[]).filter(function(p){return p&&p.dataUrl});
+  if(!list.length)return '<span class="sr-sum-nophoto">—</span>';
+  return photoBox(list,label);
 }
 /* 그 분야에서 첫 번째로 나오는 사진 (요약본 썸네일용) */
 function firstPhotoOf(list){
@@ -592,8 +662,9 @@ function sideBar(cfg,activeIdx){
   return h+'</div>';
 }
 /* 해결방안 박스.
-   fix가 배열이면 «1안. / 2안. / 3안.»을 한 줄에 가로로 나열한다(PPT 예시와 같은 형태).
-   지금은 규칙 기반 한 줄만 들어가지만, 현장 문구가 확정되면 배열로 넘기면 그대로 3안이 된다. */
+   fix가 배열이면 «1안. / 2안. / 3안.»으로 번호를 붙여 나열한다.
+   문구가 짧으면 한 줄에 가로로 붙고 길면 아래로 쌓인다(CSS flex-wrap).
+   배열은 해결방안_문구표.xlsx 의 H·I열(2안·3안)을 채우면 자동으로 들어온다. */
 function fixBox(fix){
   if(!fix)return "";
   var list=Array.isArray(fix)?fix:[fix];
@@ -756,38 +827,70 @@ function sheetSummary(s){
     var cls=(r.count>0||r.alwaysBad)?"bad":"good";
     h+='<div class="sr-sum-row '+cls+'"><b>'+esc(r.name)+'</b><span>'+esc(r.desc)+'</span>'
       +'<span class="sr-cnt">'+r.count+'건</span>'
-      +photoBox(r.photos,r.name,"사진 없음")+'</div>';
+      +sumPhotoCell(r.photos,r.name)+'</div>';
   });
   h+='</div>';
-  /* 개선조치 계획을 이 페이지 하단에 압축해서 함께 싣는다(독립 챕터로 두지 않음, 사용자 확정).
-     칸이 부족하면 상위 5건만 보여주고 나머지는 건수로만 표시한다. */
-  var SHOW=5;
-  h+='<div class="sr-sum-title">개선조치 계획 <em>'+(pr.length?pr.length+"건 · 담당·기한은 매장 협의 후 확정":"없음")+'</em></div>';
-  h+='<div class="sr-plan-fill">';
-  if(!pr.length){
-    h+='<div class="sr-plan-mini-empty">별도 조치계획이 필요한 항목이 없습니다. 현재 관리상태를 유지해 주세요.</div>';
-  }else{
-    h+='<div class="sr-plan-mini">';
-    pr.slice(0,SHOW).forEach(function(p,i){
-      h+='<div class="sr-plan-mini-row"><i>'+pad2(i+1)+'</i><b>'+p.title+'</b>'
-        +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span></div>';
-    });
-    if(pr.length>SHOW){
-      h+='<div class="sr-plan-mini-more">그 밖의 조치사항 '+(pr.length-SHOW)+'건은 각 챕터 상세에서 확인</div>';
-    }
-    h+='</div>';
-  }
-  h+='</div>';
-  var sh=pageSheet("요약본","SUMMARY","점검결과 요약",h,esc(s.store.name)+" · 상세 내용은 각 챕터에서 확인");
+  var sh=pageSheet("요약본","SUMMARY","점검결과 요약",h,
+    esc(s.store.name)+" · 개선조치 계획은 다음 장 · 상세 내용은 각 챕터에서 확인");
   /* 요약 챕터는 구분장 없이 이 장부터 시작하므로 목차 페이지번호를 이 장에 붙인다. */
   sh.tocKey="summary";
   return sh;
 }
+/* ---------- 개선조치 계획 (요약 챕터의 두 번째 장) ----------
+   예전에는 요약 한 장 아래쪽에 상위 5건만 눌러 담았다. 그 결과
+     · 동선 요약 9줄이 한 장에서 눌려 칸이 좁아 보였고 (사용자 지적)
+     · 조치사항이 5건을 넘으면 «그 밖의 N건은 각 챕터에서 확인»으로 잘렸다.
+   그래서 장을 나누고, 조치사항은 건수 제한 없이 전부 싣는다.
+
+   한 장에 8건까지 담는다. 행이 flex로 페이지 높이를 균등 분배하므로
+   이 숫자를 줄이면 행 하나가 과도하게 커져 표가 헐렁해 보인다.
+   실제 우선순위는 보통 4~9건이라 대부분 한 장에 들어간다. */
+var PLAN_PER_PAGE=8;
+function planSheets(s){
+  var pr=buildPriorities(s);
+  var note=managementNote(s);
+  var out=[];
+  if(!pr.length){
+    var h0='<div class="sr-plan-fill"><div class="sr-plan-empty">'
+      +'<b>별도 조치계획이 필요한 항목이 없습니다.</b>'
+      +'<span>확인된 미흡사항과 미조치 사고가 없어 현재 관리상태를 유지하면 됩니다.</span></div></div>';
+    if(note)h0+='<div class="sr-note info"><b>점검자 종합의견</b> — '+esc(note)+'</div>';
+    out.push(pageSheet("개선조치 계획","ACTION PLAN","개선조치 계획",h0,
+      "담당·기한은 매장과 협의해 확정합니다"));
+    return out;
+  }
+  /* 장을 나눌 때는 «앞 장을 꽉 채우고 마지막 장에 1건만 남기는» 방식을 쓰지 않는다.
+     7건이면 6+1이 아니라 4+3으로 고르게 나눈다. 1건만 있는 장은 행이 페이지 높이만큼
+     늘어나서 표가 아니라 빈 장처럼 보이기 때문이다. */
+  var pageCount=Math.ceil(pr.length/PLAN_PER_PAGE);
+  var per=Math.ceil(pr.length/pageCount);
+  for(var i=0;i<pr.length;i+=per){
+    var chunk=pr.slice(i,i+per);
+    var last=(i+per>=pr.length);
+    var range=pageCount>1?((i+1)+"–"+(i+chunk.length)+" / "+pr.length):(pr.length+"건");
+    var h='<div class="sr-sum-title">우선순위 조치사항 <em>'+esc(range)+' · 담당·기한은 매장 협의 후 확정</em></div>';
+    h+='<div class="sr-plan-fill"><div class="sr-plan2">';
+    chunk.forEach(function(p,j){
+      h+='<div class="sr-plan2-row">'
+        +'<i>'+pad2(i+j+1)+'</i>'
+        +'<div class="sr-plan2-text"><b>'+p.title+'</b><small>'+p.detail+'</small></div>'
+        +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span>'
+        +'<span class="sr-plan2-blank">담당 / 기한</span>'
+        +'</div>';
+    });
+    h+='</div></div>';
+    /* 점검자 종합의견은 마지막 장 하단에 한 번만 (요약 히어로에서 옮겨온 문단) */
+    if(last&&note)h+='<div class="sr-note info"><b>점검자 종합의견</b> — '+esc(note)+'</div>';
+    out.push(pageSheet("개선조치 계획"+(pageCount>1?" "+(out.length+1):""),
+      "ACTION PLAN","개선조치 계획",h,"담당·기한은 매장과 협의해 확정합니다"));
+  }
+  return out;
+}
 /* 요약 챕터는 구분장을 두지 않는다.
    표지 다음 장이 목차이고, 그 다음이 곧 요약이라 «요약 시작합니다» 구분장이 군더더기였다.
-   개선조치 계획도 이 페이지 하단에 압축해서 넣었으므로 별도 챕터가 없다. */
+   개선조치 계획은 이 챕터의 둘째 장으로 붙는다(별도 챕터 번호를 만들지 않음). */
 function chapterSummary(s){
-  return [sheetSummary(s)];
+  return [sheetSummary(s)].concat(planSheets(s));
 }
 
 /* ============================================================
@@ -827,7 +930,8 @@ function workChapter(s){
           title:q.q,answer:"- "+(q.answer||"미흡 확인"),
           photos:q.photos,hazards:q.hazards,
           photoLabel:w.name+" 문항"+(qi+1),
-          fix:improvementText({category:"작업점검",title:q.answer||q.q})
+          /* 문구표 조회에는 작업유형·문항·고른답변 세 가지가 다 필요하다 */
+          fix:fixOf(q.fix,{category:"작업점검",area:w.name,question:q.q,title:q.answer||q.q})
         });
       });
     }else{
@@ -840,7 +944,7 @@ function workChapter(s){
           title:f.question||f.title,answer:"- "+f.title,
           photos:f.photos,hazards:f.hazards,
           photoLabel:w.name+" "+(i+1),
-          fix:improvementText(f)
+          fix:fixOf(f.fix,f)
         });
       });
     }
@@ -913,8 +1017,11 @@ function ladderChapter(s){
     var desc=n<=0?"보유하지 않은 유형입니다."
       :(mine.length?mine.map(function(f){return f.title}).join(" · ")+" 확인"
         :"보유 "+n+"대 전부 양호로 확인되었습니다."+(LADDER_HIGH_RISK.indexOf(t)>=0?" 다만 고위험 유형이므로 사용 전 점검이 필요합니다.":""));
+    /* 양호·미보유 유형에는 사진칸을 만들지 않는다.
+       예전에는 점선 빈칸이 남아서 «양호한데 왜 사진 넣는 자리가 있나»로 보였다(사용자 지적).
+       이상항목 현장사진은 바로 뒤 «사다리 이상항목» 상세 페이지에서 보여준다. */
     h+='<div class="sr-sum-row '+(mine.length?"bad":"good")+'"><b>'+esc(t)+'</b><span>'+esc(desc)+'</span>'
-      +'<span class="sr-cnt">'+n+'대</span>'+photoBox(firstPhotoOf(mine),t,n?"사진 없음":"미보유")+'</div>';
+      +'<span class="sr-cnt">'+n+'대</span>'+sumPhotoCell(firstPhotoOf(mine),t)+'</div>';
   });
   h+='</div>';
   out.push(pageSheet("사다리 보유현황","LADDER INVENTORY · 항상 노출","사다리 보유현황",h,
@@ -944,7 +1051,7 @@ function ladderChapter(s){
           meta:g[2],
           photos:f.photos,hazards:f.hazards,
           photoLabel:f.area,
-          fix:improvementText(f)
+          fix:fixOf(f.fix,f)
         };
       }),
       footerText:"사다리 이상항목은 사용 중지 후 조치"
@@ -969,7 +1076,7 @@ function checklistChapter(s,k){
 
   /* 스냅샷에 전체 항목이 없으면(예전 캐시) 미흡목록만으로 대체한다. */
   if(!items.length&&list.length){
-    items=list.map(function(f){return {name:f.title,state:"bad",note:f.note||"",photos:f.photos}});
+    items=list.map(function(f){return {name:f.title,state:"bad",note:f.note||"",photos:f.photos,fix:f.fix}});
   }
   var bad=items.filter(function(x){return x.state==="bad"});
   out.push(chapterSheet({
@@ -1004,7 +1111,7 @@ function checklistChapter(s,k){
           photos:x.photos&&x.photos.length?x.photos:f.photos,
           hazards:f.hazards,
           photoLabel:meta.title+" "+x.name,
-          fix:improvementText({category:meta.title,title:x.name,hazards:f.hazards})
+          fix:fixOf(x.fix||f.fix,{category:meta.title,area:meta.title,title:x.name,hazards:f.hazards})
         };
       }),
       footerText:meta.foot
@@ -1159,7 +1266,7 @@ function otherChapter(s){
         return {sideIndex:i,num:"기타 "+(i+1)+" · 위험 "+g[0],
           title:f.title,answer:f.note||"현장 확인 특이사항",meta:g[2],
           photos:f.photos,hazards:f.hazards,photoLabel:"기타 "+(i+1),
-          fix:improvementText(f)};
+          fix:fixOf(f.fix,f)};
       }),
       footerText:"기타사항은 개선과제 후보로 검토"
     }));
@@ -1243,7 +1350,7 @@ function accidentChapter(s){
   if(!list.length){
     var h0='<div class="sr-sum-row good"><b>사고이력</b><span>등록된 과거 사고이력이 없습니다. 출퇴근 재해는 사고조사 대상에서 제외됩니다. '
       +'이력이 없어도 이 챕터는 재발방지 확인 목적으로 항상 표시됩니다.</span>'
-      +'<span class="sr-cnt">0건</span>'+photoBox([],"사고이력","해당 없음")+'</div>';
+      +'<span class="sr-cnt">0건</span>'+sumPhotoCell([],"사고이력")+'</div>';
     out.push(pageSheet("사고이력 요약","ACCIDENT · 항상 노출","사고이력 및 재발방지",
       '<div class="sr-sum-rows">'+h0+'</div>',"사고이력은 조치완료 여부와 무관하게 항상 표시"));
   }
@@ -1265,7 +1372,7 @@ function accidentChapter(s){
     var lb=s.inboundLabor;
     if(lb&&lb.level!=="good"&&/근골격|무리한|중량/.test((a.type||"")+(a.content||"")+(a.hazardText||""))){
       h2+='<div class="sr-note"><b>이번 점검의 입고 인력부담 측정값과 직접 연결됩니다.</b> '
-        +'평균 투입인원 '+lb.avgPeople+'명, 도우미 공백비율 '+lb.gapRatioPct+'%로 '
+        +esc(laborDetail(s))+'로 '
         +(lb.level==="severe"?"위험(심각)":"위험(경미)")+' 판정되었습니다.</div>';
     }
     out.push(pageSheet("사고 "+(i+1),"09 · 사고조사 "+(i+1)+" / "+list.length,
@@ -1304,14 +1411,14 @@ function buildFollowupOnly(s){
   var h='<div class="sr-sum-title">항목별 확인 결과 <em>'+list.length+'건</em></div><div class="sr-sum-rows">';
   if(!list.length){
     h+='<div class="sr-sum-row good"><b>재점검 대상</b><span>재점검 대상 지적사항이 없습니다.</span>'
-      +'<span class="sr-cnt">0건</span>'+photoBox([],"대상","해당 없음")+'</div>';
+      +'<span class="sr-cnt">0건</span>'+sumPhotoCell([],"대상")+'</div>';
   }else{
     list.forEach(function(t){
       var bad=!t.notObserved&&t.status!=="조치완료";
       h+='<div class="sr-sum-row '+(bad?"bad":"good")+'"><b>'+esc(t.notObserved?"확인 못함":(t.status||"미조치"))+'</b>'
         +'<span>'+esc(t.title)+' · 최초 지적 '+esc(dateDot(t.date))+'</span>'
         +'<span class="sr-cnt">'+esc(t.notObserved?"—":(t.status==="조치완료"?"완료":"미조치"))+'</span>'
-        +photoBox((t.afterPhotos||[]).concat(t.beforePhotos||[]),t.title,"사진 없음")+'</div>';
+        +sumPhotoCell((t.afterPhotos||[]).concat(t.beforePhotos||[]),t.title)+'</div>';
     });
   }
   h+='</div>';

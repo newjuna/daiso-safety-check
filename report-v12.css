@@ -458,7 +458,9 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-qphoto .sr-photo{height:100%;min-height:150px}
 .sr-report .sr-qcol .sr-hazards{flex:none;margin:0 0 9px}
 /* 위험요인에 관한 해결방안.
-   1안/2안/3안이 여러 개면(.multi) 한 줄에 가로로 나열한다(PPT 예시와 같은 형태). */
+   1안/2안/3안이 여러 개면(.multi) flex-wrap 으로 흘려 담는다.
+   문구가 짧으면 한 줄에 가로로 붙고, 길면 줄바꿈되어 아래로 쌓인다.
+   («무조건 한 줄»로 고정하면 긴 문구에서 글자가 뭉개지므로 일부러 흘려 담는다) */
 .sr-report .sr-fix{flex:none;background:var(--sr-soft);border-radius:8px;padding:11px 13px}
 .sr-report .sr-fix-title{font-size:10px;font-weight:500;color:var(--sr-ink);margin-bottom:7px;letter-spacing:.02em}
 .sr-report .sr-fix-opt{font-size:10.5px;line-height:1.55;margin-bottom:5px;padding-left:30px;position:relative}
