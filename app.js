@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V1';
+const APP_VERSION='V2';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -477,11 +477,39 @@ function isCommuteAccident(a){
 }
 function inspectionAccidents(list){return (list||[]).filter(function(a){return !isCommuteAccident(a)})}
 
+/* ============ 매장 목록 뒤에서 다시 받아오기 ============
+   매장 목록(1,389개)은 자주 바뀌지 않아 브라우저에 저장해 두고 화면을 즉시 띄운다.
+   그런데 저장본만 쓰면 «매장 탭에 새 매장을 추가했는데 앱에 안 나온다»가 된다.
+   (writeStoreCache 가 savedAt 을 적어두는데 readStoreCache 가 그걸 확인하지 않아
+    사실상 영구 캐시였다. 사고이력·지적사항은 30분 TTL 이 있는데 매장 목록만 빠져 있었다)
+
+   그래서 저장본으로 화면을 먼저 그려 속도를 지키고, 뒤에서 조용히 다시 받아와
+   목록이 달라졌을 때만 화면을 갱신한다. 실패하면 저장본을 그대로 쓴다
+   (현장에서 신호가 약할 때 매장 선택이 아예 막히면 안 되므로). */
+var STORE_REFRESHED=false;
+function refreshStoreList(){
+  if(STORE_REFRESHED||TEST_MODE)return;
+  STORE_REFRESHED=true;
+  gsRun('getStoreListCompact').then(function(list){
+    var next=normalizeStoreRows(list);
+    if(!next.length)return;
+    var before=(STORE_LIST||[]).map(function(r){return r.store}).join('|');
+    var after=next.map(function(r){return r.store}).join('|');
+    STORE_LIST=next;
+    writeStoreCache(next);
+    /* 바뀐 게 없으면 다시 그리지 않는다(고르던 중에 화면이 튀면 안 된다). */
+    if(before!==after&&S.screen==='start'){
+      toast('매장 목록을 새로 불러왔습니다 · '+next.length+'개');
+      renderStart();
+    }
+  }).catch(function(){ /* 저장본으로 이미 화면이 떠 있으므로 조용히 넘어간다 */ });
+}
+
 function start(){
   S.screen='start';
-  if(STORE_LIST){renderStart();return}
+  if(STORE_LIST){renderStart();refreshStoreList();return}
   var cached=readStoreCache();
-  if(cached){STORE_LIST=cached;renderStart();return}
+  if(cached){STORE_LIST=cached;renderStart();refreshStoreList();return}
   STORE_LOADING=true;
   renderStart();
   var storeRequest=gsRun('getStoreListCompact').catch(function(err){
@@ -495,6 +523,7 @@ function start(){
     STORE_LOADING=false;
     if(!STORE_LIST.length){storeLoadFailed('시트에서 매장을 한 건도 읽지 못했습니다. 스프레드시트에 \u0027매장\u0027 탭이 있고 2행부터 영업본부/부서명/팀명/매장명이 채워져 있는지 확인하세요.');return}
     writeStoreCache(STORE_LIST);
+    STORE_REFRESHED=true;   /* 방금 서버에서 받았으므로 뒤에서 또 받지 않는다 */
     renderStart();
   }).catch(err=>{
     STORE_LOADING=false;
@@ -3270,7 +3299,21 @@ function report(){
 
   frame(headCard,'점검 결과','제출이 완료되었습니다.');
 }
-function resetAll(){if(confirm('저장된 점검 내용을 지우고 새로 시작할까요?')){localStorage.removeItem(KEY);S=fresh();normalizeState();STORE_LIST=null;PHOTO_STORE.clear();start()}}
+/* 「새 점검 시작」.
+   점검 내용뿐 아니라 **서버에서 받아온 캐시도 함께 비운다.**
+   매장 준비데이터(사고이력·지난 지적사항·과거 점검)는 속도 때문에 30분간
+   브라우저에 기억해 두는데, 그 사이에 사고 원장에 사고를 새로 등록하면
+   «원장에는 있는데 앱에는 안 보인다»가 된다. 그때 이 버튼으로 바로 다시 받아올 수 있어야 한다.
+   (예전에는 점검 내용만 지우고 캐시는 남겨서, 30분을 기다리는 수밖에 없었다) */
+function resetAll(){
+  if(!confirm('저장된 점검 내용을 지우고 새로 시작할까요?\n(사고이력·지난 지적사항도 서버에서 다시 받아옵니다)'))return;
+  localStorage.removeItem(KEY);
+  try{localStorage.removeItem(PREP_CACHE_KEY)}catch(e){}
+  try{localStorage.removeItem(STORE_CACHE_KEY)}catch(e){}
+  STORE_PREP={};STORE_REFRESHED=false;
+  S=fresh();normalizeState();STORE_LIST=null;PHOTO_STORE.clear();
+  start();
+}
 
 /* ============ 대시보드 ============ */
 var DASH_PERIOD='all'; // 'all' | 'thisMonth' | 'lastMonth'
