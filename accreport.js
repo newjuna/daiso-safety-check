@@ -36,9 +36,11 @@
     return ctx.level==='t' ? (ctx.scopeName+' 전체') : (ctx.scopeName+' 부서');
   }
   function periodText(ctx){
-    if(!ctx.from)return '전체 기간';
-    var today=new Date().toISOString().slice(0,10);
-    return ctx.from+' ~ '+today+' ('+ctx.periodLabel+')';
+    if(!ctx.from&&!ctx.to)return '전체 기간';
+    /* toISOString 은 UTC 라 오전 9시 전에는 어제 날짜가 나온다. 로컬 날짜로 만든다. */
+    var d=new Date();
+    var today=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    return (ctx.from||'처음')+' ~ '+(ctx.to||today)+' ('+ctx.periodLabel+')';
   }
 
   /* 집계. app.js 의 adAgg 를 그대로 쓴다(대시보드와 숫자가 어긋나면 안 된다). */
