@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V3';
+const APP_VERSION='V4';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -141,9 +141,13 @@ function normalizeState(){
   S.resultNote=S.resultNote||'';
   S.resultLinks=S.resultLinks||null;
   S.reportPdfError=S.reportPdfError||'';
-  /* 사고 이력 조회 화면(메뉴 > 사고 이력)에서 고른 매장과, 돌아갈 화면 */
-  S.ahStore=S.ahStore||'';
-  S.ahBack=S.ahBack||'';
+  /* 사고 이력 화면(메뉴 > 사고 이력) 상태 */
+  S.ahStore=S.ahStore||'';     /* 매장 상세로 들어간 매장. 빈 값이면 대시보드 */
+  S.ahBack=S.ahBack||'';       /* 돌아갈 화면 */
+  S.adScope=S.adScope||{v:'',p:'',t:''};   /* 부문/부서/팀 범위 */
+  S.adPeriod=S.adPeriod||'year';           /* 'year' | '1y' | 'all' */
+  S.adStoreAll=!!S.adStoreAll;             /* 매장 목록 전체 펼침 */
+  S.arScope=S.arScope||'team';             /* 1장 보고서 범위: 'team' | 'dept' */
 }
 normalizeState();
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -194,6 +198,24 @@ function mockServer(fnName,args){
     return [];
   }
   if(fnName==='getLadderTypeImages')return {};
+  /* 사고 이력 대시보드. 테스트 모드에서도 화면을 다 볼 수 있게 조직·유형·날짜를 섞어 둔다. */
+  if(fnName==='getAccidentDashboard'){
+    var y=new Date().getFullYear();
+    var mk=function(s,v,p,t,d,ty,c,x,a,l){return {s:s,v:v,p:p,t:t,d:d,y:ty,c:c,x:x,a:a,l:l}};
+    return {
+      build:'테스트 모드',generatedAt:y+'-01-01 00:00',storeCount:3,
+      rows:[
+        mk('테스트 강남점','수도권','관악','1팀',y+'-08-21','넘어짐','적재물','후방 통로 적재물에 걸려 넘어짐','Y',5),
+        mk('테스트 강남점','수도권','관악','1팀',y+'-06-02','베임','커터칼','박스 개봉 중 커터칼에 손가락 베임','',0),
+        mk('테스트 강남점','수도권','관악','1팀',y+'-03-11','무리한 동작','박스','20kg 생수를 혼자 올리다 허리 통증','Y',12),
+        mk('테스트 서초점','수도권','관악','1팀',y+'-07-05','넘어짐','젖은 바닥','음료 진열 중 미끄러져 넘어짐','Y',3),
+        mk('테스트 부산점','영남','부산','3팀',y+'-05-18','떨어짐','사다리','상부 진열 중 사다리에서 헛디딤','',0),
+        mk('이름없는점','','','',y+'-02-02','기타','미등록','조직을 찾지 못한 매장의 사고','',0)
+      ],
+      unmatchedCount:1,unmatchedStores:['이름없는점']
+    };
+  }
+  if(fnName==='saveAccidentReportPdf')return {pdfUrl:'',folderUrl:'',name:'(테스트) 사고현황.pdf'};
   if(fnName==='getStoreInspectionHistory'){
     if(args[0]==='테스트 강남점')return [{inspectionId:'TEST-2025-11',date:'2025-11-20',inspector:'Park(안전)',workRisk:2,ladder:0,facility:1,tbm:0,taskCount:2,taskDone:0,folderUrl:'',pdfUrl:'',snapshotAvailable:false,delivery:'오전',inboundStart:'08:30',inboundEnd:'10:00',inboundStaff:3,inboundHelpers:1,inboundBoxes:84,floors:1,hasStairs:'유',hasElevator:'무',hasEscalator:'무',issues:[{category:'작업점검',item:'입고·하차',hazard:'근골격계',status:'조치대기',detail:'박스·상품을 직접 손으로 하차',photoUrls:[]},{category:'공통·시설',item:'창고·후방 통로 및 적재',hazard:'넘어짐',status:'조치대기',detail:'후방 통로에 합포박스 적치',photoUrls:[]}]}];
     return [];
@@ -424,8 +446,11 @@ function frame(body,title='안전보건 현장진단',sub='모바일 현장점�
   /* 메뉴에서 지금 보고 있는 항목에 표시(active)를 준다.
      예전에는 '매장 점검'에 하드코딩돼 있어서 사고 이력 화면에서도 매장 점검이 켜져 보였다. */
   const onAccHist=S.screen==='accidentHistory';
+  /* 사고 이력 화면은 길어서 «맨 위로»만으로는 부족하다. 아래로 가는 버튼을 같이 둔다. */
+  const jumpBtns=`<button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button>`
+    +(onAccHist?`<button id="scrollBtmBtn" class="scroll-top btm" onclick="scrollPageBottom()" aria-label="맨 아래로 이동"><i>↓</i><span>맨 아래로</span></button>`:'');
 
-  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div>${verBadge}<div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="${onAccHist?'':'active'}" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button class="${onAccHist?'active':''}" onclick="closeMainMenu();openAccidentHistory()"><span class="menu-icon">!</span><span>사고 이력<small>매장별 과거 사고 조회</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main><button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button></div>`;
+  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div>${verBadge}<div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="${onAccHist?'':'active'}" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button class="${onAccHist?'active':''}" onclick="closeMainMenu();openAccidentHistory()"><span class="menu-icon">!</span><span>사고 이력<small>매장별 과거 사고 조회</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main>${jumpBtns}</div>`;
 
   LAST_VIEW_KEY=viewKey;
   if(sameView){
@@ -437,8 +462,18 @@ function frame(body,title='안전보건 현장진단',sub='모바일 현장점�
   requestAnimationFrame(updateScrollTopButton);
   save();
 }
-function updateScrollTopButton(){const b=document.getElementById('scrollTopBtn');if(b)b.classList.toggle('show',window.scrollY>360)}
+function updateScrollTopButton(){
+  const b=document.getElementById('scrollTopBtn');
+  if(b)b.classList.toggle('show',window.scrollY>360);
+  /* 사고 이력 화면에만 있는 «맨 아래로». 아직 아래로 갈 길이 남았을 때만 보인다. */
+  const d=document.getElementById('scrollBtmBtn');
+  if(d){
+    const rest=document.documentElement.scrollHeight-window.scrollY-window.innerHeight;
+    d.classList.toggle('show',rest>360);
+  }
+}
 function scrollPageTop(){window.scrollTo({top:0,behavior:'smooth'})}
+function scrollPageBottom(){window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'})}
 window.addEventListener('scroll',updateScrollTopButton,{passive:true});
 function toggleMainMenu(e){
   if(e)e.stopPropagation();
@@ -3322,9 +3357,11 @@ function resetAll(){
   start();
 }
 
-/* ============ 사고 이력 조회 (메뉴 > 사고 이력) ============
-   점검과 상관없이 «이 매장에 어떤 사고가 있었나»만 확인하는 읽기 전용 화면이다.
-   점검 흐름의 '사고조사' 화면과는 쓰는 데이터가 같아도 성격이 다르다.
+/* ============ 사고 이력 (메뉴 > 사고 이력) ============
+   두 화면으로 되어 있다.
+     1) 대시보드 : 전사 → 부문 → 부서 → 팀으로 좁혀 가며 사고 현황을 본다
+     2) 매장 상세: 대시보드에서 매장을 누르거나 검색으로 고르면 그 매장의 사고 내역
+   점검과 상관없이 «어디서 어떤 사고가 있었나»만 보는 읽기 전용 화면이다.
 
    ★ 여기서 절대 하지 말아야 하는 것 ★
    syncAccidents() 를 부르면 안 된다. 그 함수는 진행 중인 점검 상태(S.accidents)를
@@ -3332,12 +3369,19 @@ function resetAll(){
    입력해 둔 조치내용·사진이 날아가면 현장에서 복구할 방법이 없다.
    그래서 이 화면은 서버가 준 배열을 그대로 그리기만 한다.
 
-   서버는 기존 getStoreAccidentHistory 를 그대로 쓴다(앱스크립트 수정·재배포 불필요). */
+   데이터를 받는 방식
+     getAccidentDashboard() 를 한 번 불러 원장 전체(출퇴근 제외)를 받아 두고,
+     조직·기간 전환은 브라우저에서 걸러 즉시 처리한다. 조직을 누를 때마다 서버를
+     부르면 매번 몇 초씩 기다려야 한다. 서버도 30분 캐시를 두므로 첫 조회만 느리다. */
 var AH_QUERY='';      /* 검색어. 새로고침되면 지워져도 괜찮아서 S에 넣지 않는다 */
-var AH_CACHE={};      /* 매장명 -> {at:시각, rows:[...]} */
-var AH_LOADING='';    /* 지금 불러오는 중인 매장명 */
-var AH_ERROR=null;    /* {store, message} */
 var AH_STORES_LOADING=false;
+
+var AD=null;          /* 서버에서 받은 대시보드 데이터 {rows:[...], ...} */
+var AD_LOADING=false;
+var AD_ERROR='';
+/* 조직을 못 찾은 매장을 묶는 이름. 실제 조직값이 빈 문자열인 행을 가리킨다.
+   (원장 매장명 469개 중 23개가 '매장' 탭에 없었다 · 2026-10-07 확인) */
+const AD_UNKNOWN='(미분류)';
 
 function openAccidentHistory(){
   /* 점검 중에 들어와도 원래 화면으로 돌아갈 수 있게 직전 화면을 적어둔다. */
@@ -3369,24 +3413,14 @@ function ahEnsureStores(){
     if(S.screen==='accidentHistory')accidentHistory();
   });
 }
-function ahRows(store){
-  var c=AH_CACHE[store];
-  return (c&&Date.now()-c.at<PREP_TTL)?c.rows:null;
-}
+/* 매장을 골랐으면 그 매장 상세, 아니면 대시보드. 화면 이름은 하나로 둔다
+   (새로고침해도 S.ahStore 로 어느 쪽이었는지 복원된다). */
 function accidentHistory(){
   S.screen='accidentHistory';
   ahEnsureStores();
-  var store=S.ahStore||'';
-  var h='<div class="card"><h2>사고 이력 조회</h2>';
-  h+='<p class="muted">매장명을 입력해 과거 사고를 확인합니다. 진행 중인 점검 내용은 바뀌지 않습니다.</p>';
-  h+='<div class="field"><label>매장 검색</label><input id="ahQ" type="search" placeholder="예: 수원인계 (2글자 이상)" value="'+esc(AH_QUERY)+'" oninput="ahSearch(this.value)"></div>';
-  h+='<div id="ahCandidates">'+ahCandidatesHtml(AH_QUERY)+'</div></div>';
-  h+='<div id="ahResult">'+ahResultHtml()+'</div>';
-  h+='<div class="navrow"><button class="secondary" onclick="closeAccidentHistory()">← 돌아가기</button>'
-    +'<button class="primary" onclick="ahReload()"'+(store?'':' disabled')+'>다시 불러오기</button></div>';
-  frame(h,'사고 이력 조회','매장별 과거 사고를 확인합니다.');
-  /* 아직 받아온 적이 없으면 지금 받아온다(화면은 이미 떠 있어서 기다리는 느낌이 적다). */
-  if(store&&!ahRows(store)&&AH_LOADING!==store&&!(AH_ERROR&&AH_ERROR.store===store))loadAccidentHistory(store);
+  if(!AD&&!AD_LOADING&&!AD_ERROR)loadAccidentDashboard();
+  if(S.ahStore)ahStoreDetail();
+  else adDashboard();
 }
 /* 검색어가 바뀔 때는 후보 목록만 갈아끼운다.
    frame() 으로 전체를 다시 그리면 입력칸 포커스와 키보드가 매 글자마다 닫힌다. */
@@ -3423,74 +3457,612 @@ function ahCandidatesHtml(q){
 function ahPick(i){
   var r=(STORE_LIST||[])[i];
   if(!r||!r.store)return;
-  if(S.ahStore!==r.store)AH_ERROR=null;
-  S.ahStore=r.store;save();
+  S.ahStore=r.store;AH_QUERY='';save();
   accidentHistory();
 }
-function ahReload(){
-  var store=S.ahStore||'';
-  if(!store)return;
-  delete AH_CACHE[store];AH_ERROR=null;
-  loadAccidentHistory(store);
-}
-function loadAccidentHistory(store){
-  AH_LOADING=store;AH_ERROR=null;
-  var el=$('#ahResult');
-  if(el)el.innerHTML=ahResultHtml();
-  gsRun('getStoreAccidentHistory',store).then(function(rows){
-    /* 서버가 이미 출퇴근 재해를 걸러주지만, 점검 화면과 같은 기준을 한 번 더 통과시킨다. */
-    AH_CACHE[store]={at:Date.now(),rows:inspectionAccidents(rows||[])};
+/* 매장 상세 → 대시보드 */
+function ahBackToDashboard(){S.ahStore='';save();accidentHistory()}
+
+/* ============ 사고 이력 · 서버에서 받아오기 ============ */
+function loadAccidentDashboard(force){
+  if(AD_LOADING)return;
+  AD_LOADING=true;AD_ERROR='';
+  if(force)AD=null;
+  if(S.screen==='accidentHistory')accidentHistory();
+  gsRun('getAccidentDashboard').then(function(d){
+    AD=d||{rows:[]};
+    if(!Array.isArray(AD.rows))AD.rows=[];
   }).catch(function(err){
-    AH_ERROR={store:store,message:(err&&err.message)?err.message:String(err)};
+    AD_ERROR=(err&&err.message)?err.message:String(err);
   }).then(function(){
-    if(AH_LOADING===store)AH_LOADING='';
-    if(S.screen!=='accidentHistory'||S.ahStore!==store)return;
-    var e=$('#ahResult');
-    if(e)e.innerHTML=ahResultHtml();
+    AD_LOADING=false;
+    if(S.screen==='accidentHistory')accidentHistory();
   });
 }
-function ahResultHtml(){
-  var store=S.ahStore||'';
-  if(!store)return '';
-  if(AH_LOADING===store)return '<div class="card"><div class="loading-notice">'+esc(store)+' 사고 이력을 불러오는 중입니다...</div></div>';
-  if(AH_ERROR&&AH_ERROR.store===store){
-    return '<div class="card"><h2>'+esc(store)+'</h2><div class="notice">사고 이력을 불러오지 못했습니다.<br>'+esc(AH_ERROR.message)+'</div>'
-      +'<button class="secondary wide" onclick="ahReload()">다시 시도</button></div>';
+function adReload(){AD=null;AD_ERROR='';loadAccidentDashboard(true)}
+
+/* ============ 사고 이력 · 범위와 기간 ============ */
+function adScope(){
+  var s=S.adScope||{};
+  return {v:s.v||'',p:s.p||'',t:s.t||''};
+}
+/* 지금 보고 있는 범위 이름. 보고서 제목과 문구의 {범위} 에도 쓴다. */
+function adScopeLabel(){
+  var s=adScope();
+  return s.t||s.p||s.v||'전사';
+}
+function adPickScope(level,value){
+  var s=adScope();
+  if(level==='v'){s={v:value,p:'',t:''}}
+  else if(level==='p'){s={v:s.v,p:value,t:''}}
+  else {s={v:s.v,p:s.p,t:value}}
+  S.adScope=s;save();accidentHistory();
+}
+/* 빵부스러기에서 윗단계를 눌러 되돌아간다. */
+function adUpTo(level){
+  var s=adScope();
+  if(level==='root')S.adScope={v:'',p:'',t:''};
+  else if(level==='v')S.adScope={v:s.v,p:'',t:''};
+  else if(level==='p')S.adScope={v:s.v,p:s.p,t:''};
+  save();accidentHistory();
+}
+function adSetPeriod(p){S.adPeriod=p;save();accidentHistory()}
+function adPeriodLabel(p){
+  var y=String(new Date().getFullYear()).slice(2);
+  return p==='year'?(y+'년'):(p==='1y'?'최근 1년':'전체');
+}
+/* 기간 시작일(이 날짜 이상만 집계). 전체면 빈 문자열. */
+function adPeriodFrom(){
+  var p=S.adPeriod||'year';
+  if(p==='all')return '';
+  var now=new Date();
+  if(p==='1y'){
+    var d=new Date(now.getTime());d.setFullYear(d.getFullYear()-1);
+    return d.toISOString().slice(0,10);
   }
-  var rows=ahRows(store);
-  if(!rows)return '';
+  return now.getFullYear()+'-01-01';
+}
+/* 조직 값 하나가 지금 범위에 들어가는지. 미분류는 빈 값을 뜻한다. */
+function adMatch(rowValue,scopeValue){
+  if(!scopeValue)return true;
+  if(scopeValue===AD_UNKNOWN)return !String(rowValue||'').trim();
+  return String(rowValue||'')===scopeValue;
+}
+/* 지금 범위·기간에 해당하는 사고 줄만 돌려준다. */
+function adRows(){
+  if(!AD||!AD.rows)return [];
+  var s=adScope(),from=adPeriodFrom();
+  return AD.rows.filter(function(r){
+    if(from&&String(r.d||'')<from)return false;
+    return adMatch(r.v,s.v)&&adMatch(r.p,s.p)&&adMatch(r.t,s.t);
+  });
+}
+/* 집계. 건수·산재승인·손실일수와 유형/매장/월 분포를 한 번에 만든다. */
+function adAgg(rows){
+  var total=rows.length,approved=0,lost=0;
+  var byType={},byStore={},byMonth={};
+  rows.forEach(function(r){
+    if(r.a==='Y')approved++;
+    var n=Number(r.l);if(isFinite(n))lost+=n;
+    var ty=String(r.y||'').trim()||'기타';
+    byType[ty]=(byType[ty]||0)+1;
+    var st=r.s;
+    if(!byStore[st])byStore[st]={store:st,n:0,lost:0,dept:r.p||'',team:r.t||''};
+    byStore[st].n++;if(isFinite(n))byStore[st].lost+=n;
+    var m=String(r.d||'').slice(0,7);
+    if(m.length===7)byMonth[m]=(byMonth[m]||0)+1;
+  });
+  var types=Object.keys(byType).map(function(k){return {name:k,n:byType[k]}})
+    .sort(function(a,b){return b.n-a.n||a.name.localeCompare(b.name)});
+  var stores=Object.keys(byStore).map(function(k){return byStore[k]})
+    .sort(function(a,b){return b.n-a.n||b.lost-a.lost||a.store.localeCompare(b.store)});
+  return {total:total,approved:approved,lost:lost,types:types,stores:stores,byMonth:byMonth};
+}
+/* 다음으로 고를 수 있는 조직 목록과 각 건수. 미분류는 맨 뒤에 붙인다. */
+function adNextLevel(){
+  var s=adScope();
+  if(s.t)return null;
+  var level=s.p?'t':(s.v?'p':'v');
+  var from=adPeriodFrom();
+  var count={},unknown=0;
+  (AD&&AD.rows||[]).forEach(function(r){
+    if(from&&String(r.d||'')<from)return;
+    if(!adMatch(r.v,s.v)||!adMatch(r.p,s.p))return;
+    var val=String(r[level]||'').trim();
+    if(!val){unknown++;return}
+    count[val]=(count[val]||0)+1;
+  });
+  var items=Object.keys(count).map(function(k){return {name:k,n:count[k]}})
+    .sort(function(a,b){return b.n-a.n||a.name.localeCompare(b.name)});
+  /* 미분류는 상위 범위를 고른 뒤에는 의미가 없다(조직을 모르는 행이므로). */
+  if(unknown&&level==='v')items.push({name:AD_UNKNOWN,n:unknown});
+  var label=level==='v'?'부문':(level==='p'?'부서':'팀');
+  return {level:level,label:label,items:items};
+}
 
-  var approved=rows.filter(function(x){return String(x.approved||'').trim()==='Y'}).length;
-  var lost=rows.reduce(function(sum,x){var n=Number(x.lostDays);return sum+(isFinite(n)?n:0)},0);
+/* ============ 사고 이력 · 대시보드 화면 ============ */
+function adSearchBar(){
+  /* 카드 없이 한 줄로 최상단에 둔다(조직을 고르지 않고 바로 찾는 길). */
+  return '<div class="ad-search"><span aria-hidden="true">🔍</span>'
+    +'<input id="ahQ" type="search" placeholder="매장명으로 바로 찾기 (2글자 이상)" value="'+esc(AH_QUERY)+'" oninput="ahSearch(this.value)">'
+    +'</div><div id="ahCandidates">'+(AH_QUERY.trim().length>=2?ahCandidatesHtml(AH_QUERY):'')+'</div>';
+}
+function adDashboard(){
+  var h=adSearchBar();
 
-  var h='<div class="card"><div class="summary"><h2>'+esc(store)+'</h2>'
+  if(AD_LOADING&&!AD){
+    h+='<div class="card"><div class="loading-notice">사고 원장을 읽고 있습니다. 처음 조회는 10초쯤 걸립니다...</div></div>';
+    h+=adNavRow();
+    frame(h,'사고 이력','업무 중 재해 기준 · 출퇴근 제외');return;
+  }
+  if(AD_ERROR&&!AD){
+    h+='<div class="card"><h2>불러오지 못했습니다</h2><div class="notice">'+esc(AD_ERROR)+'</div>'
+      +'<button class="primary wide" onclick="adReload()">다시 시도</button></div>';
+    h+=adNavRow();
+    frame(h,'사고 이력','연결 확인이 필요합니다');return;
+  }
+
+  var rows=adRows(),agg=adAgg(rows),s=adScope();
+
+  /* 1) 조회 범위 */
+  h+='<div class="card"><div class="summary"><h2>조회 범위</h2>'
+    +'<span class="ad-note">매장 '+Number(AD&&AD.storeCount||0).toLocaleString()+'개</span></div>';
+  h+='<div class="ad-crumb">';
+  h+='<button class="'+(!s.v?'on':'')+'" onclick="adUpTo(\'root\')">전사</button>';
+  if(s.v){h+='<i>›</i><button class="'+(!s.p?'on':'')+'" onclick="adUpTo(\'v\')">'+esc(s.v)+'</button>'}
+  if(s.p){h+='<i>›</i><button class="'+(!s.t?'on':'')+'" onclick="adUpTo(\'p\')">'+esc(s.p)+'</button>'}
+  if(s.t){h+='<i>›</i><button class="on" onclick="adUpTo(\'p\')">'+esc(s.t)+'</button>'}
+  h+='</div>';
+  var next=adNextLevel();
+  if(next&&next.items.length){
+    h+='<div class="ad-level">';
+    next.items.forEach(function(it,i){
+      h+='<button onclick="adPickScope(\''+next.level+'\','+adQ(it.name)+')">'
+        +'<b>'+esc(it.name)+'</b><span'+(i===0&&it.n?' class="hot"':'')+'>'+it.n+'건</span></button>';
+    });
+    h+='</div>';
+  }else if(next){
+    h+='<p class="muted">이 범위에는 사고가 없습니다.</p>';
+  }
+  h+='<div class="ad-period">';
+  ['year','1y','all'].forEach(function(p){
+    h+='<button class="'+((S.adPeriod||'year')===p?'on':'')+'" onclick="adSetPeriod(\''+p+'\')">'+adPeriodLabel(p)+'</button>';
+  });
+  h+='</div></div>';
+
+  /* 2) 요약 */
+  h+='<div class="card"><div class="summary"><h2>'+esc(adScopeLabel())+' 요약</h2>'
+    +'<span class="pill'+(agg.total?' bad':'')+'">'+agg.total+'건</span></div>';
+  h+='<div class="ah-sum">'
+    +'<div><b>'+agg.total+'</b><small>전체 사고</small></div>'
+    +'<div class="hl"><b>'+agg.approved+'</b><small>산재승인</small></div>'
+    +'<div><b>'+agg.lost+'</b><small>손실일수</small></div></div>';
+  if(!agg.total){
+    h+='<div class="ah-empty"><b>이 범위·기간에 사고가 없습니다</b>'
+      +'<span>기간을 «전체»로 바꾸거나 상위 범위로 올라가 보세요.</span></div>';
+  }
+  h+='</div>';
+
+  if(agg.total){
+    /* 3) 월별 추이 */
+    var bars=adMonthlyBars(agg);
+    if(bars.length){
+      var max=bars.reduce(function(m,x){return Math.max(m,x.n)},0)||1;
+      var peak=bars.reduce(function(a,b){return b.n>a.n?b:a},bars[0]);
+      h+='<div class="card"><h2>'+(S.adPeriod==='all'?'연도별':'월별')+' 발생 추이</h2><div class="ad-bars">';
+      bars.forEach(function(x){
+        var pct=Math.round(x.n/max*100);
+        h+='<div class="ad-bar"><small>'+x.n+'</small>'
+          +'<i class="'+(x.n&&x.n===peak.n?'peak':'')+'" style="height:'+Math.max(x.n?6:2,Math.round(pct*0.72))+'px"></i>'
+          +'<span>'+esc(x.label)+'</span></div>';
+      });
+      h+='</div>';
+      if(peak.n>0)h+='<div class="notice" style="margin:9px 0 0">'+esc(peak.label)+'에 '+peak.n+'건으로 가장 많았습니다.</div>';
+      h+='</div>';
+    }
+
+    /* 4) 재해유형 TOP */
+    var tmax=agg.types[0]?agg.types[0].n:1;
+    h+='<div class="card"><h2>재해유형 TOP</h2><div class="ad-rank">';
+    agg.types.slice(0,6).forEach(function(t,i){
+      h+='<div><div class="ad-rank-l"><span>'+esc(t.name)+'</span><span>'+t.n+'건</span></div>'
+        +'<div class="ad-rank-t"><i style="width:'+Math.max(4,Math.round(t.n/tmax*100))+'%;background:'+adRankColor(i)+'"></i></div></div>';
+    });
+    h+='</div></div>';
+
+    /* 5) 사고 많은 매장 */
+    var showAll=!!S.adStoreAll;
+    var list=showAll?agg.stores:agg.stores.slice(0,5);
+    h+='<div class="card"><div class="summary"><h2>사고 많은 매장</h2>'
+      +'<span class="ad-note">누르면 상세</span></div><div class="ad-stores">';
+    list.forEach(function(x,i){
+      h+='<button class="ad-store'+(i===0?' top':'')+'" onclick="ahPickByName('+adQ(x.store)+')">'
+        +'<i>'+(i+1)+'</i><span><b>'+esc(x.store)+'</b><small>'+esc([x.dept,x.team].filter(Boolean).join(' · ')||AD_UNKNOWN)+'</small></span>'
+        +'<em><b>'+x.n+'건</b><small>손실 '+x.lost+'일</small></em></button>';
+    });
+    h+='</div>';
+    if(agg.stores.length>5){
+      h+='<button class="secondary wide" style="margin-top:9px" onclick="S.adStoreAll='+(showAll?'false':'true')+';save();accidentHistory()">'
+        +(showAll?'상위 5개만 보기':'전체 '+agg.stores.length+'개 매장 보기')+'</button>';
+    }
+    h+='</div>';
+
+    /* 6) 최근 사고 */
+    var recent=rows.slice(0,5);
+    h+='<div class="card"><div class="summary"><h2>최근 사고</h2>'
+      +'<span class="ad-note">최신 '+recent.length+'건</span></div><div class="ad-recent">';
+    recent.forEach(function(r){
+      var ok=r.a==='Y';
+      h+='<article class="'+(ok?'approved':'')+'">'
+        +'<div class="ah-head"><div><small>'+esc(r.d||'재해일 미기록')+' · '+esc(r.s)+'</small>'
+        +'<b>'+esc(r.y||'사고')+'</b></div>'
+        +'<span class="ah-tag'+(ok?' bad':'')+'">'+(ok?'산재승인':'사고이력')+'</span></div>'
+        +'<p>'+esc(r.x||'등록된 사고내용이 없습니다.')+'</p></article>';
+    });
+    h+='</div></div>';
+  }
+
+  /* 미분류 안내 */
+  if(AD&&AD.unmatchedCount){
+    h+='<div class="card"><h2>미분류 매장 '+AD.unmatchedCount+'곳</h2>'
+      +'<p class="muted">사고 원장의 매장명이 «매장» 탭에 없어서 조직을 붙이지 못한 곳입니다. '
+      +'전사 합계에는 포함되고, 부문 목록의 «'+AD_UNKNOWN+'»에서 따로 볼 수 있습니다.<br>'
+      +'매장명 표기가 다른 경우가 대부분이니 원장 쪽 이름을 맞추면 사라집니다.</p>'
+      +'<div class="ad-unmatched">'+(AD.unmatchedStores||[]).slice(0,30).map(function(n){return '<span>'+esc(n)+'</span>'}).join('')+'</div>'
+      +((AD.unmatchedStores||[]).length>30?'<p class="muted">앞 30곳만 표시했습니다.</p>':'')
+      +'</div>';
+  }
+
+  h+=adNavRow();
+  frame(h,'사고 이력','업무 중 재해 기준 · 출퇴근 제외');
+}
+function adNavRow(){
+  var stamp=(AD&&AD.generatedAt)?('기준 '+esc(AD.generatedAt)):'';
+  return '<div class="navrow"><button class="secondary" onclick="closeAccidentHistory()">← 돌아가기</button>'
+    +'<button class="primary" onclick="adReload()"'+(AD_LOADING?' disabled':'')+'>'+(AD_LOADING?'불러오는 중...':'새로고침')+'</button></div>'
+    +(stamp?'<p class="muted" style="text-align:center;margin:8px 0 0">'+stamp+' · 서버에서 30분간 보관한 값입니다</p>':'');
+}
+function adRankColor(i){return ['#13245a','#203a7a','#4a5f94','#7684a8','#9aa4bf','#b9c0d2'][i]||'#c9ced8'}
+/* 문자열을 onclick 속성 안의 JS 문자열로 안전하게 넣는다.
+   매장명에 ' 가 들어간 곳이 있어서(오산'특수점 같은 표기) 직접 끼워 넣으면 깨진다. */
+function adQ(s){
+  return "'"+String(s==null?'':s)
+    .replace(/\\/g,'\\\\').replace(/'/g,"\\'")
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+"'";
+}
+function ahPickByName(name){
+  if(!name)return;
+  S.ahStore=String(name);AH_QUERY='';save();accidentHistory();
+}
+/* 월별(또는 연도별) 막대. 기간에 맞춰 눈금을 바꾼다. */
+function adMonthlyBars(agg){
+  var p=S.adPeriod||'year',out=[];
+  if(p==='all'){
+    var byYear={};
+    Object.keys(agg.byMonth).forEach(function(m){
+      var y=m.slice(0,4);byYear[y]=(byYear[y]||0)+agg.byMonth[m];
+    });
+    return Object.keys(byYear).sort().map(function(y){return {label:y.slice(2)+'년',n:byYear[y]}});
+  }
+  var now=new Date();
+  if(p==='year'){
+    for(var m=1;m<=now.getMonth()+1;m++){
+      var k=now.getFullYear()+'-'+(m<10?'0':'')+m;
+      out.push({label:m+'월',n:agg.byMonth[k]||0});
+    }
+  }else{
+    for(var i=11;i>=0;i--){
+      var d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      var mm=d.getMonth()+1;
+      out.push({label:mm+'월',n:agg.byMonth[d.getFullYear()+'-'+(mm<10?'0':'')+mm]||0});
+    }
+  }
+  return out;
+}
+
+/* ============ 사고 이력 · 매장 상세 화면 ============ */
+/* 이 매장의 사고 줄(전체 기간). 대시보드 기간 필터는 적용하지 않는다.
+   «이 매장에 어떤 사고가 있었나»를 보는 화면이라 과거를 자르면 안 된다. */
+function ahStoreRows(store){
+  if(!AD||!AD.rows)return null;
+  return AD.rows.filter(function(r){return r.s===store});
+}
+function ahStoreOrg(store){
+  var rows=(AD&&AD.rows||[]).filter(function(r){return r.s===store});
+  if(rows.length)return {v:rows[0].v||'',p:rows[0].p||'',t:rows[0].t||''};
+  var hit=(STORE_LIST||[]).find(function(r){return r.store===store});
+  return hit?{v:hit.division||'',p:hit.dept||'',t:hit.team||''}:{v:'',p:'',t:''};
+}
+function ahStoreDetail(){
+  var store=S.ahStore;
+  var org=ahStoreOrg(store);
+  var sub=[org.v,org.p,org.t].filter(Boolean).join(' · ')||AD_UNKNOWN;
+  var h='';
+
+  if(AD_LOADING&&!AD){
+    h+='<div class="card"><div class="loading-notice">사고 원장을 읽고 있습니다...</div></div>'+ahDetailNav();
+    frame(h,esc(store),sub);return;
+  }
+  if(AD_ERROR&&!AD){
+    h+='<div class="card"><h2>불러오지 못했습니다</h2><div class="notice">'+esc(AD_ERROR)+'</div>'
+      +'<button class="primary wide" onclick="adReload()">다시 시도</button></div>'+ahDetailNav();
+    frame(h,esc(store),sub);return;
+  }
+
+  var rows=ahStoreRows(store)||[];
+  var approved=rows.filter(function(r){return r.a==='Y'}).length;
+  var lost=rows.reduce(function(n,r){var v=Number(r.l);return n+(isFinite(v)?v:0)},0);
+
+  h+='<div class="card"><div class="summary"><h2>'+esc(store)+'</h2>'
     +'<span class="pill'+(rows.length?' bad':'')+'">'+rows.length+'건</span></div>';
-  if(!rows.length){
-    h+='<div class="ah-empty"><b>등록된 사고이력이 없습니다</b><span>업무 중 재해 기준입니다. 출퇴근 재해는 집계에서 제외됩니다.</span></div></div>';
+  h+='<div class="ah-sum"><div><b>'+rows.length+'</b><small>전체 사고</small></div>'
+    +'<div class="hl"><b>'+approved+'</b><small>산재승인</small></div>'
+    +'<div><b>'+lost+'</b><small>손실일수</small></div></div>';
+  if(rows.length){
+    var cmp=ahStoreCompare(store,org,rows.length);
+    if(cmp)h+='<div class="notice" style="margin:11px 0 0">'+cmp+'</div>';
+  }else{
+    h+='<div class="ah-empty"><b>등록된 사고이력이 없습니다</b>'
+      +'<span>업무 중 재해 기준입니다. 출퇴근 재해는 집계에서 제외됩니다.</span></div>';
+  }
+  h+='</div>';
+
+  if(rows.length){
+    h+='<div class="card"><h2>사고 내역</h2>';
+    rows.forEach(function(r){
+      var ok=r.a==='Y';
+      h+='<article class="ah-item'+(ok?' approved':'')+'">'
+        +'<div class="ah-head"><div><small>'+esc(r.d||'재해일 미기록')+'</small><b>'+esc(r.y||'사고')+'</b></div>'
+        +'<span class="ah-tag'+(ok?' bad':'')+'">'+(ok?'산재승인':'사고이력')+'</span></div>'
+        +'<div class="ah-facts">'
+        +'<span><small>재해일</small><b>'+esc(r.d||'-')+'</b></span>'
+        +'<span><small>유형</small><b>'+esc(r.y||'-')+'</b></span>'
+        +'<span><small>기인물</small><b>'+esc(r.c||'미등록')+'</b></span>'
+        +'<span><small>근로손실일수</small><b>'+((r.l!==''&&r.l!=null)?esc(String(r.l))+'일':'-')+'</b></span>'
+        +'</div><p class="ah-content">'+esc(r.x||'등록된 사고내용이 없습니다.')+'</p></article>';
+    });
+    h+='<p class="muted" style="margin-top:4px">출퇴근 재해는 제외한 업무 중 재해입니다. 원본은 안전팀 사고 원장입니다.</p></div>';
+  }
+
+  h+=arPrintCard(store,org);
+  h+=ahDetailNav();
+  frame(h,esc(store),sub);
+}
+/* 같은 팀(없으면 부서) 매장 평균과 비교한 한 줄. 근거가 없으면 빈 문자열. */
+function ahStoreCompare(store,org,mine){
+  if(!AD||!AD.rows)return '';
+  var level=org.t?'t':(org.p?'p':'');
+  if(!level)return '';
+  var want=org.t||org.p;
+  var byStore={};
+  AD.rows.forEach(function(r){
+    if(String(r[level]||'')!==want)return;
+    byStore[r.s]=(byStore[r.s]||0)+1;
+  });
+  /* 사고가 한 건도 없는 매장까지 평균에 넣어야 «평균보다 많다»가 정직해진다. */
+  var peers=(STORE_LIST||[]).filter(function(r){
+    return String(level==='t'?r.team:r.dept)===want;
+  }).length||Object.keys(byStore).length;
+  var sum=Object.keys(byStore).reduce(function(n,k){return n+byStore[k]},0);
+  if(!peers)return '';
+  var avg=sum/peers;
+  var types={};
+  (ahStoreRows(store)||[]).forEach(function(r){var k=String(r.y||'').trim()||'기타';types[k]=(types[k]||0)+1});
+  var typeText=Object.keys(types).sort(function(a,b){return types[b]-types[a]})
+    .slice(0,3).map(function(k){return esc(k)+' '+types[k]+'건'}).join(' · ');
+  return typeText+'. '+esc(want)+' 매장 평균('+avg.toFixed(1)+'건)보다 '
+    +(mine>avg?'<b>많습니다</b>':(mine<avg?'적습니다':'같습니다'))+'.';
+}
+function ahDetailNav(){
+  return '<div class="navrow"><button class="secondary" onclick="ahBackToDashboard()">← 대시보드</button>'
+    +'<button class="primary" onclick="closeAccidentHistory()">점검으로 돌아가기</button></div>';
+}
+
+/* ============ 팀 사고현황 1장 보고서 ============
+   매장 점검을 나가서 담당자에게 «우리 팀에 이런 사고가 있었다»를 종이 한 장으로
+   보여 주기 위한 기능이다. A4 세로 한 장으로 고정한다.
+
+   저장 위치 (새 폴더를 만들지 않는다)
+     매장 현장 점검 / 점검자 / 날짜 점검 - 매장명 /
+       ├ 날짜 점검결과_매장명_xxxx.pdf      (기존 결과보고서)
+       └ 날짜 사고현황_매장명_1팀.pdf        (이 보고서 · 같은 이름이면 덮어씀)
+
+   점검 중이 아니면 드라이브 폴더를 정할 수 없다(점검자·점검일이 없다).
+   그때는 저장하지 않고 PDF 파일만 내려받는다(2026-10-07 «가» 안으로 확정). */
+var AR_BUSY=false;
+var AR_RESULT=null;   /* {ok, name, pdfUrl, folderUrl, saved, message} */
+
+/* 지금 진행 중인 점검 정보. 폴더를 정할 수 있을 때만 값을 돌려준다. */
+function arInspectionCtx(){
+  var st=S.store||{};
+  var inspector=String(st.inspector||'').trim();
+  var date=String(st.date||'').trim();
+  var name=String(st.name||'').trim();
+  if(!inspector||!date||!name)return null;
+  return {inspector:inspector,date:date,store:name};
+}
+function arScopeLevel(org){
+  var want=S.arScope||'team';
+  if(want==='team'&&org.t)return 't';
+  if(want==='dept'&&org.p)return 'p';
+  return org.t?'t':(org.p?'p':'');
+}
+function arSetScope(v){S.arScope=v;save();accidentHistory()}
+
+function arPrintCard(store,org){
+  var insp=arInspectionCtx();
+  var sameStore=!!(insp&&insp.store===store);
+  var h='<div class="card"><h2>사고현황 1장 출력</h2>';
+
+  if(!org.t&&!org.p){
+    h+='<p class="muted">이 매장은 «매장» 탭에서 조직을 찾지 못해(미분류) 팀·부서 기준으로 묶을 수 없습니다. '
+      +'원장과 매장 탭의 매장명 표기를 맞추면 출력할 수 있습니다.</p></div>';
     return h;
   }
-  h+='<div class="ah-sum">'
-    +'<div><b>'+rows.length+'</b><small>전체 사고</small></div>'
-    +'<div><b>'+approved+'</b><small>산재승인</small></div>'
-    +'<div><b>'+lost+'</b><small>근로손실일수</small></div>'
-    +'</div>';
-  rows.forEach(function(x){
-    var ok=String(x.approved||'').trim()==='Y';
-    h+='<article class="ah-item'+(ok?' approved':'')+'">';
-    h+='<div class="ah-head"><div><small>'+esc(x.date||'재해일 미기록')+'</small><b>'+esc(x.type||'사고')+'</b></div>'
-      +'<span class="ah-tag'+(ok?' bad':'')+'">'+(ok?'산재승인':'사고이력')+'</span></div>';
-    h+='<div class="ah-facts">'
-      +'<span><small>재해일</small><b>'+esc(x.date||'-')+'</b></span>'
-      +'<span><small>유형</small><b>'+esc(x.type||'-')+'</b></span>'
-      +'<span><small>기인물</small><b>'+esc(x.source||'미등록')+'</b></span>'
-      +'<span><small>근로손실일수</small><b>'+(x.lostDays!==''&&x.lostDays!=null?esc(String(x.lostDays))+'일':'-')+'</b></span>'
-      +'</div>';
-    h+='<p class="ah-content">'+esc(x.content||'등록된 사고내용이 없습니다.')+'</p>';
-    h+='</article>';
-  });
-  h+='<p class="muted" style="margin-top:4px">출퇴근 재해는 제외한 업무 중 재해입니다. 원본은 안전팀 사고 원장 스프레드시트입니다.</p>';
+
+  h+='<p class="muted">점검 나간 매장의 담당자에게 보여 줄 A4 1장입니다. 개인정보(재해자명)는 넣지 않습니다.</p>';
+
+  /* 범위: 팀 / 부서 둘 다 고를 수 있게 한다(2026-10-07 확정) */
+  var want=S.arScope||'team';
+  h+='<div class="ar-scope">';
+  h+='<button class="'+(want==='team'&&org.t?'on':'')+'"'+(org.t?'':' disabled')+' onclick="arSetScope(\'team\')">'
+    +'<b>'+esc(org.t||'팀 없음')+'</b><small>팀 기준</small></button>';
+  h+='<button class="'+(want==='dept'||!org.t?'on':'')+'"'+(org.p?'':' disabled')+' onclick="arSetScope(\'dept\')">'
+    +'<b>'+esc(org.p||'부서 없음')+'</b><small>부서 기준</small></button>';
+  h+='</div>';
+
+  var level=arScopeLevel(org);
+  var scopeName=level==='t'?org.t:org.p;
+  var rows=arReportRows(org,level);
+  h+='<p class="muted">'+esc(scopeName)+' · '+esc(adPeriodLabel(S.adPeriod||'year'))
+    +' 기준 <b>'+rows.length+'건</b>이 들어갑니다. 기간은 위 «조회 범위»에서 바꿉니다.</p>';
+
+  if(insp&&sameStore){
+    h+='<div class="ar-dest ok"><b>드라이브에 저장됩니다</b>'
+      +'<span>매장 현장 점검 / '+esc(insp.inspector)+' / '+esc(insp.date)+' 점검 - '+esc(store)+'</span>'
+      +'<span>'+esc(insp.date)+' 사고현황_'+esc(store)+'_'+esc(scopeName)+'.pdf</span></div>';
+  }else{
+    h+='<div class="ar-dest"><b>PDF 파일로 받습니다</b>'
+      +'<span>'+(insp?'지금 점검 중인 매장('+esc(insp.store)+')과 달라서':'점검을 시작하지 않아서')
+      +' 드라이브 폴더를 정할 수 없습니다. 파일을 내려받아 쓰세요.</span></div>';
+  }
+
+  h+='<button class="primary wide" style="margin-top:10px" onclick="arPrint()"'+(AR_BUSY?' disabled':'')+'>'
+    +(AR_BUSY?'만들고 있습니다...':(insp&&sameStore?'1장 보고서 저장':'1장 보고서 PDF 받기'))+'</button>';
+
+  if(AR_RESULT){
+    if(AR_RESULT.ok){
+      h+='<div class="ar-done"><b>'+esc(AR_RESULT.name)+'</b>'
+        +(AR_RESULT.saved?'<span>드라이브에 저장했습니다.</span>':'<span>파일을 내려받았습니다.</span>');
+      if(AR_RESULT.pdfUrl)h+='<a class="secondary" href="'+esc(AR_RESULT.pdfUrl)+'" target="_blank" rel="noopener">PDF 열기</a>';
+      if(AR_RESULT.folderUrl)h+='<a class="secondary" href="'+esc(AR_RESULT.folderUrl)+'" target="_blank" rel="noopener">폴더 열기</a>';
+      h+='</div>';
+    }else{
+      h+='<div class="notice" style="margin-top:9px">만들지 못했습니다.<br>'+esc(AR_RESULT.message||'')+'</div>';
+    }
+  }
   h+='</div>';
   return h;
+}
+/* 보고서에 들어갈 사고 줄 (범위 + 대시보드에서 고른 기간) */
+function arReportRows(org,level){
+  if(!AD||!AD.rows)return [];
+  var want=level==='t'?org.t:org.p;
+  var from=adPeriodFrom();
+  return AD.rows.filter(function(r){
+    if(from&&String(r.d||'')<from)return false;
+    return String(r[level]||'')===want;
+  });
+}
+async function arPrint(){
+  if(AR_BUSY)return;
+  var store=S.ahStore;
+  var org=ahStoreOrg(store);
+  var level=arScopeLevel(org);
+  if(!level){toast('조직을 찾을 수 없어 출력할 수 없습니다');return}
+  var scopeName=level==='t'?org.t:org.p;
+  var rows=arReportRows(org,level);
+  if(!rows.length){toast('이 범위·기간에 사고가 없습니다');return}
+
+  AR_BUSY=true;AR_RESULT=null;accidentHistory();
+  try{
+    var ctx={
+      store:store,org:org,level:level,scopeName:scopeName,
+      periodLabel:adPeriodLabel(S.adPeriod||'year'),
+      from:adPeriodFrom(),
+      rows:rows,
+      storeRows:rows.filter(function(r){return r.s===store}),
+      maxCases:10
+    };
+    var pdf=await buildAccidentReportPdf(ctx);
+    var insp=arInspectionCtx();
+    if(insp&&insp.store===store){
+      var res=await gsRun('saveAccidentReportPdf',{
+        inspector:insp.inspector,date:insp.date,store:store,
+        scopeLabel:scopeName,pdfBase64:pdf.base64
+      });
+      AR_RESULT={ok:true,saved:true,name:(res&&res.name)||'',pdfUrl:(res&&res.pdfUrl)||'',folderUrl:(res&&res.folderUrl)||''};
+      toast('드라이브에 저장했습니다');
+    }else{
+      var fname=(insp?insp.date:new Date().toISOString().slice(0,10))
+        +' 사고현황_'+store+'_'+scopeName+'.pdf';
+      arDownload(pdf.base64,fname);
+      AR_RESULT={ok:true,saved:false,name:fname};
+      toast('PDF를 내려받았습니다');
+    }
+  }catch(err){
+    AR_RESULT={ok:false,message:(err&&err.message)?err.message:String(err)};
+    toast('1장 보고서를 만들지 못했습니다');
+  }finally{
+    AR_BUSY=false;accidentHistory();
+  }
+}
+/* base64 PDF를 파일로 내려받는다(드라이브에 저장하지 않는 경우). */
+function arDownload(base64,filename){
+  var bin=atob(base64),len=bin.length,buf=new Uint8Array(len);
+  for(var i=0;i<len;i++)buf[i]=bin.charCodeAt(i);
+  var url=URL.createObjectURL(new Blob([buf],{type:'application/pdf'}));
+  var a=document.createElement('a');
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url)},4000);
+}
+/* 보고서 한 장이 얼마나 넘쳤는지(px). 0 이하면 들어간다.
+   ★ scrollHeight 로 재면 안 된다 ★
+   .ar-page 는 height 가 고정이고 overflow:hidden 이라 내용이 넘쳐도
+   scrollHeight 가 그대로 1123 으로 나온다. 그러면 «넘쳤는지»를 알 수 없어
+   사례를 줄이지 못하고 그냥 잘린 PDF가 만들어진다(실측으로 확인했다).
+   그래서 자식들의 높이 합과 사이 여백을 직접 더해서 비교한다.
+   꼬리말의 margin-top:auto 는 여유가 있을 때만 생기므로 합산에 영향이 없다. */
+function arPageOverflow(page){
+  var cs=getComputedStyle(page);
+  var usable=page.clientHeight-parseFloat(cs.paddingTop||0)-parseFloat(cs.paddingBottom||0);
+  var gap=parseFloat(cs.rowGap||cs.gap||0)||0;
+  var kids=[].slice.call(page.children);
+  var sum=0;
+  kids.forEach(function(k){sum+=k.getBoundingClientRect().height});
+  sum+=gap*Math.max(0,kids.length-1);
+  return sum-usable;
+}
+/* A4 세로 한 장을 그려 PDF base64 로 돌려준다.
+   결과보고서(가로)와 같은 방식이지만 크기와 CSS가 달라 함수를 따로 둔다.
+   794x1123 은 A4 세로를 96dpi 로 환산한 크기다(210x297mm). */
+async function buildAccidentReportPdf(ctx){
+  await loadLibrary(()=>typeof html2canvas==='function',LIB_HTML2CANVAS);
+  await loadLibrary(()=>!!jsPDFCtor(),LIB_JSPDF);
+  const Ctor=jsPDFCtor();
+  const W=794,H=1123;
+
+  const holder=document.createElement('div');
+  holder.style.cssText='position:fixed;left:-20000px;top:0;width:'+W+'px;z-index:-1;background:#fff';
+  document.body.appendChild(holder);
+  try{
+    /* 사례를 10건까지 넣되, 한 장을 넘기면 2건씩 줄여 다시 그린다.
+       .ar-page 는 높이가 고정이고 overflow:hidden 이라, 넘쳐도 «조용히 잘린다».
+       그래서 그려 보고 scrollHeight 로 실제 높이를 재는 수밖에 없다. */
+    let limit=Math.max(3,Number(ctx.maxCases)||10);
+    let page=null;
+    for(;;){
+      holder.innerHTML=window.buildAccidentReport(Object.assign({},ctx,{maxCases:limit}));
+      page=holder.querySelector('.ar-page');
+      if(!page)throw new Error('보고서를 그리지 못했습니다.');
+      page.style.setProperty('width',W+'px','important');
+      page.style.setProperty('height',H+'px','important');
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      if(arPageOverflow(page)<=2||limit<=3)break;
+      limit-=2;
+    }
+    const canvas=await html2canvas(page,{
+      scale:2,                 /* 글씨가 작아 1.5로는 표가 뭉개진다 */
+      useCORS:false,backgroundColor:'#ffffff',logging:false,
+      width:W,height:H,windowWidth:W,windowHeight:H
+    });
+    const jpeg=canvas.toDataURL('image/jpeg',0.9);
+    const pdf=new Ctor({orientation:'portrait',unit:'pt',format:[W,H],compress:true});
+    pdf.addImage(jpeg,'JPEG',0,0,W,H,undefined,'FAST');
+    return {base64:pdf.output('datauristring').split(',')[1]};
+  }finally{
+    holder.remove();
+  }
 }
 
 /* ============ 대시보드 ============ */
