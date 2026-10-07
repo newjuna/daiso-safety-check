@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V7';
+const APP_VERSION='V8';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -154,6 +154,13 @@ function normalizeState(){
   S.adStoreAll=!!S.adStoreAll;             /* 매장 목록 전체 펼침 */
   S.arScope=S.arScope||'team';             /* 1장 보고서 범위: 'team' | 'dept' */
   S.adPicked=!!S.adPicked;                 /* 첫 화면에서 범위를 골랐는지 */
+  /* 점검 현황(메뉴 > 점검 현황). 사고 이력(ad*)과 같은 구조, 앞글자만 id 다. */
+  S.idStore=S.idStore||'';S.idBack=S.idBack||'';
+  S.idScope=S.idScope||{v:'',p:'',t:''};
+  S.idPeriod=(['month','year','1y','custom'].indexOf(S.idPeriod)>=0)?S.idPeriod:'year';
+  S.idFrom=S.idFrom||'';S.idTo=S.idTo||'';
+  S.idApplied=(S.idApplied&&typeof S.idApplied==='object')?S.idApplied:null;
+  S.idPicked=!!S.idPicked;
 }
 normalizeState();
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -222,6 +229,24 @@ function mockServer(fnName,args){
     };
   }
   if(fnName==='saveAccidentReportPdf')return {pdfUrl:'',folderUrl:'',name:'(테스트) 사고현황.pdf'};
+  /* 점검 현황. 같은 매장 여러 번 점검 + 점수 없는 옛 점검 + 미조치/조치완료를 섞어 둔다. */
+  if(fnName==='getInspectionDashboard'){
+    var yy=new Date().getFullYear();
+    var ins=function(i,d,n,s,v,p,t,w,l,f,b,sc,g){return {i:i,d:d,n:n,s:s,v:v,p:p,t:t,w:w,l:l,f:f,b:b,sc:sc,g:g,pdf:'',fd:''}};
+    var is=function(i,d,s,c,m,x,o){return {i:i,d:d,s:s,c:c,m:m,x:x,o:o}};
+    return {build:'테스트 모드',generatedAt:yy+'-01-01 00:00',storeCount:3,
+      inspections:[
+        ins('T3',yy+'-09-20','Park(안전)','테스트 강남점','수도권','관악','1팀',2,0,1,0,74,'B'),
+        ins('T2',yy+'-06-11','Kang(안전)','테스트 강남점','수도권','관악','1팀',3,1,2,0,62,'C'),
+        ins('T1',yy+'-05-02','Park(보건)','테스트 부산점','영남','부산','3팀',1,0,0,0,46,'D'),
+        ins('T0',yy+'-02-15','Park(안전)','테스트 서초점','수도권','관악','1팀',0,0,1,0,'','')],
+      issues:[
+        is('T3',yy+'-09-20','테스트 강남점','공통·시설','창고·후방 통로 및 적재','',1),
+        is('T3',yy+'-09-20','테스트 강남점','작업점검','입고·하차','박스를 손으로 하차',1),
+        is('T2',yy+'-06-11','테스트 강남점','소방','소화기 앞 적치물','',0),
+        is('T1',yy+'-05-02','테스트 부산점','사다리','구형 사다리(검정) 발판상태','',1),
+        is('T0',yy+'-02-15','테스트 서초점','공통·시설','창고·후방 통로 및 적재','',0)]};
+  }
   if(fnName==='getStoreInspectionHistory'){
     if(args[0]==='테스트 강남점')return [{inspectionId:'TEST-2025-11',date:'2025-11-20',inspector:'Park(안전)',workRisk:2,ladder:0,facility:1,tbm:0,taskCount:2,taskDone:0,folderUrl:'',pdfUrl:'',snapshotAvailable:false,delivery:'오전',inboundStart:'08:30',inboundEnd:'10:00',inboundStaff:3,inboundHelpers:1,inboundBoxes:84,floors:1,hasStairs:'유',hasElevator:'무',hasEscalator:'무',issues:[{category:'작업점검',item:'입고·하차',hazard:'근골격계',status:'조치대기',detail:'박스·상품을 직접 손으로 하차',photoUrls:[]},{category:'공통·시설',item:'창고·후방 통로 및 적재',hazard:'넘어짐',status:'조치대기',detail:'후방 통로에 합포박스 적치',photoUrls:[]}]}];
     return [];
@@ -452,11 +477,12 @@ function frame(body,title='안전보건 현장진단',sub='모바일 현장점�
   /* 메뉴에서 지금 보고 있는 항목에 표시(active)를 준다.
      예전에는 '매장 점검'에 하드코딩돼 있어서 사고 이력 화면에서도 매장 점검이 켜져 보였다. */
   const onAccHist=S.screen==='accidentHistory';
+  const onInsp=S.screen==='inspDash';
   /* 사고 이력 화면은 길어서 «맨 위로»만으로는 부족하다. 아래로 가는 버튼을 같이 둔다. */
   const jumpBtns=`<button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button>`
-    +(onAccHist?`<button id="scrollBtmBtn" class="scroll-top btm" onclick="scrollPageBottom()" aria-label="맨 아래로 이동"><i>↓</i><span>맨 아래로</span></button>`:'');
+    +(onAccHist||onInsp?`<button id="scrollBtmBtn" class="scroll-top btm" onclick="scrollPageBottom()" aria-label="맨 아래로 이동"><i>↓</i><span>맨 아래로</span></button>`:'');
 
-  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div>${verBadge}<div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="${onAccHist?'':'active'}" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button class="${onAccHist?'active':''}" onclick="closeMainMenu();openAccidentHistory()"><span class="menu-icon">!</span><span>사고 이력<small>매장별 과거 사고 조회</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main>${jumpBtns}</div>`;
+  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div>${verBadge}<div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button class="${onInsp?'active':''}" onclick="closeMainMenu();openInspDash()"><span class="menu-icon">▦</span><span>점검 현황<small>점검률·점수·미조치</small></span></button><button class="${onAccHist||onInsp?'':'active'}" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button class="${onAccHist?'active':''}" onclick="closeMainMenu();openAccidentHistory()"><span class="menu-icon">!</span><span>사고 이력<small>매장별 과거 사고 조회</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main>${jumpBtns}</div>`;
 
   LAST_VIEW_KEY=viewKey;
   if(sameView){
@@ -3407,7 +3433,7 @@ function openAccidentHistory(){
 }
 /* 첫 화면에서 전사 / 부문을 고른 뒤 대시보드로 간다. */
 function adStart(v){
-  S.adScope={v:v||'',p:'',t:''};S.adPicked=true;S.adStoreAll=false;
+  S.adScope={v:v||'',p:'',t:''};S.adPicked=true;S.adStoreAll=false;S.ahStore='';
   /* 범위를 새로 고르면 지난 조회 결과는 지운다. 조건을 보고 [조회하기]를 눌러야 결과가 나온다. */
   S.adApplied=null;AD_OPEN={};save();
   accidentHistory();
@@ -3504,7 +3530,10 @@ function ahSearch(v){
   var el=$('#ahCandidates');
   if(el)el.innerHTML=ahCandidatesHtml(v);
 }
-function ahCandidatesHtml(q){
+/* pickFn: 후보를 눌렀을 때 부를 함수 이름. 사고 이력은 ahPick, 점검 현황은 idPick.
+   한 함수로 두 화면이 같은 검색 동작을 쓰게 한다(공백 무시·20개 상한·따옴표 안전). */
+function ahCandidatesHtml(q,pickFn){
+  pickFn=pickFn||'ahPick';
   var key=String(q||'').trim();
   if(!STORE_LIST)return '<div class="loading-notice">'+(AH_STORES_LOADING?'매장 목록을 불러오는 중입니다...':'매장 목록을 불러오지 못했습니다. 네트워크를 확인해 주세요.')+'</div>';
   if(key.length<2)return '<p class="muted">매장명을 2글자 이상 입력하세요. 전체 '+STORE_LIST.length+'개 매장에서 찾습니다.</p>';
@@ -3518,8 +3547,8 @@ function ahCandidatesHtml(q){
   var shown=hit.slice(0,20);
   var h='<div class="ah-cands">';
   shown.forEach(function(x){
-    var sel=x.r.store===S.ahStore;
-    h+='<button class="ah-cand'+(sel?' sel':'')+'" onclick="ahPick('+x.i+')"><span><b>'+esc(x.r.store)+'</b>'
+    var sel=x.r.store===(pickFn==='idPick'?S.idStore:S.ahStore);
+    h+='<button class="ah-cand'+(sel?' sel':'')+'" onclick="'+pickFn+'('+x.i+')"><span><b>'+esc(x.r.store)+'</b>'
       +'<small>'+esc([x.r.division,x.r.dept,x.r.team].filter(Boolean).join(' · ')||'조직 미등록')+'</small></span>'
       +'<strong>'+(sel?'✓':'→')+'</strong></button>';
   });
@@ -4267,6 +4296,575 @@ async function buildAccidentReportPdf(ctx){
   }
 }
 
+/* ============ 점검 현황 (메뉴 > 점검 현황) ============
+   사고 이력과 같은 흐름이다(2026-10-07 시안 확정).
+     ① 첫 화면 : 전사 / 부문 고르기 (버튼마다 점검률 막대)
+     ② 대시보드: 조회 조건(범위 + 기간) → [조회하기] → 요약 4칸 + 접히는 항목 7개
+     ③ 매장 상세: 점검 횟수·최근 점수·첫 점검 대비·미조치 + 점수 추이 + 점검 기록 타임라인
+   매장 검색은 첫 화면 아래와 대시보드 맨 아래에 둔다(사고 이력과 같은 자리).
+
+   데이터는 getInspectionDashboard() 한 번으로 받고, 조직·기간은 브라우저에서 거른다.
+   «아직 점검하지 않은 매장»의 사고 건수는 사고 이력의 데이터(AD)를 같이 쓴다.
+
+   ★ 사고 이력과 마찬가지로 진행 중인 점검 상태(S.accidents 등)는 건드리지 않는다 ★
+
+   기간 계산(adRange·adInRange·adYmd)과 추이 막대(adMonthlyBars)는 사고 이력 것을 그대로 쓴다.
+   같은 «올해»가 두 화면에서 다른 날짜를 뜻하면 안 되기 때문이다. */
+var ID=null, ID_LOADING=false, ID_ERROR='';
+var ID_QUERY='';
+var ID_OPEN={}, ID_JUST='', ID_REVEAL=false;
+const ID_CATS=['작업점검','공통·시설','소방','사다리','TBM','기타사항'];
+
+function openInspDash(){
+  if(S.screen!=='inspDash'){
+    var from=S.screen||'start';
+    S.idBack=(from==='preparing')?'start':from;
+  }
+  /* 메뉴로 들어오면 항상 범위 고르기부터 (사고 이력과 같은 이유) */
+  S.idStore='';S.idPicked=false;ID_QUERY='';save();
+  inspDash();
+}
+function closeInspDash(){
+  var back=S.idBack||'start';
+  if(back==='inspDash')back='start';
+  S.idBack='';S.screen=back;save();
+  render(back);
+}
+function inspDash(){
+  S.screen='inspDash';
+  ahEnsureStores();
+  if(!ID&&!ID_LOADING&&!ID_ERROR)loadInspDash();
+  /* 미점검 매장의 사고 건수에 쓴다. 실패해도 점검 현황 자체는 보여야 하므로 조용히 둔다. */
+  if(!AD&&!AD_LOADING&&!AD_ERROR)loadAccidentDashboard();
+  if(S.idStore)idStoreDetail();
+  else if(!S.idPicked)idLanding();
+  else idDashboard();
+}
+function loadInspDash(){
+  if(ID_LOADING)return;
+  ID_LOADING=true;ID_ERROR='';
+  gsRun('getInspectionDashboard').then(function(d){
+    ID=d||{};
+    if(!Array.isArray(ID.inspections))ID.inspections=[];
+    if(!Array.isArray(ID.issues))ID.issues=[];
+  }).catch(function(err){
+    var msg=(err&&err.message)?err.message:String(err);
+    if(/허용되지 않은 요청|함수를 찾을 수 없습니다/.test(msg)){
+      msg='앱스크립트 서버가 아직 옛 버전입니다. Code.gs · Sheets.gs · Drive.gs 를 붙여넣고 '
+        +'[배포 관리 → 연필 → 새 버전]으로 다시 배포해 주세요. ('+msg+')';
+    }
+    ID_ERROR=msg;
+  }).then(function(){
+    ID_LOADING=false;
+    if(S.screen==='inspDash')inspDash();
+  });
+}
+function idReload(){ID=null;ID_ERROR='';loadInspDash();inspDash()}
+
+/* ---------- 범위·기간 (고르는 중 / 확정 분리: 사고 이력과 같은 방식) ---------- */
+function idScope(){var s=S.idScope||{};return {v:s.v||'',p:s.p||'',t:s.t||''}}
+function idStart(v){
+  /* 매장 기억(S.idStore)도 지운다. 안 지우면 범위를 골라도 직전에 본 매장 상세가 다시 뜬다. */
+  S.idScope={v:v||'',p:'',t:''};S.idPicked=true;S.idApplied=null;S.idStore='';ID_OPEN={};save();inspDash();
+}
+function idBackToPick(){S.idPicked=false;save();inspDash()}
+function idPickScope(level,value){
+  var s=idScope();
+  if(level==='v')s={v:value,p:'',t:''};
+  else if(level==='p')s={v:s.v,p:value,t:''};
+  else s={v:s.v,p:s.p,t:value};
+  S.idScope=s;save();inspDash();
+}
+function idUpTo(level){
+  var s=idScope();
+  if(level==='root')S.idScope={v:'',p:'',t:''};
+  else if(level==='v')S.idScope={v:s.v,p:'',t:''};
+  else if(level==='p')S.idScope={v:s.v,p:s.p,t:''};
+  save();inspDash();
+}
+function idSetPeriod(p){
+  S.idPeriod=p;
+  if(p==='custom'){
+    var now=new Date();
+    if(!S.idFrom)S.idFrom=now.getFullYear()+'-01-01';
+    if(!S.idTo)S.idTo=adYmd(now);
+  }
+  save();inspDash();
+}
+function idSetDate(which,v){if(which==='from')S.idFrom=String(v||'');else S.idTo=String(v||'');save();inspDash()}
+function idDraftRange(){return adRange(S.idPeriod||'year',S.idFrom,S.idTo)}
+function idAppliedCond(){
+  var a=S.idApplied;
+  if(a)return {v:a.v||'',p:a.p||'',t:a.t||'',range:adRange(a.period,a.from,a.to)};
+  var s=idScope();return {v:s.v,p:s.p,t:s.t,range:idDraftRange()};
+}
+function idDirty(){
+  var a=S.idApplied;if(!a)return false;
+  var s=idScope(),p=S.idPeriod||'year';
+  if(a.v!==s.v||a.p!==s.p||a.t!==s.t||a.period!==p)return true;
+  return p==='custom'&&(a.from!==(S.idFrom||'')||a.to!==(S.idTo||''));
+}
+function idApply(){
+  var p=S.idPeriod||'year';
+  if(p==='custom'){
+    if(!S.idFrom||!S.idTo)return uiError('시작일과 종료일을 모두 고르세요');
+    if(S.idFrom>S.idTo)return uiError('시작일이 종료일보다 늦습니다');
+  }
+  var s=idScope();
+  S.idApplied={v:s.v,p:s.p,t:s.t,period:p,from:S.idFrom||'',to:S.idTo||''};
+  save();ID_OPEN={};
+  ID_REVEAL=true;inspDash();ID_REVEAL=false;
+  requestAnimationFrame(function(){
+    var el=document.getElementById('idResult');
+    if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+}
+/* 범위에 드는 매장 목록(매장 탭 기준). 점검률의 분모다. */
+function idStoresIn(c){
+  return (STORE_LIST||[]).filter(function(r){
+    return adMatch(r.division,c.v)&&adMatch(r.dept,c.p)&&adMatch(r.team,c.t);
+  });
+}
+function idInspIn(c){
+  if(!ID)return [];
+  return ID.inspections.filter(function(r){
+    return adInRange(r.d,c.range)&&adMatch(r.v,c.v)&&adMatch(r.p,c.p)&&adMatch(r.t,c.t);
+  });
+}
+/* 그 점검들에서 나온 지적. 점검ID로 묶는다(같은 매장의 다른 날 지적이 섞이지 않게). */
+function idIssuesOf(ins){
+  if(!ID)return [];
+  var ids={};ins.forEach(function(r){if(r.i)ids[r.i]=true});
+  return ID.issues.filter(function(x){return x.i&&ids[x.i]});
+}
+function idGradeOf(sc,g){
+  if(g)return String(g);
+  var n=Number(sc);if(sc===''||sc==null||!isFinite(n))return '';
+  return n>=90?'A':n>=70?'B':n>=50?'C':'D';
+}
+function idGradeTag(g){return g?'<span class="id-g g'+esc(g)+'">'+esc(g)+'</span>':''}
+function idDaysSince(d){
+  if(!d)return 0;
+  var t=new Date(d+'T00:00:00').getTime();if(!isFinite(t))return 0;
+  return Math.max(0,Math.floor((Date.now()-t)/86400000));
+}
+
+/* ---------- 집계 ---------- */
+function idAgg(c){
+  var ins=idInspIn(c), iss=idIssuesOf(ins), stores=idStoresIn(c);
+  var storeSet={};ins.forEach(function(r){storeSet[r.s]=true});
+  var inspected=Object.keys(storeSet).length;
+  /* 평균 점수와 등급은 «매장별 가장 최근 점검»으로 센다. 같은 매장을 세 번 점검했다고
+     그 매장이 세 번 세지면 전체 수준이 실제보다 그 매장 쪽으로 쏠린다. */
+  var latest={};
+  ins.forEach(function(r){if(!latest[r.s]||String(r.d)>String(latest[r.s].d))latest[r.s]=r});
+  var scores=[],grades={A:0,B:0,C:0,D:0};
+  Object.keys(latest).forEach(function(k){
+    var r=latest[k],n=Number(r.sc);
+    if(r.sc!==''&&r.sc!=null&&isFinite(n))scores.push(n);
+    var g=idGradeOf(r.sc,r.g);if(grades[g]!=null)grades[g]++;
+  });
+  var avg=scores.length?Math.round(scores.reduce(function(a,b){return a+b},0)/scores.length):null;
+  var open=iss.filter(function(x){return x.o});
+  var byMonth={};ins.forEach(function(r){var m=String(r.d||'').slice(0,7);if(m.length===7)byMonth[m]=(byMonth[m]||0)+1});
+  var byCat={};iss.forEach(function(x){var k=x.c||'기타사항';byCat[k]=(byCat[k]||0)+1});
+  var cats=Object.keys(byCat).map(function(k){return {name:k,n:byCat[k]}})
+    .sort(function(a,b){return b.n-a.n||ID_CATS.indexOf(a.name)-ID_CATS.indexOf(b.name)});
+  var byItem={};
+  iss.forEach(function(x){
+    var name=x.m+(x.x?' · '+x.x:'');var k=x.c+'|'+name;
+    if(!byItem[k])byItem[k]={name:name,cat:x.c,n:0};byItem[k].n++;
+  });
+  var items=Object.keys(byItem).map(function(k){return byItem[k]}).sort(function(a,b){return b.n-a.n});
+  /* 미조치: 매장별 건수 + 가장 오래 남은 지적이 처음 나온 날 */
+  var byOpen={};
+  open.forEach(function(x){
+    if(!byOpen[x.s])byOpen[x.s]={store:x.s,n:0,oldest:x.d};
+    byOpen[x.s].n++;
+    if(x.d&&(!byOpen[x.s].oldest||x.d<byOpen[x.s].oldest))byOpen[x.s].oldest=x.d;
+  });
+  var openStores=Object.keys(byOpen).map(function(k){
+    var o=byOpen[k];o.days=idDaysSince(o.oldest);o.last=latest[k]?latest[k].d:'';o.org=latest[k]||{};return o;
+  }).sort(function(a,b){return b.n-a.n||b.days-a.days});
+  var low=Object.keys(latest).map(function(k){return latest[k]})
+    .filter(function(r){return r.sc!==''&&r.sc!=null&&isFinite(Number(r.sc))})
+    .sort(function(a,b){return Number(a.sc)-Number(b.sc)});
+  /* 미점검: 범위 안 매장 중 이 기간에 점검이 없는 곳. 사고 많은 곳부터. */
+  var accBy={};
+  if(AD&&AD.rows)AD.rows.forEach(function(r){accBy[r.s]=(accBy[r.s]||0)+1});
+  var notYet=stores.filter(function(r){return !storeSet[r.store]})
+    .map(function(r){return {store:r.store,dept:r.dept,team:r.team,acc:accBy[r.store]||0}})
+    .sort(function(a,b){return b.acc-a.acc||a.store.localeCompare(b.store)});
+  return {ins:ins,iss:iss,open:open,inspected:inspected,storeTotal:stores.length,avg:avg,grades:grades,
+    byMonth:byMonth,cats:cats,items:items,openStores:openStores,low:low,notYet:notYet,
+    notYetAcc:notYet.filter(function(x){return x.acc>0}).length};
+}
+
+/* ---------- 접히는 항목 ---------- */
+function idToggle(key){ID_OPEN[key]=!ID_OPEN[key];ID_JUST=ID_OPEN[key]?key:'';inspDash();ID_JUST=''}
+function idAcc(key,title,line,body){
+  var open=!!ID_OPEN[key];
+  return '<section class="ad-acc'+(open?' open':'')+(open&&ID_JUST===key?' opening':'')+'">'
+    +'<button class="ad-acc-head" onclick="idToggle(\''+key+'\')" aria-expanded="'+(open?'true':'false')+'">'
+    +'<span><b>'+title+'</b><small>'+line+'</small></span><i>⌄</i></button>'
+    +(open?'<div class="ad-acc-body">'+body+'</div>':'')+'</section>';
+}
+function idSearchBar(){
+  return '<div class="ad-search"><span aria-hidden="true">🔍</span>'
+    +'<input id="idQ" type="search" placeholder="매장명으로 바로 찾기 (2글자 이상)" value="'+esc(ID_QUERY)+'" oninput="idSearch(this.value)">'
+    +'</div><div id="idCandidates">'+(ID_QUERY.trim().length>=2?ahCandidatesHtml(ID_QUERY,'idPick'):'')+'</div>';
+}
+/* 검색칸은 후보만 갈아끼운다(전체를 다시 그리면 글자마다 키보드가 닫힌다) */
+function idSearch(v){ID_QUERY=v;var el=$('#idCandidates');if(el)el.innerHTML=ahCandidatesHtml(v,'idPick')}
+function idPick(i){var r=(STORE_LIST||[])[i];if(!r||!r.store)return;idPickByName(r.store)}
+function idPickByName(name){if(!name)return;S.idStore=String(name);ID_QUERY='';save();inspDash()}
+function idBackToDash(){S.idStore='';save();inspDash()}
+
+/* ---------- ① 첫 화면 ---------- */
+function idLanding(){
+  var c={v:'',p:'',t:'',range:idDraftRange()};
+  var ins=idInspIn(c);
+  var inspected={},byDiv={};
+  ins.forEach(function(r){inspected[r.s]=true});
+  (STORE_LIST||[]).forEach(function(r){
+    var v=String(r.division||'').trim();if(!v)return;
+    if(!byDiv[v])byDiv[v]={total:0,done:0};
+    byDiv[v].total++;if(inspected[r.store])byDiv[v].done++;
+  });
+  var total=(STORE_LIST||[]).length||Number(ID&&ID.storeCount||0);
+  var done=(STORE_LIST||[]).filter(function(r){return inspected[r.store]}).length;
+  var pct=function(a,b){return b?Math.round(a/b*100):0};
+  var wait=!ID?(ID_LOADING?'집계 중':'-'):null;
+
+  var h='<div class="card"><h2>어느 범위를 볼까요?</h2>'
+    +'<p class="muted">'+esc(adPeriodLabel(S.idPeriod||'year'))+' 점검 실적입니다. 기간은 다음 화면에서 바꿀 수 있습니다.</p>';
+  h+='<button class="ad-pick all id-pick" onclick="idStart(\'\')"><span><b>전사</b>'
+    +'<small>'+(total?Number(total).toLocaleString()+'개 매장 중 '+done+'곳 점검':'전체 매장')+'</small>'
+    +'<span class="id-rate"><i style="width:'+pct(done,total)+'%"></i></span></span>'
+    +'<em>'+(wait||pct(done,total)+'%')+'<small>'+(ID?'점검 '+ins.length+'건':'')+'</small></em></button>';
+  var names=Object.keys(byDiv).sort(function(a,b){return byDiv[b].total-byDiv[a].total||a.localeCompare(b)});
+  if(names.length){
+    h+='<div class="ad-pick-grid">';
+    names.forEach(function(v){
+      var x=byDiv[v];
+      h+='<button class="ad-pick id-pick" onclick="idStart('+adQ(v)+')"><span><b>'+esc(v)+'</b>'
+        +'<small>'+Number(x.total).toLocaleString()+'곳 중 '+x.done+'곳</small>'
+        +'<span class="id-rate"><i style="width:'+pct(x.done,x.total)+'%"></i></span></span>'
+        +'<em>'+(wait||pct(x.done,x.total)+'%')+'</em></button>';
+    });
+    h+='</div>';
+  }else if(AH_STORES_LOADING){
+    h+='<div class="loading-notice">부문 목록을 불러오는 중입니다...</div>';
+  }
+  if(ID_ERROR&&!ID){
+    h+='<div class="notice" style="margin-top:10px">'+esc(ID_ERROR)+'</div>'
+      +'<button class="secondary wide" onclick="idReload()">다시 시도</button>';
+  }
+  h+='</div>';
+  h+='<p class="ad-pick-sub">매장명을 알면 바로 찾을 수도 있습니다</p>'+idSearchBar();
+  h+='<div class="navrow"><button class="secondary" onclick="closeInspDash()">← 돌아가기</button>'
+    +'<button class="primary" onclick="idStart(\'\')">전사로 보기 →</button></div>';
+  frame(h,'점검 현황','현장 안전보건 점검 결과를 모아봅니다');
+}
+
+/* ---------- ② 대시보드 ---------- */
+function idNextLevel(){
+  var s=idScope();if(s.t)return null;
+  var level=s.p?'t':(s.v?'p':'v');
+  var key=level==='v'?'division':(level==='p'?'dept':'team');
+  var range=idDraftRange(),inspected={};
+  idInspIn({v:s.v,p:s.p,t:'',range:range}).forEach(function(r){inspected[r.s]=true});
+  var map={};
+  (STORE_LIST||[]).forEach(function(r){
+    if(!adMatch(r.division,s.v)||!adMatch(r.dept,s.p))return;
+    var val=String(r[key]||'').trim();if(!val)return;
+    if(!map[val])map[val]={total:0,done:0};
+    map[val].total++;if(inspected[r.store])map[val].done++;
+  });
+  var items=Object.keys(map).map(function(k){return {name:k,total:map[k].total,done:map[k].done}})
+    .sort(function(a,b){return b.total-a.total||a.name.localeCompare(b.name)});
+  return {level:level,items:items};
+}
+function idDashboard(){
+  var h='';
+  if(ID_LOADING&&!ID){
+    h+='<div class="card"><div class="loading-notice">점검 기록을 읽고 있습니다...</div></div>'+idNavRow();
+    frame(h,'점검 현황','현장 안전보건 점검 결과를 모아봅니다');return;
+  }
+  if(ID_ERROR&&!ID){
+    h+='<div class="card"><h2>불러오지 못했습니다</h2><div class="notice">'+esc(ID_ERROR)+'</div>'
+      +'<button class="primary wide" onclick="idReload()">다시 시도</button></div>'+idNavRow();
+    frame(h,'점검 현황','연결 확인이 필요합니다');return;
+  }
+  var s=idScope();
+  var scopeStores=idStoresIn({v:s.v,p:s.p,t:s.t}).length;
+  h+='<div class="card"><div class="summary"><h2>조회 조건</h2>'
+    +'<span class="ad-note">매장 '+Number(scopeStores).toLocaleString()+'개</span></div>';
+  h+='<div class="ad-lbl">범위</div><div class="ad-crumb">';
+  h+='<button class="'+(!s.v?'on':'')+'" onclick="idUpTo(\'root\')">전사</button>';
+  if(s.v)h+='<i>›</i><button class="'+(!s.p?'on':'')+'" onclick="idUpTo(\'v\')">'+esc(s.v)+'</button>';
+  if(s.p)h+='<i>›</i><button class="'+(!s.t?'on':'')+'" onclick="idUpTo(\'p\')">'+esc(s.p)+'</button>';
+  if(s.t)h+='<i>›</i><button class="on" onclick="idUpTo(\'p\')">'+esc(s.t)+'</button>';
+  h+='</div>';
+  var next=idNextLevel();
+  if(next&&next.items.length){
+    h+='<div class="ad-level">';
+    next.items.forEach(function(it){
+      var pc=it.total?Math.round(it.done/it.total*100):0;
+      h+='<button onclick="idPickScope(\''+next.level+'\','+adQ(it.name)+')"><b>'+esc(it.name)+'</b>'
+        +'<span>'+it.done+'/'+it.total+' · '+pc+'%</span></button>';
+    });
+    h+='</div>';
+  }
+  var per=S.idPeriod||'year';
+  h+='<div class="ad-lbl">기간</div><div class="ad-period">';
+  ['month','year','1y','custom'].forEach(function(p){
+    h+='<button class="'+(per===p?'on':'')+'" onclick="idSetPeriod(\''+p+'\')">'+adPeriodLabel(p)+'</button>';
+  });
+  h+='</div>';
+  if(per==='custom'){
+    h+='<div class="ad-dates">'
+      +'<input type="date" aria-label="시작일" value="'+esc(S.idFrom||'')+'" onchange="idSetDate(\'from\',this.value)">'
+      +'<span>~</span>'
+      +'<input type="date" aria-label="종료일" value="'+esc(S.idTo||'')+'" onchange="idSetDate(\'to\',this.value)">'
+      +'</div>';
+  }
+  var dirty=idDirty();
+  h+='<button class="primary wide ad-go'+(dirty?' dirty':'')+'" onclick="idApply()">'
+    +(S.idApplied?(dirty?'바뀐 조건으로 조회하기':'다시 조회하기'):'조회하기')+'</button>';
+  h+='<p class="ad-hint">'+(dirty?'조건이 바뀌었습니다. 조회하기를 누르면 아래 결과가 바뀝니다.'
+    :(S.idApplied?'':'조건을 고르고 조회하기를 누르면 아래에 결과가 펼쳐집니다.'))+'</p></div>';
+
+  if(S.idApplied)h+=idResultHtml();
+
+  h+='<p class="ad-pick-sub">매장명을 알면 바로 찾을 수도 있습니다</p>'+idSearchBar();
+  h+=idNavRow();
+  frame(h,'점검 현황','현장 안전보건 점검 결과를 모아봅니다');
+}
+function idNavRow(){
+  var stamp=(ID&&ID.generatedAt)?('기준 '+esc(ID.generatedAt)):'';
+  return '<div class="navrow"><button class="secondary" onclick="idBackToPick()">← 범위 선택</button>'
+    +'<button class="primary" onclick="idReload()"'+(ID_LOADING?' disabled':'')+'>'+(ID_LOADING?'불러오는 중...':'새로고침')+'</button></div>'
+    +(stamp?'<p class="muted" style="text-align:center;margin:8px 0 0">'+stamp+' · 새 점검을 제출하면 바로 반영됩니다</p>':'');
+}
+function idStoreBtn(rank,top,name,sub,right,rightSub,onclick){
+  return '<button class="ad-store'+(top?' top':'')+'" onclick="'+onclick+'">'
+    +'<i>'+rank+'</i><span><b>'+esc(name)+'</b><small>'+sub+'</small></span>'
+    +'<em><b>'+right+'</b>'+(rightSub?'<small>'+rightSub+'</small>':'')+'</em></button>';
+}
+function idResultHtml(){
+  var c=idAppliedCond(),a=idAgg(c),r=c.range;
+  var label=c.t||c.p||c.v||'전사';
+  var pc=a.storeTotal?Math.round(a.inspected/a.storeTotal*100):0;
+  var h='<div id="idResult" class="'+(ID_REVEAL?'ad-reveal':'')+'">';
+  h+='<div class="card"><div class="summary"><h2>'+esc(label)+' 요약</h2>'
+    +'<span class="pill">점검 '+a.ins.length+'건</span></div>'
+    +'<p class="ad-cond">'+esc((r.from||'처음')+' ~ '+(r.to||'오늘'))+' ('+esc(r.label)+')</p>';
+  h+='<div class="id-sum">'
+    +'<div><b>'+a.inspected+'<em>/'+a.storeTotal+'</em></b><small>점검한 매장 ('+pc+'%)</small></div>'
+    +'<div class="gd"><b>'+(a.avg==null?'-':a.avg+'점')+'</b><small>평균 종합점수</small></div>'
+    +'<div><b>'+a.iss.length+'</b><small>지적사항</small></div>'
+    +'<div class="hl"><b>'+a.open.length+'</b><small>미조치 지적</small></div></div>';
+  if(!a.ins.length)h+='<div class="ah-empty"><b>이 범위·기간에 점검 기록이 없습니다</b><span>기간을 «직접 선택»으로 넓히거나 상위 범위로 올라가 보세요.</span></div>';
+  h+='</div>';
+
+  if(a.ins.length){
+    /* 월별 점검 추이 */
+    var bars=adMonthlyBars({byMonth:a.byMonth},r);
+    if(bars.length){
+      var max=bars.reduce(function(m,x){return Math.max(m,x.n)},0)||1;
+      var peak=bars.reduce(function(p,b){return b.n>p.n?b:p},bars[0]);
+      var bb='<div class="ad-bars">';
+      bars.forEach(function(x){
+        bb+='<div class="ad-bar"><small>'+x.n+'</small><i class="'+(x.n&&x.n===peak.n?'peak id':'')+'" style="height:'
+          +Math.max(x.n?6:2,Math.round(x.n/max*72))+'px"></i><span>'+esc(x.label)+'</span></div>';
+      });
+      bb+='</div>';
+      h+=idAcc('trend',(bars.unit==='year'?'연도별':'월별')+' 점검 추이',peak.n?esc(peak.label)+'에 '+peak.n+'건으로 가장 많음':'점검 없음',bb);
+    }
+    /* 등급 분포 */
+    var g=a.grades,gsum=g.A+g.B+g.C+g.D;
+    var gb='<div class="id-grade">'
+      +'<div class="gA"><b>'+g.A+'</b><small>A · 90점↑</small></div>'
+      +'<div class="gB"><b>'+g.B+'</b><small>B · 70점↑</small></div>'
+      +'<div class="gC"><b>'+g.C+'</b><small>C · 50점↑</small></div>'
+      +'<div class="gD"><b>'+g.D+'</b><small>D · 50점↓</small></div></div>'
+      +'<p class="notice" style="margin:9px 0 0">같은 매장을 여러 번 점검했으면 «가장 최근 점검» 등급으로 셉니다.'
+      +(gsum<a.inspected?' 점수가 기록되기 전(2026-08 이전) 점검 '+(a.inspected-gsum)+'곳은 빠집니다.':'')+'</p>';
+    h+=idAcc('grade','등급 분포',gsum?('D등급 '+g.D+'곳 · C등급 '+g.C+'곳'):'점수 기록 없음',gb);
+    /* 분야별 지적 */
+    if(a.iss.length){
+      var cmax=a.cats[0].n||1,cb='<div class="ad-rank">';
+      a.cats.forEach(function(t,i){
+        cb+='<div><div class="ad-rank-l"><span>'+esc(t.name)+'</span><span>'+t.n+'건</span></div>'
+          +'<div class="ad-rank-t"><i style="width:'+Math.max(4,Math.round(t.n/cmax*100))+'%;background:'+adRankColor(i)+'"></i></div></div>';
+      });
+      cb+='</div><div class="id-sub">자주 나온 지적 TOP 5</div><div class="ad-stores">';
+      a.items.slice(0,5).forEach(function(x,i){
+        cb+='<div class="ad-store'+(i===0?' top':'')+'" role="listitem"><i>'+(i+1)+'</i><span><b>'+esc(x.name)+'</b><small>'+esc(x.cat)+'</small></span><em><b>'+x.n+'건</b></em></div>';
+      });
+      cb+='</div>';
+      h+=idAcc('cats','분야별 지적',esc(a.cats[0].name)+' '+a.cats[0].n+'건으로 가장 많음',cb);
+    }
+    /* 미조치 */
+    if(a.openStores.length){
+      var ob='<div class="ad-stores">';
+      a.openStores.slice(0,10).forEach(function(x,i){
+        ob+=idStoreBtn(i+1,i===0,x.store,esc([x.org.p,x.org.t].filter(Boolean).join(' · ')+(x.last?' · 마지막 점검 '+x.last.slice(5):'')),
+          x.n+'건','최장 '+x.days+'일째','idPickByName('+adQ(x.store)+')');
+      });
+      ob+='</div><p class="notice" style="margin:9px 0 0">«최장 ○일째»는 가장 오래 남은 지적사항이 처음 나온 날부터 센 날짜입니다.</p>';
+      h+=idAcc('open','미조치 지적사항',a.open.length+'건 · '+esc(a.openStores[0].store)+' '+a.openStores[0].n+'건 가장 많음',ob);
+    }
+    /* 점수 낮은 매장 */
+    if(a.low.length){
+      var lb='<div class="ad-stores">';
+      a.low.slice(0,10).forEach(function(x,i){
+        var gr=idGradeOf(x.sc,x.g);
+        lb+=idStoreBtn(i+1,i===0,x.s,esc([x.p,x.t].filter(Boolean).join(' · ')+' · '+String(x.d||'').slice(5)),
+          Number(x.sc)+'점 '+idGradeTag(gr),'','idPickByName('+adQ(x.s)+')');
+      });
+      lb+='</div>';
+      h+=idAcc('low','점수 낮은 매장','1위 '+esc(a.low[0].s)+' '+Number(a.low[0].sc)+'점'+(idGradeOf(a.low[0].sc,a.low[0].g)?' ('+idGradeOf(a.low[0].sc,a.low[0].g)+')':''),lb);
+    }
+  }
+  /* 미점검 매장 (점검이 0건이어도 의미가 있으므로 바깥에 둔다) */
+  if(a.storeTotal){
+    var nb='<p class="muted" style="margin-top:0">사고이력이 있는 매장을 먼저 보여줍니다. 다음 점검 순서를 정할 때 씁니다.</p>';
+    if(!AD&&AD_LOADING)nb+='<div class="loading-notice">사고 원장을 읽고 있습니다. 끝나면 사고 건수가 붙습니다.</div>';
+    nb+='<div class="ad-stores">';
+    a.notYet.slice(0,15).forEach(function(x){
+      nb+=idStoreBtn(x.acc?'!':'·',x.acc>0&&x===a.notYet[0],x.store,esc([x.dept,x.team].filter(Boolean).join(' · ')),
+        x.acc?'사고 '+x.acc+'건':'사고 없음','','idPickByName('+adQ(x.store)+')');
+    });
+    nb+='</div>';
+    if(a.notYet.length>15)nb+='<p class="muted">앞 15곳만 표시했습니다 (전체 '+a.notYet.length+'곳).</p>';
+    h+=idAcc('notyet','아직 점검하지 않은 매장',a.notYet.length+'곳'+(AD?' · 그중 사고이력 있는 곳 '+a.notYetAcc+'곳':''),nb);
+  }
+  /* 최근 점검 */
+  if(a.ins.length){
+    var rb='',recent=a.ins.slice(0,5);
+    recent.forEach(function(x){
+      var gr=idGradeOf(x.sc,x.g);
+      rb+='<article class="id-rc"><div class="summary"><b>'+esc(x.s)+'</b>'+idGradeTag(gr)+'</div>'
+        +'<small>'+esc(x.d||'')+' · '+esc(x.n||'점검자 미기록')+(x.sc!==''&&x.sc!=null?' · '+Number(x.sc)+'점':'')+'</small>'
+        +idChips(x)
+        +'<div class="id-btns">'+(x.pdf?'<a class="secondary" href="'+esc(x.pdf)+'" target="_blank" rel="noopener">결과 PDF</a>':'<span class="secondary disabled">PDF 없음</span>')
+        +'<button class="secondary" onclick="idPickByName('+adQ(x.s)+')">매장 상세 →</button></div></article>';
+    });
+    h+=idAcc('recent','최근 점검','최신 '+esc(String(recent[0].d||'').slice(5))+' '+esc(recent[0].s)+(recent[0].n?' · '+esc(recent[0].n):''),rb);
+  }
+  h+='</div>';
+  return h;
+}
+function idChips(x){
+  var it=[['작업',x.w],['사다리',x.l],['시설',x.f],['TBM',x.b]];
+  return '<div class="id-chips">'+it.map(function(p){var n=Number(p[1])||0;return '<span'+(n?' class="bad"':'')+'>'+p[0]+' '+n+'</span>'}).join('')+'</div>';
+}
+
+/* ---------- ③ 매장 상세 ---------- */
+var ID_EXPAND={};   /* 펼친 점검 기록 (점검ID) */
+function idToggleRec(i){ID_EXPAND[i]=!ID_EXPAND[i];inspDash()}
+function idStoreOrg(store){
+  var hit=(STORE_LIST||[]).find(function(r){return r.store===store});
+  if(hit)return {v:hit.division||'',p:hit.dept||'',t:hit.team||''};
+  var r=ID&&ID.inspections.find(function(x){return x.s===store});
+  return r?{v:r.v||'',p:r.p||'',t:r.t||''}:{v:'',p:'',t:''};
+}
+function idStoreDetail(){
+  var store=S.idStore,org=idStoreOrg(store);
+  var sub=[org.v,org.p,org.t].filter(Boolean).join(' · ')||AD_UNKNOWN;
+  var h='';
+  if(ID_LOADING&&!ID){h+='<div class="card"><div class="loading-notice">점검 기록을 읽고 있습니다...</div></div>'+idDetailNav(store);frame(h,esc(store),sub);return}
+  if(ID_ERROR&&!ID){h+='<div class="card"><div class="notice">'+esc(ID_ERROR)+'</div><button class="primary wide" onclick="idReload()">다시 시도</button></div>'+idDetailNav(store);frame(h,esc(store),sub);return}
+
+  /* 매장 상세는 기간을 자르지 않는다. «이 매장 점검이 어떻게 흘러왔나»를 보는 화면이다. */
+  var ins=(ID.inspections||[]).filter(function(r){return r.s===store})
+    .sort(function(a,b){return String(b.d).localeCompare(String(a.d))});
+  var iss=(ID.issues||[]).filter(function(x){return x.s===store});
+  var open=iss.filter(function(x){return x.o}).length;
+  var scored=ins.filter(function(r){return r.sc!==''&&r.sc!=null&&isFinite(Number(r.sc))});
+  var last=scored[0],first=scored[scored.length-1];
+  var diff=(last&&first&&last!==first)?Number(last.sc)-Number(first.sc):null;
+
+  h+='<div class="card"><div class="id-sum">'
+    +'<div><b>'+ins.length+'회</b><small>점검 횟수</small></div>'
+    +'<div class="gd"><b>'+(last?Number(last.sc)+'점 '+idGradeTag(idGradeOf(last.sc,last.g)):'-')+'</b><small>최근 점수</small></div>'
+    +'<div><b>'+(diff==null?'-':(diff>0?'+':'')+diff)+'</b><small>첫 점검 대비</small></div>'
+    +'<div class="hl"><b>'+open+'</b><small>미조치 지적</small></div></div>';
+  if(scored.length>1){
+    var asc=scored.slice().reverse().slice(-6);
+    h+='<div class="id-sub">점수 추이</div><div class="id-trend">';
+    asc.forEach(function(r,i){
+      var n=Number(r.sc),isLast=i===asc.length-1;
+      h+='<div><em style="height:'+Math.max(6,Math.round(n*0.6))+'px" class="'+(isLast?'now':(n<50?'low':''))+'"></em>'
+        +'<b>'+n+'점</b><span>'+esc(String(r.d||'').slice(5))+'</span></div>';
+    });
+    h+='</div>';
+  }
+  if(!ins.length)h+='<div class="ah-empty"><b>이 매장은 아직 점검 기록이 없습니다</b><span>아래 «이 매장 점검 시작»으로 바로 시작할 수 있습니다.</span></div>';
+  h+='</div>';
+
+  if(ins.length){
+    h+='<div class="card"><h2>점검 기록</h2><div class="id-tl">';
+    ins.forEach(function(r,idx){
+      var mine=iss.filter(function(x){return x.i===r.i});
+      var done=mine.filter(function(x){return !x.o}).length;
+      var expanded=idx===0||!!ID_EXPAND[r.i];
+      var gr=idGradeOf(r.sc,r.g);
+      h+='<div class="id-tli'+(idx===0?' latest':'')+'">'
+        +'<div class="summary"><b>'+esc(r.d||'날짜 없음')+'</b><span>'+(r.sc!==''&&r.sc!=null?'<strong>'+Number(r.sc)+'</strong>점 ':'')+idGradeTag(gr)+'</span></div>'
+        +'<small>'+esc(r.n||'점검자 미기록')+(idx===0?' · 가장 최근':' · 지적 '+mine.length+'건 중 '+done+'건 조치완료')+'</small>';
+      if(expanded){
+        h+=idChips(r);
+        if(mine.length){
+          h+='<div class="id-iss">';
+          mine.forEach(function(x){
+            h+='<div class="'+(x.o?'open':'done')+'"><span>'+esc(x.m+(x.x?' · '+x.x:''))+'</span><em>'+(x.o?'조치대기':'조치완료')+'</em></div>';
+          });
+          h+='</div>';
+        }else h+='<p class="muted" style="margin:8px 0 0">지적사항이 없었습니다.</p>';
+      }
+      h+='<div class="id-btns">'
+        +(r.pdf?'<a class="secondary" href="'+esc(r.pdf)+'" target="_blank" rel="noopener">결과 PDF</a>':'<span class="secondary disabled">PDF 없음</span>')
+        +(idx===0
+          ?(r.fd?'<a class="secondary" href="'+esc(r.fd)+'" target="_blank" rel="noopener">점검 폴더</a>':'<span class="secondary disabled">폴더 없음</span>')
+          :'<button class="secondary" onclick="idToggleRec('+adQ(r.i)+')">'+(expanded?'접기 ⌃':'펼쳐보기 ⌄')+'</button>')
+        +'</div></div>';
+    });
+    h+='</div></div>';
+  }
+
+  /* 사고 이력과 연결 */
+  var acc=(AD&&AD.rows)?AD.rows.filter(function(x){return x.s===store}).length:null;
+  h+='<button class="card id-link" onclick="idToAccident('+adQ(store)+')"><span>이 매장 사고 이력</span>'
+    +'<b class="pill'+(acc?' bad':'')+'">'+(acc==null?'보기':'사고 '+acc+'건')+' →</b></button>';
+  h+=idDetailNav(store);
+  frame(h,esc(store),sub);
+}
+function idDetailNav(store){
+  return '<div class="navrow"><button class="secondary" onclick="idBackToDash()">← 점검 현황</button>'
+    +'<button class="primary" onclick="idStartInspection('+adQ(store)+')">이 매장 점검 시작</button></div>';
+}
+/* 점검 현황 → 사고 이력(그 매장 상세). 사고 이력에서 «돌아가기»를 누르면 다시 이 화면으로 온다. */
+function idToAccident(store){
+  S.ahBack='inspDash';S.ahStore=String(store||'');S.adPicked=true;AH_QUERY='';save();
+  accidentHistory();
+}
+/* «이 매장 점검 시작»: 시작 화면에 부문·부서·팀·매장을 미리 채워 두고 넘어간다.
+   점검자와 점검일은 사람이 고르게 둔다(누가 언제 점검하는지는 자동으로 정할 수 없다).
+   진행 중인 점검이 있으면 그걸 덮어쓰지 않도록 먼저 묻는다. */
+function idStartInspection(store){
+  var r=(STORE_LIST||[]).find(function(x){return x.store===store});
+  if(!r){toast('매장 목록에서 이 매장을 찾지 못했습니다');return}
+  var busy=S.store&&S.store.name&&!S.submittedAt&&['work','ladder','common','fire','tbm','voice','other','accident','tasks','solution','history'].indexOf(S.idBack)>=0;
+  if(busy&&!confirm('진행 중인 점검('+S.store.name+')이 있습니다.\n시작 화면으로 가도 저장된 내용은 남아 있지만, 새 매장으로 시작하면 지금 점검은 사라집니다.\n계속할까요?'))return;
+  SEL.division=r.division||'';SEL.dept=r.dept||'';SEL.team=r.team||'';SEL.store=r.store;
+  S.idBack='';S.idStore='';save();
+  start();
+  toast(r.store+' 을(를) 골라 두었습니다. 점검자와 날짜를 확인하세요');
+}
+
 /* ============ 대시보드 ============ */
 var DASH_PERIOD='all'; // 'all' | 'thisMonth' | 'lastMonth'
 var DASH_STORE='';     // 매장 이력조회에서 선택된 매장명
@@ -4387,7 +4985,7 @@ function loadDashStoreHistory(name){
     if(el)el.innerHTML='<div class="notice">이력을 불러오지 못했습니다: '+esc(err&&err.message?err.message:String(err))+'</div>';
   });
 }
-function render(x){({start,preparing:prepareSelectedStore,history:historyReview,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,solution:solutionReview,result:report,accidentHistory}[x]||start)()}
+function render(x){({start,preparing:prepareSelectedStore,history:historyReview,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,solution:solutionReview,result:report,accidentHistory,inspDash}[x]||start)()}
 try{
   render(S.screen);
   restorePersistedPhotos();
