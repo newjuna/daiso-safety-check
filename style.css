@@ -913,3 +913,39 @@ button{cursor:pointer}
   .hero-ver small{font-size:8px}
   .hero-ver b{font-size:11px}
 }
+
+/* 사고 이력 조회 화면 (메뉴 > 사고 이력)
+   점검 입력이 없는 읽기 전용 화면이라 사고조사 카드(.acc-*)와 섞지 않고
+   따로 .ah- 접두어를 쓴다. 입력 요소가 없으니 터치 타깃은 매장 후보 버튼만 48px 이상 둔다. */
+.ah-cands{display:grid;gap:6px;margin-top:4px;max-height:330px;overflow-y:auto;overscroll-behavior-y:contain}
+.ah-cand{width:100%;min-height:54px;padding:9px 11px;border:1px solid var(--line);border-radius:13px;background:#fff;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:9px;text-align:left}
+.ah-cand>span{display:grid;gap:2px;min-width:0}
+.ah-cand b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ah-cand small{font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ah-cand>strong{flex:none;color:#9299a5;font-size:14px}
+.ah-cand:active{transform:scale(.985)}
+.ah-cand.sel{border-color:var(--p);background:#eef1f8}
+.ah-cand.sel>strong{color:var(--p)}
+/* 전체/산재승인/손실일수 3칸 요약 */
+.ah-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.ah-sum>div{padding:11px 7px;border-radius:14px;background:#f7f7fa;text-align:center}
+.ah-sum b{display:block;font-size:20px;line-height:1.2}
+.ah-sum small{font-size:10.5px;font-weight:800;color:var(--muted)}
+/* 사고 한 건 카드 */
+.ah-item{border:1px solid var(--line);border-radius:16px;padding:12px 13px;margin:9px 0;background:#fff}
+.ah-item.approved{border-color:#ffc7d1;background:#fffafb}
+.ah-head{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:9px}
+.ah-head>div{display:grid;gap:2px;min-width:0}
+.ah-head small{font-size:10.5px;font-weight:800;color:var(--muted)}
+.ah-head b{font-size:15px;overflow-wrap:anywhere}
+.ah-tag{flex:none;font-size:10.5px;font-weight:900;padding:4px 9px;border-radius:999px;background:#f1f2f5;color:var(--muted);white-space:nowrap}
+.ah-tag.bad{background:#fff0f3;color:var(--bad)}
+.ah-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.ah-facts>span{min-width:0;padding:8px 9px;border-radius:11px;background:#f7f8fa;display:grid;gap:2px}
+.ah-facts small{font-size:10px;font-weight:900;color:var(--muted)}
+.ah-facts b{font-size:12.5px;overflow-wrap:anywhere}
+.ah-content{margin:9px 0 0;padding:10px 11px;border-radius:11px;background:#f7f8fa;font-size:13px;line-height:1.55}
+.ah-empty{padding:26px 14px;border:1.5px dashed #d5d7db;border-radius:16px;background:#fafafa;text-align:center;display:grid;gap:4px}
+.ah-empty b{font-size:14px}
+.ah-empty span{font-size:11.5px;color:var(--muted);line-height:1.5}
+@media(max-width:400px){.ah-facts{grid-template-columns:1fr}}
