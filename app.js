@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V10';
+const APP_VERSION='V11';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -167,7 +167,7 @@ const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 /* 과거 사진 미리보기(data URL)는 수십~수백 KB라 localStorage 상태에 넣으면
    모바일 저장 한도를 쉽게 넘는다. 저장 시 미리보기 필드는 항상 제외한다. */
 function stateForLocalStorage(){return JSON.stringify(S,function(k,v){return k==='photoPreviews'?undefined:v})}
-function clearLargeAppCaches(){['daiso_store_prep_v4','daiso_store_prep_v5','daiso_store_prep_v6','daiso_landscape_report_v1','daiso_store_list_compact_v1','daiso_store_list_compact_v2'].forEach(function(k){try{localStorage.removeItem(k)}catch(e){}})}
+function clearLargeAppCaches(){['daiso_store_prep_v4','daiso_store_prep_v5','daiso_store_prep_v6','daiso_landscape_report_v1','daiso_store_list_compact_v1','daiso_store_list_compact_v2','daiso_store_list_compact_v3'].forEach(function(k){try{localStorage.removeItem(k)}catch(e){}})}
 function save(){
   var value=stateForLocalStorage();
   try{localStorage.setItem(KEY,value);return true}catch(first){
@@ -534,7 +534,7 @@ function field(label,id,value='',type='text',extra=''){return `<div class="field
 /* ============ 매장 선택 (서버에서 실시간 조회) ============ */
 let STORE_LIST=null,STORE_LOADING=false; // 매장 목록 메모리 캐시
 /* v1 → v2 (2026-10-07): 매장 탭 배치가 바뀌었다. 휴대폰에 남은 옛 목록(열이 뒤섞인 것)을 버리게 한다. */
-const STORE_CACHE_KEY='daiso_store_list_compact_v3';   /* v3: 가맹점 제외 */
+const STORE_CACHE_KEY='daiso_store_list_compact_v4';   /* v3: 가맹점 제외 / v4: 폐점 매장 제외 */
 const PREP_CACHE_KEY='daiso_store_prep_v6'; /* v6: 사진 data URL을 localStorage에서 완전히 분리 */
 
 function normalizeStoreRows(list){return (list||[]).map(function(row){if(Array.isArray(row))return {division:row[0]||'',dept:row[1]||'',team:row[2]||'',store:row[3]||''};return row})}
