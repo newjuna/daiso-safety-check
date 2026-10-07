@@ -12,6 +12,25 @@
  */
 const $=s=>document.querySelector(s),root=$('#app'),KEY='daiso_safety_v9';
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+/* ============ 화면에 보여줄 배포 버전 ============
+   «깃허브에 올린 게 실제로 반영됐나»를 앱에서 바로 확인하려고
+   헤더 오른쪽(메뉴 버튼 왼쪽)에 «업데이트 날짜 + V번호»를 작게 표시한다.
+
+   ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
+     화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
+const APP_VERSION='V1';
+const APP_UPDATED='26-10-07';
+/* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
+   배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
+   위 APP_VERSION 을 깜빡 안 올렸을 때도 «파일이 바뀌었는지»는 이 숫자로 알 수 있다. */
+const APP_BUILD=(function(){
+  try{
+    var el=document.currentScript||[].slice.call(document.querySelectorAll('script')).pop();
+    var m=/[?&]v=(\d+)/.exec((el&&el.src)||'');
+    return m?m[1]:'';
+  }catch(e){return ''}
+})();
 /* 입고·하차 상단 정보는 TBM 시각(amTime/pmTime)처럼 "흔한 값"을 기본값으로 미리 채워둔다.
    점검자가 실제 값에 맞게 눌러서 고치면 그 값으로 덮어써진다(수정 가능, 강제 아님). */
 const INBOUND_DEFAULTS={delivery:'오전',inboundStart:'07:00',inboundEnd:'09:00',inboundStaff:'3',inboundHelpers:'2',inboundHelperOutAt:'09:00',inboundBoxes:'200'};
@@ -396,7 +415,10 @@ function frame(body,title='안전보건 현장진단',sub='모바일 현장점�
   const fixBar=(!SUPPRESS_FIX_BAR&&FIX_SCREENS.indexOf(S.screen)>=0)?fixBanner():'';
   SUPPRESS_FIX_BAR=false;
 
-  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div><div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="active" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button onclick="menuUnderTest('사고 이력')"><span class="menu-icon">!</span><span>사고 이력<small>테스트 진행</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main><button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button></div>`;
+  /* 배포 버전 배지. 메뉴 버튼 바로 왼쪽에 붙는다(올린 게 반영됐는지 확인용). */
+  const verBadge=`<div class="hero-ver" title="빌드 ${esc(APP_BUILD||'-')}" aria-label="업데이트 ${esc(APP_UPDATED)} 버전 ${esc(APP_VERSION)}"><small>업데이트 ${esc(APP_UPDATED)}</small><b>${esc(APP_VERSION)}</b></div>`;
+
+  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div>${verBadge}<div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="active" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button onclick="menuUnderTest('사고 이력')"><span class="menu-icon">!</span><span>사고 이력<small>테스트 진행</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main><button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button></div>`;
 
   LAST_VIEW_KEY=viewKey;
   if(sameView){
