@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V4';
+const APP_VERSION='V6';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -148,6 +148,7 @@ function normalizeState(){
   S.adPeriod=S.adPeriod||'year';           /* 'year' | '1y' | 'all' */
   S.adStoreAll=!!S.adStoreAll;             /* 매장 목록 전체 펼침 */
   S.arScope=S.arScope||'team';             /* 1장 보고서 범위: 'team' | 'dept' */
+  S.adPicked=!!S.adPicked;                 /* 첫 화면에서 범위를 골랐는지 */
 }
 normalizeState();
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -487,6 +488,9 @@ function toggleMainMenu(e){
 }
 function closeMainMenu(){
   const m=$('#mainMenu'),b=$('.hero-menu-btn'),back=$('#menuBackdrop');
+  /* 메뉴 안 버튼(×)에 포커스가 남은 채로 aria-hidden 을 걸면 브라우저가 경고를 낸다
+     (스크린리더 사용자에게 보이지 않는 곳에 포커스가 갇힌다). 먼저 포커스를 뺀다. */
+  if(m&&document.activeElement&&m.contains(document.activeElement))document.activeElement.blur();
   if(m)m.classList.remove('open');
   if(m)m.setAttribute('aria-hidden','true');
   if(back)back.classList.remove('open');
@@ -3390,8 +3394,19 @@ function openAccidentHistory(){
     /* 'preparing'(매장 조회 중)으로 돌아가면 조회가 다시 시작돼 어색하다. */
     S.ahBack=(from==='preparing')?'start':from;
   }
+  /* 메뉴로 들어오면 항상 «범위 고르기»부터 시작한다.
+     예전에는 지난번에 검색했던 매장(S.ahStore)이 남아 있어서
+     메뉴를 누르자마자 그 매장 상세가 떠 버렸다(2026-10-07 지적). */
+  S.ahStore='';S.adPicked=false;AH_QUERY='';save();
   accidentHistory();
 }
+/* 첫 화면에서 전사 / 부문을 고른 뒤 대시보드로 간다. */
+function adStart(v){
+  S.adScope={v:v||'',p:'',t:''};S.adPicked=true;S.adStoreAll=false;save();
+  accidentHistory();
+}
+/* 대시보드 → 첫 화면(범위 고르기) */
+function adBackToPick(){S.adPicked=false;save();accidentHistory()}
 function closeAccidentHistory(){
   var back=S.ahBack||'start';
   if(back==='accidentHistory')back='start';
@@ -3420,7 +3435,60 @@ function accidentHistory(){
   ahEnsureStores();
   if(!AD&&!AD_LOADING&&!AD_ERROR)loadAccidentDashboard();
   if(S.ahStore)ahStoreDetail();
+  else if(!S.adPicked)adLanding();
   else adDashboard();
+}
+
+/* ============ 사고 이력 · 첫 화면 (범위 고르기) ============
+   전사 / 부문(수도권·지방 등)을 먼저 고르고 대시보드로 들어간다.
+   부문 이름은 코드에 적지 않고 «매장» 탭에 있는 값을 그대로 쓴다
+   (부문 이름이 바뀌거나 늘어나도 손댈 필요가 없게). */
+function adLanding(){
+  var from=adPeriodFrom();
+  var counts={},total=0;
+  if(AD&&AD.rows){
+    AD.rows.forEach(function(r){
+      if(from&&String(r.d||'')<from)return;
+      total++;
+      var v=String(r.v||'').trim();
+      if(v)counts[v]=(counts[v]||0)+1;
+    });
+  }
+  var stores={};
+  (STORE_LIST||[]).forEach(function(r){
+    var v=String(r.division||'').trim();if(v)stores[v]=(stores[v]||0)+1;
+  });
+  Object.keys(counts).forEach(function(v){if(!(v in stores))stores[v]=0});
+  var names=Object.keys(stores).sort(function(a,b){return (stores[b]-stores[a])||a.localeCompare(b)});
+  var storeTotal=Object.keys(stores).reduce(function(n,k){return n+stores[k]},0)||Number(AD&&AD.storeCount||0);
+  var cnt=function(n){return AD?(n+'건'):(AD_LOADING?'집계 중':'-')};
+
+  var h='<div class="card"><h2>어느 범위를 볼까요?</h2>'
+    +'<p class="muted">'+esc(adPeriodLabel(S.adPeriod||'year'))+' 사고 건수입니다. 기간은 다음 화면에서 바꿀 수 있습니다.</p>';
+  h+='<button class="ad-pick all" onclick="adStart(\'\')"><span><b>전사</b><small>'
+    +(storeTotal?Number(storeTotal).toLocaleString()+'개 매장':'전체 매장')+'</small></span>'
+    +'<em>'+cnt(total)+'</em></button>';
+  if(names.length){
+    h+='<div class="ad-pick-grid">';
+    names.forEach(function(v){
+      h+='<button class="ad-pick" onclick="adStart('+adQ(v)+')"><span><b>'+esc(v)+'</b><small>'
+        +(stores[v]?Number(stores[v]).toLocaleString()+'개 매장':'')+'</small></span>'
+        +'<em>'+cnt(counts[v]||0)+'</em></button>';
+    });
+    h+='</div>';
+  }else if(AH_STORES_LOADING){
+    h+='<div class="loading-notice">부문 목록을 불러오는 중입니다...</div>';
+  }
+  if(AD_ERROR&&!AD){
+    h+='<div class="notice" style="margin-top:10px">'+esc(AD_ERROR)+'</div>'
+      +'<button class="secondary wide" onclick="adReload()">다시 시도</button>';
+  }
+  h+='</div>';
+  /* 매장명을 아는 경우의 지름길은 아래쪽에 작게 둔다 */
+  h+='<p class="ad-pick-sub">매장명을 알면 바로 찾을 수도 있습니다</p>'+adSearchBar();
+  h+='<div class="navrow"><button class="secondary" onclick="closeAccidentHistory()">← 돌아가기</button>'
+    +'<button class="primary" onclick="adStart(\'\')">전사로 보기 →</button></div>';
+  frame(h,'사고 이력','업무 중 재해 기준 · 출퇴근 제외');
 }
 /* 검색어가 바뀔 때는 후보 목록만 갈아끼운다.
    frame() 으로 전체를 다시 그리면 입력칸 포커스와 키보드가 매 글자마다 닫힌다. */
@@ -3473,7 +3541,14 @@ function loadAccidentDashboard(force){
     AD=d||{rows:[]};
     if(!Array.isArray(AD.rows))AD.rows=[];
   }).catch(function(err){
-    AD_ERROR=(err&&err.message)?err.message:String(err);
+    var msg=(err&&err.message)?err.message:String(err);
+    /* 깃허브는 새 버전인데 앱스크립트가 아직 옛 버전일 때 나는 오류다.
+       원문만 보여주면 무슨 뜻인지 알 수 없어서 할 일을 같이 적는다. */
+    if(/허용되지 않은 요청|함수를 찾을 수 없습니다/.test(msg)){
+      msg='앱스크립트 서버가 아직 옛 버전입니다. Code.gs · Sheets.gs · Drive.gs 를 붙여넣고 '
+        +'[배포 관리 → 연필 → 새 버전]으로 다시 배포해 주세요. ('+msg+')';
+    }
+    AD_ERROR=msg;
   }).then(function(){
     AD_LOADING=false;
     if(S.screen==='accidentHistory')accidentHistory();
@@ -3718,7 +3793,7 @@ function adDashboard(){
 }
 function adNavRow(){
   var stamp=(AD&&AD.generatedAt)?('기준 '+esc(AD.generatedAt)):'';
-  return '<div class="navrow"><button class="secondary" onclick="closeAccidentHistory()">← 돌아가기</button>'
+  return '<div class="navrow"><button class="secondary" onclick="adBackToPick()">← 범위 선택</button>'
     +'<button class="primary" onclick="adReload()"'+(AD_LOADING?' disabled':'')+'>'+(AD_LOADING?'불러오는 중...':'새로고침')+'</button></div>'
     +(stamp?'<p class="muted" style="text-align:center;margin:8px 0 0">'+stamp+' · 서버에서 30분간 보관한 값입니다</p>':'');
 }
