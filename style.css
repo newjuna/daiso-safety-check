@@ -1135,3 +1135,69 @@ button{cursor:pointer}
 @keyframes adOpen{from{opacity:0;transform:translateY(-6px);clip-path:inset(0 0 100% 0)}to{opacity:1;transform:none;clip-path:inset(0 0 0 0)}}
 @media(prefers-reduced-motion:reduce){.ad-reveal,.ad-acc.opening .ad-acc-body{animation:none}.ad-acc-head>i{transition:none}}
 @media(max-width:360px){.ad-period{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ===== 점검 현황 (메뉴 > 점검 현황, 2026-10-07) =====
+   사고 이력의 .ad-* 를 그대로 쓰고, 점검 현황에만 있는 것만 .id-* 로 둔다.
+   (짧은 이름은 앱 전역과 겹칠 수 있어 반드시 접두어를 붙인다 · .bar 사고 참고) */
+/* 첫 화면 버튼의 점검률 막대 */
+.id-pick>span{flex:1}
+.id-pick>em{display:grid;gap:1px;text-align:right;color:var(--p)}
+.id-pick>em small{font-size:10px;font-weight:800;color:var(--muted)}
+.ad-pick.all.id-pick>em,.ad-pick.all.id-pick>em small{color:#fff}
+.id-rate{display:block;height:6px;border-radius:4px;background:#eef0f4;margin-top:6px;overflow:hidden}
+.id-rate i{display:block;height:100%;border-radius:4px;background:var(--p)}
+.ad-pick.all .id-rate{background:#ffffff33}
+.ad-pick.all .id-rate i{background:#fff}
+/* 요약 4칸 */
+.id-sum{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.id-sum>div{padding:11px 8px;background:#f7f7fa;border-radius:14px;text-align:center}
+.id-sum b{display:block;font-size:21px;line-height:1.25}
+.id-sum b em{font-style:normal;font-size:12px;color:var(--muted)}
+.id-sum small{font-size:10px;font-weight:800;color:var(--muted)}
+.id-sum .hl{background:#fff0f3}.id-sum .hl b{color:var(--bad)}
+.id-sum .gd b{color:var(--p)}
+/* 등급 */
+.id-grade{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.id-grade>div{padding:10px 4px;border-radius:12px;text-align:center}
+.id-grade b{display:block;font-size:18px}.id-grade small{font-size:9.5px;font-weight:800}
+.gA{background:#eaf9f1;color:#14754a}.gB{background:#eef1f8;color:#13245a}
+.gC{background:#fff8e9;color:#8a5800}.gD{background:#fff0f3;color:#c62847}
+.id-g{display:inline-block;min-width:20px;padding:1px 6px;border-radius:7px;font-size:11px;font-weight:900;text-align:center;vertical-align:middle}
+.id-sub{font-size:11.5px;font-weight:900;color:#5d626a;margin:13px 0 7px}
+.ad-bar i.peak.id{background:var(--p)}
+/* 분야 칩 (작업 2 / 사다리 0 ...) */
+.id-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+.id-chips span{font-size:10px;font-weight:900;padding:3px 7px;border-radius:999px;background:#f1f2f5;color:#5d626a}
+.id-chips span.bad{background:#fff0f3;color:var(--bad)}
+/* 버튼 두 칸 */
+.id-btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:9px}
+.id-btns .secondary{min-height:42px;font-size:12px;padding:6px;display:flex;align-items:center;justify-content:center;text-decoration:none;border-radius:11px}
+.id-btns .disabled{opacity:.45}
+/* 최근 점검 카드 */
+.id-rc{border:1px solid var(--line);border-radius:13px;padding:10px 11px;margin-bottom:7px}
+.id-rc .summary b{font-size:13.5px}
+.id-rc>small{font-size:10.5px;color:var(--muted);font-weight:800}
+/* 매장 상세: 점수 추이 */
+.id-trend{display:flex;align-items:flex-end;gap:8px;min-height:84px;padding:0 2px}
+.id-trend>div{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px}
+.id-trend em{width:70%;max-width:44px;border-radius:6px 6px 0 0;background:#c9ced8;display:block}
+.id-trend em.low{background:#ffc7a8}.id-trend em.now{background:var(--p)}
+.id-trend b{font-size:11px}.id-trend span{font-size:9px;font-weight:800;color:var(--muted)}
+/* 매장 상세: 점검 기록 타임라인 */
+.id-tl{position:relative;padding-left:16px}
+.id-tl:before{content:'';position:absolute;left:5px;top:8px;bottom:8px;width:2px;background:var(--line)}
+.id-tli{position:relative;border:1px solid var(--line);border-radius:15px;padding:12px;margin-bottom:9px;background:#fff}
+.id-tli:before{content:'';position:absolute;left:-15px;top:17px;width:10px;height:10px;border-radius:50%;background:var(--p);border:2px solid #fff;box-shadow:0 0 0 1px var(--p)}
+.id-tli.latest{border-color:var(--p);box-shadow:0 8px 20px rgba(19,36,90,.12)}
+.id-tli .summary b{font-size:14px}
+.id-tli .summary strong{font-size:19px}
+.id-tli>small{font-size:11px;color:var(--muted);font-weight:800}
+.id-iss{margin-top:8px;display:grid;gap:5px}
+.id-iss>div{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;line-height:1.45;padding:7px 9px;border-radius:9px;background:#f7f8fa}
+.id-iss>div>span{min-width:0;overflow-wrap:anywhere}
+.id-iss em{font-style:normal;font-weight:900;font-size:10px;white-space:nowrap;flex:none}
+.id-iss .open em{color:var(--bad)}.id-iss .done em{color:#14754a}
+/* 사고 이력으로 가는 줄 */
+.id-link{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:56px;padding:12px 14px;text-align:left;color:var(--ink);font-weight:900;font-size:13.5px}
+.id-link .pill{flex:none}
+@media(max-width:360px){.id-grade{grid-template-columns:1fr 1fr}}
