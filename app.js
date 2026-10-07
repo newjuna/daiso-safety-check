@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V2';
+const APP_VERSION='V3';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -141,6 +141,9 @@ function normalizeState(){
   S.resultNote=S.resultNote||'';
   S.resultLinks=S.resultLinks||null;
   S.reportPdfError=S.reportPdfError||'';
+  /* 사고 이력 조회 화면(메뉴 > 사고 이력)에서 고른 매장과, 돌아갈 화면 */
+  S.ahStore=S.ahStore||'';
+  S.ahBack=S.ahBack||'';
 }
 normalizeState();
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -418,7 +421,11 @@ function frame(body,title='안전보건 현장진단',sub='모바일 현장점�
   /* 배포 버전 배지. 메뉴 버튼 바로 왼쪽에 붙는다(올린 게 반영됐는지 확인용). */
   const verBadge=`<div class="hero-ver" title="빌드 ${esc(APP_BUILD||'-')}" aria-label="업데이트 ${esc(APP_UPDATED)} 버전 ${esc(APP_VERSION)}"><small>업데이트 ${esc(APP_UPDATED)}</small><b>${esc(APP_VERSION)}</b></div>`;
 
-  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div>${verBadge}<div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="active" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button onclick="menuUnderTest('사고 이력')"><span class="menu-icon">!</span><span>사고 이력<small>테스트 진행</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main><button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button></div>`;
+  /* 메뉴에서 지금 보고 있는 항목에 표시(active)를 준다.
+     예전에는 '매장 점검'에 하드코딩돼 있어서 사고 이력 화면에서도 매장 점검이 켜져 보였다. */
+  const onAccHist=S.screen==='accidentHistory';
+
+  root.innerHTML=`<div class="app">${testBar}<header class="hero"><div class="hero-top"><div class="hero-logo">SH</div><div class="eyebrow">ASUNG DAISO · SAFETY & HEALTH</div>${verBadge}<div class="hero-menu-wrap"><button class="hero-menu-btn" aria-label="메뉴 열기" aria-expanded="false" onclick="toggleMainMenu(event)"><span></span><span></span><span></span></button></div></div><h1>${title}</h1><p>${sub}</p></header><div class="menu-backdrop" id="menuBackdrop" onclick="closeMainMenu()"></div><aside class="hero-menu-panel" id="mainMenu" aria-hidden="true"><div class="menu-head"><div><small>ASUNG DAISO</small><b>안전보건 현장진단</b></div><button class="menu-close" aria-label="메뉴 닫기" onclick="closeMainMenu()">×</button></div><nav><button onclick="menuUnderTest('점검 현황')"><span class="menu-icon">▦</span><span>점검 현황<small>테스트 진행</small></span></button><button class="${onAccHist?'':'active'}" onclick="closeMainMenu();start()"><span class="menu-icon">✓</span><span>매장 점검</span></button><button class="${onAccHist?'active':''}" onclick="closeMainMenu();openAccidentHistory()"><span class="menu-icon">!</span><span>사고 이력<small>매장별 과거 사고 조회</small></span></button></nav><div class="menu-foot">SAFETY &amp; HEALTH · FIELD INSPECTION</div></aside><main class="content">${fixBar}${body}</main><button id="scrollTopBtn" class="scroll-top" onclick="scrollPageTop()" aria-label="맨 위로 이동"><i>↑</i><span>맨 위로</span></button></div>`;
 
   LAST_VIEW_KEY=viewKey;
   if(sameView){
@@ -3315,6 +3322,177 @@ function resetAll(){
   start();
 }
 
+/* ============ 사고 이력 조회 (메뉴 > 사고 이력) ============
+   점검과 상관없이 «이 매장에 어떤 사고가 있었나»만 확인하는 읽기 전용 화면이다.
+   점검 흐름의 '사고조사' 화면과는 쓰는 데이터가 같아도 성격이 다르다.
+
+   ★ 여기서 절대 하지 말아야 하는 것 ★
+   syncAccidents() 를 부르면 안 된다. 그 함수는 진행 중인 점검 상태(S.accidents)를
+   서버 값으로 덮어쓰고 save() 까지 한다. 점검 도중에 메뉴로 들어와 조회만 했는데
+   입력해 둔 조치내용·사진이 날아가면 현장에서 복구할 방법이 없다.
+   그래서 이 화면은 서버가 준 배열을 그대로 그리기만 한다.
+
+   서버는 기존 getStoreAccidentHistory 를 그대로 쓴다(앱스크립트 수정·재배포 불필요). */
+var AH_QUERY='';      /* 검색어. 새로고침되면 지워져도 괜찮아서 S에 넣지 않는다 */
+var AH_CACHE={};      /* 매장명 -> {at:시각, rows:[...]} */
+var AH_LOADING='';    /* 지금 불러오는 중인 매장명 */
+var AH_ERROR=null;    /* {store, message} */
+var AH_STORES_LOADING=false;
+
+function openAccidentHistory(){
+  /* 점검 중에 들어와도 원래 화면으로 돌아갈 수 있게 직전 화면을 적어둔다. */
+  if(S.screen!=='accidentHistory'){
+    var from=S.screen||'start';
+    /* 'preparing'(매장 조회 중)으로 돌아가면 조회가 다시 시작돼 어색하다. */
+    S.ahBack=(from==='preparing')?'start':from;
+  }
+  accidentHistory();
+}
+function closeAccidentHistory(){
+  var back=S.ahBack||'start';
+  if(back==='accidentHistory')back='start';
+  S.ahBack='';S.screen=back;save();
+  render(back);
+}
+/* 검색에 쓸 매장 목록 확보. 저장본이 있으면 즉시 쓰고, 없으면 한 번만 서버에서 받는다. */
+function ahEnsureStores(){
+  if(STORE_LIST)return;
+  var cached=readStoreCache();
+  if(cached){STORE_LIST=cached;return}
+  if(AH_STORES_LOADING)return;
+  AH_STORES_LOADING=true;
+  gsRun('getStoreListCompact').then(function(list){
+    STORE_LIST=normalizeStoreRows(list);
+    if(STORE_LIST.length)writeStoreCache(STORE_LIST);
+  }).catch(function(){ /* 실패하면 아래에서 안내만 띄운다 */ }).then(function(){
+    AH_STORES_LOADING=false;
+    if(S.screen==='accidentHistory')accidentHistory();
+  });
+}
+function ahRows(store){
+  var c=AH_CACHE[store];
+  return (c&&Date.now()-c.at<PREP_TTL)?c.rows:null;
+}
+function accidentHistory(){
+  S.screen='accidentHistory';
+  ahEnsureStores();
+  var store=S.ahStore||'';
+  var h='<div class="card"><h2>사고 이력 조회</h2>';
+  h+='<p class="muted">매장명을 입력해 과거 사고를 확인합니다. 진행 중인 점검 내용은 바뀌지 않습니다.</p>';
+  h+='<div class="field"><label>매장 검색</label><input id="ahQ" type="search" placeholder="예: 수원인계 (2글자 이상)" value="'+esc(AH_QUERY)+'" oninput="ahSearch(this.value)"></div>';
+  h+='<div id="ahCandidates">'+ahCandidatesHtml(AH_QUERY)+'</div></div>';
+  h+='<div id="ahResult">'+ahResultHtml()+'</div>';
+  h+='<div class="navrow"><button class="secondary" onclick="closeAccidentHistory()">← 돌아가기</button>'
+    +'<button class="primary" onclick="ahReload()"'+(store?'':' disabled')+'>다시 불러오기</button></div>';
+  frame(h,'사고 이력 조회','매장별 과거 사고를 확인합니다.');
+  /* 아직 받아온 적이 없으면 지금 받아온다(화면은 이미 떠 있어서 기다리는 느낌이 적다). */
+  if(store&&!ahRows(store)&&AH_LOADING!==store&&!(AH_ERROR&&AH_ERROR.store===store))loadAccidentHistory(store);
+}
+/* 검색어가 바뀔 때는 후보 목록만 갈아끼운다.
+   frame() 으로 전체를 다시 그리면 입력칸 포커스와 키보드가 매 글자마다 닫힌다. */
+function ahSearch(v){
+  AH_QUERY=v;
+  var el=$('#ahCandidates');
+  if(el)el.innerHTML=ahCandidatesHtml(v);
+}
+function ahCandidatesHtml(q){
+  var key=String(q||'').trim();
+  if(!STORE_LIST)return '<div class="loading-notice">'+(AH_STORES_LOADING?'매장 목록을 불러오는 중입니다...':'매장 목록을 불러오지 못했습니다. 네트워크를 확인해 주세요.')+'</div>';
+  if(key.length<2)return '<p class="muted">매장명을 2글자 이상 입력하세요. 전체 '+STORE_LIST.length+'개 매장에서 찾습니다.</p>';
+  /* 매장명에 공백이 섞여 있어도 찾을 수 있게 양쪽 다 공백을 지우고 비교한다. */
+  var norm=key.replace(/\s+/g,'');
+  var hit=[];
+  STORE_LIST.forEach(function(r,idx){
+    if(String(r.store||'').replace(/\s+/g,'').indexOf(norm)>=0)hit.push({i:idx,r:r});
+  });
+  if(!hit.length)return '<p class="muted">\u2018'+esc(key)+'\u2019(으)로 찾은 매장이 없습니다.</p>';
+  var shown=hit.slice(0,20);
+  var h='<div class="ah-cands">';
+  shown.forEach(function(x){
+    var sel=x.r.store===S.ahStore;
+    h+='<button class="ah-cand'+(sel?' sel':'')+'" onclick="ahPick('+x.i+')"><span><b>'+esc(x.r.store)+'</b>'
+      +'<small>'+esc([x.r.division,x.r.dept,x.r.team].filter(Boolean).join(' · ')||'조직 미등록')+'</small></span>'
+      +'<strong>'+(sel?'✓':'→')+'</strong></button>';
+  });
+  h+='</div>';
+  if(hit.length>shown.length)h+='<p class="muted">일치한 '+hit.length+'개 중 '+shown.length+'개만 표시했습니다. 검색어를 더 입력해 주세요.</p>';
+  return h;
+}
+/* 매장명을 onclick 문자열에 끼워 넣으면 따옴표·역슬래시가 섞일 때 깨진다.
+   그래서 STORE_LIST 의 번호만 넘긴다. */
+function ahPick(i){
+  var r=(STORE_LIST||[])[i];
+  if(!r||!r.store)return;
+  if(S.ahStore!==r.store)AH_ERROR=null;
+  S.ahStore=r.store;save();
+  accidentHistory();
+}
+function ahReload(){
+  var store=S.ahStore||'';
+  if(!store)return;
+  delete AH_CACHE[store];AH_ERROR=null;
+  loadAccidentHistory(store);
+}
+function loadAccidentHistory(store){
+  AH_LOADING=store;AH_ERROR=null;
+  var el=$('#ahResult');
+  if(el)el.innerHTML=ahResultHtml();
+  gsRun('getStoreAccidentHistory',store).then(function(rows){
+    /* 서버가 이미 출퇴근 재해를 걸러주지만, 점검 화면과 같은 기준을 한 번 더 통과시킨다. */
+    AH_CACHE[store]={at:Date.now(),rows:inspectionAccidents(rows||[])};
+  }).catch(function(err){
+    AH_ERROR={store:store,message:(err&&err.message)?err.message:String(err)};
+  }).then(function(){
+    if(AH_LOADING===store)AH_LOADING='';
+    if(S.screen!=='accidentHistory'||S.ahStore!==store)return;
+    var e=$('#ahResult');
+    if(e)e.innerHTML=ahResultHtml();
+  });
+}
+function ahResultHtml(){
+  var store=S.ahStore||'';
+  if(!store)return '';
+  if(AH_LOADING===store)return '<div class="card"><div class="loading-notice">'+esc(store)+' 사고 이력을 불러오는 중입니다...</div></div>';
+  if(AH_ERROR&&AH_ERROR.store===store){
+    return '<div class="card"><h2>'+esc(store)+'</h2><div class="notice">사고 이력을 불러오지 못했습니다.<br>'+esc(AH_ERROR.message)+'</div>'
+      +'<button class="secondary wide" onclick="ahReload()">다시 시도</button></div>';
+  }
+  var rows=ahRows(store);
+  if(!rows)return '';
+
+  var approved=rows.filter(function(x){return String(x.approved||'').trim()==='Y'}).length;
+  var lost=rows.reduce(function(sum,x){var n=Number(x.lostDays);return sum+(isFinite(n)?n:0)},0);
+
+  var h='<div class="card"><div class="summary"><h2>'+esc(store)+'</h2>'
+    +'<span class="pill'+(rows.length?' bad':'')+'">'+rows.length+'건</span></div>';
+  if(!rows.length){
+    h+='<div class="ah-empty"><b>등록된 사고이력이 없습니다</b><span>업무 중 재해 기준입니다. 출퇴근 재해는 집계에서 제외됩니다.</span></div></div>';
+    return h;
+  }
+  h+='<div class="ah-sum">'
+    +'<div><b>'+rows.length+'</b><small>전체 사고</small></div>'
+    +'<div><b>'+approved+'</b><small>산재승인</small></div>'
+    +'<div><b>'+lost+'</b><small>근로손실일수</small></div>'
+    +'</div>';
+  rows.forEach(function(x){
+    var ok=String(x.approved||'').trim()==='Y';
+    h+='<article class="ah-item'+(ok?' approved':'')+'">';
+    h+='<div class="ah-head"><div><small>'+esc(x.date||'재해일 미기록')+'</small><b>'+esc(x.type||'사고')+'</b></div>'
+      +'<span class="ah-tag'+(ok?' bad':'')+'">'+(ok?'산재승인':'사고이력')+'</span></div>';
+    h+='<div class="ah-facts">'
+      +'<span><small>재해일</small><b>'+esc(x.date||'-')+'</b></span>'
+      +'<span><small>유형</small><b>'+esc(x.type||'-')+'</b></span>'
+      +'<span><small>기인물</small><b>'+esc(x.source||'미등록')+'</b></span>'
+      +'<span><small>근로손실일수</small><b>'+(x.lostDays!==''&&x.lostDays!=null?esc(String(x.lostDays))+'일':'-')+'</b></span>'
+      +'</div>';
+    h+='<p class="ah-content">'+esc(x.content||'등록된 사고내용이 없습니다.')+'</p>';
+    h+='</article>';
+  });
+  h+='<p class="muted" style="margin-top:4px">출퇴근 재해는 제외한 업무 중 재해입니다. 원본은 안전팀 사고 원장 스프레드시트입니다.</p>';
+  h+='</div>';
+  return h;
+}
+
 /* ============ 대시보드 ============ */
 var DASH_PERIOD='all'; // 'all' | 'thisMonth' | 'lastMonth'
 var DASH_STORE='';     // 매장 이력조회에서 선택된 매장명
@@ -3435,7 +3613,7 @@ function loadDashStoreHistory(name){
     if(el)el.innerHTML='<div class="notice">이력을 불러오지 못했습니다: '+esc(err&&err.message?err.message:String(err))+'</div>';
   });
 }
-function render(x){({start,preparing:prepareSelectedStore,history:historyReview,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,solution:solutionReview,result:report}[x]||start)()}
+function render(x){({start,preparing:prepareSelectedStore,history:historyReview,work,ladder,common:()=>checklist('common'),fire:()=>checklist('fire'),tbm:()=>checklist('tbm'),voice,other,accident,tasks,solution:solutionReview,result:report,accidentHistory}[x]||start)()}
 try{
   render(S.screen);
   restorePersistedPhotos();
