@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V6';
+const APP_VERSION='V7';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -145,7 +145,12 @@ function normalizeState(){
   S.ahStore=S.ahStore||'';     /* 매장 상세로 들어간 매장. 빈 값이면 대시보드 */
   S.ahBack=S.ahBack||'';       /* 돌아갈 화면 */
   S.adScope=S.adScope||{v:'',p:'',t:''};   /* 부문/부서/팀 범위 */
-  S.adPeriod=S.adPeriod||'year';           /* 'year' | '1y' | 'all' */
+  /* 'month' | 'year' | '1y' | 'custom'. 옛 값 'all'(전체)은 없앴으므로 올해로 돌린다. */
+  S.adPeriod=(['month','year','1y','custom'].indexOf(S.adPeriod)>=0)?S.adPeriod:'year';
+  S.adFrom=S.adFrom||'';S.adTo=S.adTo||'';  /* 직접 선택 기간 */
+  /* [조회하기]로 확정한 조건 {v,p,t,period,from,to}. 없으면 결과를 그리지 않는다. */
+  S.adApplied=(S.adApplied&&typeof S.adApplied==='object')?S.adApplied:null;
+  if(S.adApplied&&S.adApplied.period==='all')S.adApplied.period='year';
   S.adStoreAll=!!S.adStoreAll;             /* 매장 목록 전체 펼침 */
   S.arScope=S.arScope||'team';             /* 1장 보고서 범위: 'team' | 'dept' */
   S.adPicked=!!S.adPicked;                 /* 첫 화면에서 범위를 골랐는지 */
@@ -3402,7 +3407,9 @@ function openAccidentHistory(){
 }
 /* 첫 화면에서 전사 / 부문을 고른 뒤 대시보드로 간다. */
 function adStart(v){
-  S.adScope={v:v||'',p:'',t:''};S.adPicked=true;S.adStoreAll=false;save();
+  S.adScope={v:v||'',p:'',t:''};S.adPicked=true;S.adStoreAll=false;
+  /* 범위를 새로 고르면 지난 조회 결과는 지운다. 조건을 보고 [조회하기]를 눌러야 결과가 나온다. */
+  S.adApplied=null;AD_OPEN={};save();
   accidentHistory();
 }
 /* 대시보드 → 첫 화면(범위 고르기) */
@@ -3444,11 +3451,11 @@ function accidentHistory(){
    부문 이름은 코드에 적지 않고 «매장» 탭에 있는 값을 그대로 쓴다
    (부문 이름이 바뀌거나 늘어나도 손댈 필요가 없게). */
 function adLanding(){
-  var from=adPeriodFrom();
+  var range=adDraftRange();
   var counts={},total=0;
   if(AD&&AD.rows){
     AD.rows.forEach(function(r){
-      if(from&&String(r.d||'')<from)return;
+      if(!adInRange(r.d,range))return;
       total++;
       var v=String(r.v||'').trim();
       if(v)counts[v]=(counts[v]||0)+1;
@@ -3581,21 +3588,86 @@ function adUpTo(level){
   else if(level==='p')S.adScope={v:s.v,p:s.p,t:''};
   save();accidentHistory();
 }
-function adSetPeriod(p){S.adPeriod=p;save();accidentHistory()}
-function adPeriodLabel(p){
-  var y=String(new Date().getFullYear()).slice(2);
-  return p==='year'?(y+'년'):(p==='1y'?'최근 1년':'전체');
-}
-/* 기간 시작일(이 날짜 이상만 집계). 전체면 빈 문자열. */
-function adPeriodFrom(){
-  var p=S.adPeriod||'year';
-  if(p==='all')return '';
-  var now=new Date();
-  if(p==='1y'){
-    var d=new Date(now.getTime());d.setFullYear(d.getFullYear()-1);
-    return d.toISOString().slice(0,10);
+/* ---------- 기간 ----------
+   «고르는 중인 조건»(S.adScope / S.adPeriod / S.adFrom / S.adTo)과
+   «[조회하기]로 확정한 조건»(S.adApplied)을 따로 둔다.
+   예전에는 버튼을 누를 때마다 아래 숫자가 전부 바로 바뀌어서 화면이 어지러웠다(2026-10-07).
+   이제 결과는 확정한 조건으로만 그리고, 조건을 바꾸면 «조회하기를 눌러 주세요»만 띄운다.
+
+   기간 종류: 'month' 이번 달 / 'year' 올해 / '1y' 최근 1년 / 'custom' 직접 선택
+   («전체»는 뺐다. 넓게 보려면 직접 선택으로 시작일을 앞당기면 된다) */
+function adSetPeriod(p){
+  S.adPeriod=p;
+  /* 직접 선택을 처음 누르면 올해 1월 1일 ~ 오늘로 채워 둔다(빈 칸에서 시작하면 두 번 골라야 한다) */
+  if(p==='custom'){
+    var now=new Date();
+    if(!S.adFrom)S.adFrom=now.getFullYear()+'-01-01';
+    if(!S.adTo)S.adTo=adYmd(now);
   }
-  return now.getFullYear()+'-01-01';
+  save();accidentHistory();
+}
+function adSetDate(which,v){
+  if(which==='from')S.adFrom=String(v||'');else S.adTo=String(v||'');
+  save();accidentHistory();
+}
+/* ★ toISOString() 을 쓰면 안 된다 ★ UTC 기준이라 한국 시간 오전 9시 전에는 «어제»가 나온다. */
+function adYmd(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function adPeriodLabel(p){
+  return {month:'이번 달',year:'올해','1y':'최근 1년',custom:'직접 선택'}[p]||'올해';
+}
+/* 기간 → {from, to, label}. 양 끝 날짜를 포함한다. */
+function adRange(p,from,to){
+  var now=new Date(),today=adYmd(now);
+  if(p==='month')return {from:adYmd(new Date(now.getFullYear(),now.getMonth(),1)),to:today,label:'이번 달'};
+  if(p==='1y')return {from:adYmd(new Date(now.getFullYear()-1,now.getMonth(),now.getDate()+1)),to:today,label:'최근 1년'};
+  if(p==='custom')return {from:from||'',to:to||'',label:'직접 선택'};
+  return {from:now.getFullYear()+'-01-01',to:today,label:'올해'};
+}
+function adDraftRange(){return adRange(S.adPeriod||'year',S.adFrom,S.adTo)}
+/* 확정한 조건(없으면 고르는 중인 조건). 결과·보고서는 이걸 쓴다. */
+function adAppliedCond(){
+  var a=S.adApplied;
+  if(a)return {v:a.v||'',p:a.p||'',t:a.t||'',range:adRange(a.period,a.from,a.to)};
+  var s=adScope();
+  return {v:s.v,p:s.p,t:s.t,range:adDraftRange()};
+}
+function adAppliedRange(){return adAppliedCond().range}
+/* 옛 호출부 호환: 고르는 중인 기간의 시작일 */
+function adPeriodFrom(){return adDraftRange().from}
+/* 날짜 하나가 기간 안인지. 기간이 있는데 재해일이 비어 있으면 뺀다. */
+function adInRange(d,r){
+  d=String(d||'');
+  if(!r||(!r.from&&!r.to))return true;
+  if(!d)return false;
+  if(r.from&&d<r.from)return false;
+  if(r.to&&d>r.to)return false;
+  return true;
+}
+/* [조회하기] */
+function adApply(){
+  var p=S.adPeriod||'year';
+  if(p==='custom'){
+    if(!S.adFrom||!S.adTo)return uiError('시작일과 종료일을 모두 고르세요');
+    if(S.adFrom>S.adTo)return uiError('시작일이 종료일보다 늦습니다');
+  }
+  var s=adScope();
+  S.adApplied={v:s.v,p:s.p,t:s.t,period:p,from:S.adFrom||'',to:S.adTo||''};
+  S.adStoreAll=false;save();
+  AD_OPEN={};                 /* 새로 조회하면 펼침 항목은 전부 접힌 채로 시작 */
+  AD_REVEAL=true;accidentHistory();AD_REVEAL=false;
+  requestAnimationFrame(function(){
+    var el=document.getElementById('adResult');
+    if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+}
+/* 고르는 중인 조건이 확정한 조건과 다른지 */
+function adDirty(){
+  var a=S.adApplied;if(!a)return false;
+  var s=adScope(),p=S.adPeriod||'year';
+  if(a.v!==s.v||a.p!==s.p||a.t!==s.t||a.period!==p)return true;
+  return p==='custom'&&(a.from!==(S.adFrom||'')||a.to!==(S.adTo||''));
 }
 /* 조직 값 하나가 지금 범위에 들어가는지. 미분류는 빈 값을 뜻한다. */
 function adMatch(rowValue,scopeValue){
@@ -3603,13 +3675,12 @@ function adMatch(rowValue,scopeValue){
   if(scopeValue===AD_UNKNOWN)return !String(rowValue||'').trim();
   return String(rowValue||'')===scopeValue;
 }
-/* 지금 범위·기간에 해당하는 사고 줄만 돌려준다. */
-function adRows(){
+/* 확정한 범위·기간에 해당하는 사고 줄만 돌려준다. */
+function adRows(cond){
   if(!AD||!AD.rows)return [];
-  var s=adScope(),from=adPeriodFrom();
+  var c=cond||adAppliedCond();
   return AD.rows.filter(function(r){
-    if(from&&String(r.d||'')<from)return false;
-    return adMatch(r.v,s.v)&&adMatch(r.p,s.p)&&adMatch(r.t,s.t);
+    return adInRange(r.d,c.range)&&adMatch(r.v,c.v)&&adMatch(r.p,c.p)&&adMatch(r.t,c.t);
   });
 }
 /* 집계. 건수·산재승인·손실일수와 유형/매장/월 분포를 한 번에 만든다. */
@@ -3638,10 +3709,11 @@ function adNextLevel(){
   var s=adScope();
   if(s.t)return null;
   var level=s.p?'t':(s.v?'p':'v');
-  var from=adPeriodFrom();
+  /* 다음 단계 버튼의 건수는 «고르는 중인» 기간 기준이다(고르면서 미리 보는 숫자) */
+  var range=adDraftRange();
   var count={},unknown=0;
   (AD&&AD.rows||[]).forEach(function(r){
-    if(from&&String(r.d||'')<from)return;
+    if(!adInRange(r.d,range))return;
     if(!adMatch(r.v,s.v)||!adMatch(r.p,s.p))return;
     var val=String(r[level]||'').trim();
     if(!val){unknown++;return}
@@ -3663,7 +3735,7 @@ function adSearchBar(){
     +'</div><div id="ahCandidates">'+(AH_QUERY.trim().length>=2?ahCandidatesHtml(AH_QUERY):'')+'</div>';
 }
 function adDashboard(){
-  var h=adSearchBar();
+  var h='';
 
   if(AD_LOADING&&!AD){
     h+='<div class="card"><div class="loading-notice">사고 원장을 읽고 있습니다. 처음 조회는 10초쯤 걸립니다...</div></div>';
@@ -3677,12 +3749,12 @@ function adDashboard(){
     frame(h,'사고 이력','연결 확인이 필요합니다');return;
   }
 
-  var rows=adRows(),agg=adAgg(rows),s=adScope();
+  var s=adScope();
 
-  /* 1) 조회 범위 */
-  h+='<div class="card"><div class="summary"><h2>조회 범위</h2>'
+  /* 1) 조회 조건 (범위 + 기간 + [조회하기]) */
+  h+='<div class="card"><div class="summary"><h2>조회 조건</h2>'
     +'<span class="ad-note">매장 '+Number(AD&&AD.storeCount||0).toLocaleString()+'개</span></div>';
-  h+='<div class="ad-crumb">';
+  h+='<div class="ad-lbl">범위</div><div class="ad-crumb">';
   h+='<button class="'+(!s.v?'on':'')+'" onclick="adUpTo(\'root\')">전사</button>';
   if(s.v){h+='<i>›</i><button class="'+(!s.p?'on':'')+'" onclick="adUpTo(\'v\')">'+esc(s.v)+'</button>'}
   if(s.p){h+='<i>›</i><button class="'+(!s.t?'on':'')+'" onclick="adUpTo(\'p\')">'+esc(s.p)+'</button>'}
@@ -3699,97 +3771,147 @@ function adDashboard(){
   }else if(next){
     h+='<p class="muted">이 범위에는 사고가 없습니다.</p>';
   }
-  h+='<div class="ad-period">';
-  ['year','1y','all'].forEach(function(p){
-    h+='<button class="'+((S.adPeriod||'year')===p?'on':'')+'" onclick="adSetPeriod(\''+p+'\')">'+adPeriodLabel(p)+'</button>';
+  /* 기간: 이번 달 / 올해 / 최근 1년 / 직접 선택 */
+  var per=S.adPeriod||'year';
+  h+='<div class="ad-lbl">기간</div><div class="ad-period">';
+  ['month','year','1y','custom'].forEach(function(p){
+    h+='<button class="'+(per===p?'on':'')+'" onclick="adSetPeriod(\''+p+'\')">'+adPeriodLabel(p)+'</button>';
   });
-  h+='</div></div>';
+  h+='</div>';
+  if(per==='custom'){
+    h+='<div class="ad-dates">'
+      +'<input type="date" aria-label="시작일" value="'+esc(S.adFrom||'')+'" onchange="adSetDate(\'from\',this.value)">'
+      +'<span>~</span>'
+      +'<input type="date" aria-label="종료일" value="'+esc(S.adTo||'')+'" onchange="adSetDate(\'to\',this.value)">'
+      +'</div>';
+  }
+  var dirty=adDirty();
+  h+='<button class="primary wide ad-go'+(dirty?' dirty':'')+'" onclick="adApply()">'+(S.adApplied?(dirty?'바뀐 조건으로 조회하기':'다시 조회하기'):'조회하기')+'</button>';
+  h+='<p class="ad-hint">'+(dirty?'조건이 바뀌었습니다. 조회하기를 누르면 아래 결과가 바뀝니다.'
+    :(S.adApplied?'':'조건을 고르고 조회하기를 누르면 아래에 결과가 펼쳐집니다.'))+'</p>';
+  h+='</div>';
 
-  /* 2) 요약 */
-  h+='<div class="card"><div class="summary"><h2>'+esc(adScopeLabel())+' 요약</h2>'
-    +'<span class="pill'+(agg.total?' bad':'')+'">'+agg.total+'건</span></div>';
+  /* 2) 결과 (조회하기를 누른 뒤에만) */
+  if(S.adApplied)h+=adResultHtml();
+
+  /* 맨 아래에 작게: 매장명을 알면 바로 찾기 */
+  h+='<p class="ad-pick-sub">매장명을 알면 바로 찾을 수도 있습니다</p>'+adSearchBar();
+
+  h+=adNavRow();
+  frame(h,'사고 이력','업무 중 재해 기준 · 출퇴근 제외');
+}
+
+/* ============ 사고 이력 · 조회 결과 (요약 + 접히는 항목) ============
+   요약 3칸만 바로 보이고, 나머지는 «제목 + 핵심 한 줄»로 접혀서 나온다.
+   궁금한 것만 눌러서 펼친다. 새로 조회하면 전부 접힌 채로 시작한다(2026-10-07 확정).
+   펼침 상태(AD_OPEN)는 S 에 넣지 않는다. 새로고침하면 접혀도 괜찮다. */
+var AD_OPEN={};
+var AD_REVEAL=false;    /* 방금 [조회하기]를 눌렀을 때만 펼침 애니메이션을 재생 */
+var AD_JUST='';         /* 방금 펼친 항목 키 (그 항목만 미끄러지듯 열림) */
+function adToggle(key){
+  AD_OPEN[key]=!AD_OPEN[key];
+  AD_JUST=AD_OPEN[key]?key:'';
+  accidentHistory();
+  AD_JUST='';
+}
+function adAcc(key,title,line,body){
+  var open=!!AD_OPEN[key];
+  return '<section class="ad-acc'+(open?' open':'')+(open&&AD_JUST===key?' opening':'')+'">'
+    +'<button class="ad-acc-head" onclick="adToggle(\''+key+'\')" aria-expanded="'+(open?'true':'false')+'">'
+    +'<span><b>'+title+'</b><small>'+line+'</small></span><i>⌄</i></button>'
+    +(open?'<div class="ad-acc-body">'+body+'</div>':'')
+    +'</section>';
+}
+function adResultHtml(){
+  var c=adAppliedCond(),rows=adRows(c),agg=adAgg(rows);
+  var label=c.t||c.p||c.v||'전사';
+  var r=c.range;
+  var h='<div id="adResult" class="'+(AD_REVEAL?'ad-reveal':'')+'">';
+
+  /* 요약 (항상 보임) */
+  h+='<div class="card"><div class="summary"><h2>'+esc(label)+' 요약</h2>'
+    +'<span class="pill'+(agg.total?' bad':'')+'">'+agg.total+'건</span></div>'
+    +'<p class="ad-cond">'+esc((r.from||'처음')+' ~ '+(r.to||'오늘'))+' ('+esc(r.label)+')</p>';
   h+='<div class="ah-sum">'
     +'<div><b>'+agg.total+'</b><small>전체 사고</small></div>'
     +'<div class="hl"><b>'+agg.approved+'</b><small>산재승인</small></div>'
     +'<div><b>'+agg.lost+'</b><small>손실일수</small></div></div>';
   if(!agg.total){
     h+='<div class="ah-empty"><b>이 범위·기간에 사고가 없습니다</b>'
-      +'<span>기간을 «전체»로 바꾸거나 상위 범위로 올라가 보세요.</span></div>';
+      +'<span>기간을 «직접 선택»으로 넓히거나 상위 범위로 올라가 보세요.</span></div>';
   }
   h+='</div>';
 
   if(agg.total){
-    /* 3) 월별 추이 */
-    var bars=adMonthlyBars(agg);
+    /* 추이 */
+    var bars=adMonthlyBars(agg,r);
     if(bars.length){
       var max=bars.reduce(function(m,x){return Math.max(m,x.n)},0)||1;
       var peak=bars.reduce(function(a,b){return b.n>a.n?b:a},bars[0]);
-      h+='<div class="card"><h2>'+(S.adPeriod==='all'?'연도별':'월별')+' 발생 추이</h2><div class="ad-bars">';
+      var unit=bars.unit==='year'?'연도별':'월별';
+      var body='<div class="ad-bars">';
       bars.forEach(function(x){
         var pct=Math.round(x.n/max*100);
-        h+='<div class="ad-bar"><small>'+x.n+'</small>'
+        body+='<div class="ad-bar"><small>'+x.n+'</small>'
           +'<i class="'+(x.n&&x.n===peak.n?'peak':'')+'" style="height:'+Math.max(x.n?6:2,Math.round(pct*0.72))+'px"></i>'
           +'<span>'+esc(x.label)+'</span></div>';
       });
-      h+='</div>';
-      if(peak.n>0)h+='<div class="notice" style="margin:9px 0 0">'+esc(peak.label)+'에 '+peak.n+'건으로 가장 많았습니다.</div>';
-      h+='</div>';
+      body+='</div>';
+      h+=adAcc('trend',unit+' 발생 추이',peak.n?esc(peak.label)+'에 '+peak.n+'건으로 가장 많음':'발생 없음',body);
     }
 
-    /* 4) 재해유형 TOP */
-    var tmax=agg.types[0]?agg.types[0].n:1;
-    h+='<div class="card"><h2>재해유형 TOP</h2><div class="ad-rank">';
+    /* 재해유형 */
+    var tmax=agg.types[0]?agg.types[0].n:1,tb='<div class="ad-rank">';
     agg.types.slice(0,6).forEach(function(t,i){
-      h+='<div><div class="ad-rank-l"><span>'+esc(t.name)+'</span><span>'+t.n+'건</span></div>'
+      tb+='<div><div class="ad-rank-l"><span>'+esc(t.name)+'</span><span>'+t.n+'건</span></div>'
         +'<div class="ad-rank-t"><i style="width:'+Math.max(4,Math.round(t.n/tmax*100))+'%;background:'+adRankColor(i)+'"></i></div></div>';
     });
-    h+='</div></div>';
+    tb+='</div>';
+    h+=adAcc('types','재해유형 TOP','1위 '+esc(agg.types[0].name)+' '+agg.types[0].n+'건',tb);
 
-    /* 5) 사고 많은 매장 */
+    /* 사고 많은 매장 */
     var showAll=!!S.adStoreAll;
     var list=showAll?agg.stores:agg.stores.slice(0,5);
-    h+='<div class="card"><div class="summary"><h2>사고 많은 매장</h2>'
-      +'<span class="ad-note">누르면 상세</span></div><div class="ad-stores">';
+    var sb='<div class="ad-stores">';
     list.forEach(function(x,i){
-      h+='<button class="ad-store'+(i===0?' top':'')+'" onclick="ahPickByName('+adQ(x.store)+')">'
+      sb+='<button class="ad-store'+(i===0?' top':'')+'" onclick="ahPickByName('+adQ(x.store)+')">'
         +'<i>'+(i+1)+'</i><span><b>'+esc(x.store)+'</b><small>'+esc([x.dept,x.team].filter(Boolean).join(' · ')||AD_UNKNOWN)+'</small></span>'
         +'<em><b>'+x.n+'건</b><small>손실 '+x.lost+'일</small></em></button>';
     });
-    h+='</div>';
+    sb+='</div>';
     if(agg.stores.length>5){
-      h+='<button class="secondary wide" style="margin-top:9px" onclick="S.adStoreAll='+(showAll?'false':'true')+';save();accidentHistory()">'
+      sb+='<button class="secondary wide" style="margin-top:9px" onclick="S.adStoreAll='+(showAll?'false':'true')+';save();accidentHistory()">'
         +(showAll?'상위 5개만 보기':'전체 '+agg.stores.length+'개 매장 보기')+'</button>';
     }
-    h+='</div>';
+    sb+='<p class="ad-hint" style="text-align:left">매장을 누르면 사고 내역과 1장 보고서 출력으로 갑니다.</p>';
+    h+=adAcc('stores','사고 많은 매장','1위 '+esc(agg.stores[0].store)+' '+agg.stores[0].n+'건',sb);
 
-    /* 6) 최근 사고 */
-    var recent=rows.slice(0,5);
-    h+='<div class="card"><div class="summary"><h2>최근 사고</h2>'
-      +'<span class="ad-note">최신 '+recent.length+'건</span></div><div class="ad-recent">';
-    recent.forEach(function(r){
-      var ok=r.a==='Y';
-      h+='<article class="'+(ok?'approved':'')+'">'
-        +'<div class="ah-head"><div><small>'+esc(r.d||'재해일 미기록')+' · '+esc(r.s)+'</small>'
-        +'<b>'+esc(r.y||'사고')+'</b></div>'
+    /* 최근 사고 */
+    var recent=rows.slice(0,5),rb='<div class="ad-recent">';
+    recent.forEach(function(x){
+      var ok=x.a==='Y';
+      rb+='<article class="'+(ok?'approved':'')+'">'
+        +'<div class="ah-head"><div><small>'+esc(x.d||'재해일 미기록')+' · '+esc(x.s)+'</small>'
+        +'<b>'+esc(x.y||'사고')+'</b></div>'
         +'<span class="ah-tag'+(ok?' bad':'')+'">'+(ok?'산재승인':'사고이력')+'</span></div>'
-        +'<p>'+esc(r.x||'등록된 사고내용이 없습니다.')+'</p></article>';
+        +'<p>'+esc(x.x||'등록된 사고내용이 없습니다.')+'</p></article>';
     });
-    h+='</div></div>';
+    rb+='</div>';
+    h+=adAcc('recent','최근 사고','최신 '+esc(recent[0].d||'날짜 미기록')+' '+esc(recent[0].s),rb);
   }
 
-  /* 미분류 안내 */
-  if(AD&&AD.unmatchedCount){
-    h+='<div class="card"><h2>미분류 매장 '+AD.unmatchedCount+'곳</h2>'
-      +'<p class="muted">사고 원장의 매장명이 «매장» 탭에 없어서 조직을 붙이지 못한 곳입니다. '
-      +'전사 합계에는 포함되고, 부문 목록의 «'+AD_UNKNOWN+'»에서 따로 볼 수 있습니다.<br>'
+  /* 미분류 안내 (전사·미분류를 볼 때만 의미가 있다) */
+  if(AD&&AD.unmatchedCount&&(!c.v||c.v===AD_UNKNOWN)){
+    var ub='<p class="muted" style="margin-top:0">사고 원장의 매장명이 «매장» 탭에 없어서 조직을 붙이지 못한 곳입니다. '
+      +'전사 합계에는 포함되고, 부문 «'+AD_UNKNOWN+'»에서 따로 볼 수 있습니다. '
       +'매장명 표기가 다른 경우가 대부분이니 원장 쪽 이름을 맞추면 사라집니다.</p>'
       +'<div class="ad-unmatched">'+(AD.unmatchedStores||[]).slice(0,30).map(function(n){return '<span>'+esc(n)+'</span>'}).join('')+'</div>'
-      +((AD.unmatchedStores||[]).length>30?'<p class="muted">앞 30곳만 표시했습니다.</p>':'')
-      +'</div>';
+      +((AD.unmatchedStores||[]).length>30?'<p class="muted">앞 30곳만 표시했습니다.</p>':'');
+    h+=adAcc('unmatched','미분류 매장 '+AD.unmatchedCount+'곳','조직을 찾지 못한 매장',ub);
   }
 
-  h+=adNavRow();
-  frame(h,'사고 이력','업무 중 재해 기준 · 출퇴근 제외');
+  h+='</div>';
+  return h;
 }
 function adNavRow(){
   var stamp=(AD&&AD.generatedAt)?('기준 '+esc(AD.generatedAt)):'';
@@ -3809,30 +3931,33 @@ function ahPickByName(name){
   if(!name)return;
   S.ahStore=String(name);AH_QUERY='';save();accidentHistory();
 }
-/* 월별(또는 연도별) 막대. 기간에 맞춰 눈금을 바꾼다. */
-function adMonthlyBars(agg){
-  var p=S.adPeriod||'year',out=[];
-  if(p==='all'){
-    var byYear={};
-    Object.keys(agg.byMonth).forEach(function(m){
-      var y=m.slice(0,4);byYear[y]=(byYear[y]||0)+agg.byMonth[m];
-    });
-    return Object.keys(byYear).sort().map(function(y){return {label:y.slice(2)+'년',n:byYear[y]}});
-  }
-  var now=new Date();
-  if(p==='year'){
-    for(var m=1;m<=now.getMonth()+1;m++){
-      var k=now.getFullYear()+'-'+(m<10?'0':'')+m;
-      out.push({label:m+'월',n:agg.byMonth[k]||0});
+/* 기간에 맞춘 추이 막대. 시작월~종료월을 한 달씩 채운다.
+   24개월을 넘으면 막대가 너무 가늘어지므로 연도별로 묶는다. 반환 배열에 unit('month'|'year')을 붙인다. */
+function adMonthlyBars(agg,range){
+  range=range||adAppliedRange();
+  var keys=Object.keys(agg.byMonth).sort();
+  var from=(range.from||keys[0]||'').slice(0,7);
+  var to=(range.to||keys[keys.length-1]||'').slice(0,7);
+  var out=[];
+  if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to)||from>to){out.unit='month';return out}
+  var fy=+from.slice(0,4),fm=+from.slice(5,7),ty=+to.slice(0,4),tm=+to.slice(5,7);
+  var span=(ty-fy)*12+(tm-fm)+1;
+  if(span>24){
+    for(var y=fy;y<=ty;y++){
+      var n=0;
+      Object.keys(agg.byMonth).forEach(function(k){if(+k.slice(0,4)===y)n+=agg.byMonth[k]});
+      out.push({label:String(y).slice(2)+'년',n:n});
     }
-  }else{
-    for(var i=11;i>=0;i--){
-      var d=new Date(now.getFullYear(),now.getMonth()-i,1);
-      var mm=d.getMonth()+1;
-      out.push({label:mm+'월',n:agg.byMonth[d.getFullYear()+'-'+(mm<10?'0':'')+mm]||0});
-    }
+    out.unit='year';return out;
   }
-  return out;
+  var yy=fy,mm=fm;
+  for(var i=0;i<span;i++){
+    var k=yy+'-'+String(mm).padStart(2,'0');
+    /* 해가 바뀌는 달은 연도를 같이 적어 «1월»이 어느 해인지 알 수 있게 한다 */
+    out.push({label:(mm===1&&i>0?String(yy).slice(2)+'.':'')+mm+'월',n:agg.byMonth[k]||0});
+    mm++;if(mm>12){mm=1;yy++}
+  }
+  out.unit='month';return out;
 }
 
 /* ============ 사고 이력 · 매장 상세 화면 ============ */
@@ -3989,8 +4114,9 @@ function arPrintCard(store,org){
   var level=arScopeLevel(org);
   var scopeName=level==='t'?org.t:org.p;
   var rows=arReportRows(org,level);
-  h+='<p class="muted">'+esc(scopeName)+' · '+esc(adPeriodLabel(S.adPeriod||'year'))
-    +' 기준 <b>'+rows.length+'건</b>이 들어갑니다. 기간은 위 «조회 범위»에서 바꿉니다.</p>';
+  var rg=adAppliedRange();
+  h+='<p class="muted">'+esc(scopeName)+' · '+esc((rg.from||'처음')+' ~ '+(rg.to||'오늘'))
+    +' 기준 <b>'+rows.length+'건</b>이 들어갑니다. 기간은 대시보드 «조회 조건»에서 바꿉니다.</p>';
 
   if(insp&&sameStore){
     h+='<div class="ar-dest ok"><b>드라이브에 저장됩니다</b>'
@@ -4023,10 +4149,10 @@ function arPrintCard(store,org){
 function arReportRows(org,level){
   if(!AD||!AD.rows)return [];
   var want=level==='t'?org.t:org.p;
-  var from=adPeriodFrom();
+  /* 대시보드에서 [조회하기]로 확정한 기간과 같게 맞춘다(화면 숫자와 종이 숫자가 같아야 한다) */
+  var range=adAppliedRange();
   return AD.rows.filter(function(r){
-    if(from&&String(r.d||'')<from)return false;
-    return String(r[level]||'')===want;
+    return adInRange(r.d,range)&&String(r[level]||'')===want;
   });
 }
 async function arPrint(){
@@ -4043,8 +4169,9 @@ async function arPrint(){
   try{
     var ctx={
       store:store,org:org,level:level,scopeName:scopeName,
-      periodLabel:adPeriodLabel(S.adPeriod||'year'),
-      from:adPeriodFrom(),
+      periodLabel:adAppliedRange().label,
+      from:adAppliedRange().from,
+      to:adAppliedRange().to,
       rows:rows,
       storeRows:rows.filter(function(r){return r.s===store}),
       maxCases:10
