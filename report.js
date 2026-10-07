@@ -305,14 +305,34 @@ function buildPriorities(s){
   out.sort(function(a,b){return a.w-b.w});
   return out;
 }
+/* esc() 처리된 문장에서 태그·엔티티를 걷어낸다.
+   buildPriorities의 title은 이미 esc()된 HTML이라, 그대로 esc()되는 자리에 쓰면
+   «&amp;»처럼 두 번 변환된 글자가 보인다. 코멘트에 끼워 넣을 때만 되돌린다. */
+function plainText(v){
+  return String(v==null?"":v)
+    .replace(/<[^>]*>/g,"")
+    .replace(/&lt;/g,"<").replace(/&gt;/g,">")
+    .replace(/&quot;/g,'"').replace(/&#039;/g,"'")
+    .replace(/&amp;/g,"&");
+}
 /* ============ 종합 코멘트 ============
-   요약 장에 들어가는 종합 진단 문단.
-   «TBM과 사다리만 언급되고 정작 배점이 큰 작업점검이 빠진다»는 문제를 없애려고,
-   종합점수 배점(작업점검 35 / 사다리 15 / 공통·시설 15 / 소방 15 / TBM 10 / 사고 10,
-   사고이력이 없는 매장은 작업점검 45)이 큰 분야부터 실제 미흡건수를 엮어 문장을 만든다.
-   숫자 점수는 노출하지 않고 «배점이 큰 분야부터» 라는 순서로만 반영한다. */
+   요약 장 히어로(검은 박스)에 들어가는 문단. **핵심만 두 문장으로 제한한다.**
+
+   예전에는 네 문장에 걸쳐 분야별 건수 · 작업점검 위험등급 · 사고이력 · 고위험 사다리 보유 ·
+   TBM 선행 분 수 · 입고 인력부담 측정값을 전부 적었다. 그래서 «핵심이 없고 다 적어놓은 글»이
+   됐다(사용자 지적). 게다가 그 내용은 전부 같은 보고서 안에 이미 또 있다.
+
+     분야별 건수 · 사고이력 · 고위험 사다리 보유  → 바로 아래 «현장점검 동선 요약» 표
+     TBM 선행 분 수 · 입고 인력부담 측정값        → 다음 장 «개선조치 계획»의 근거 줄
+     작업점검 위험등급 상/중                      → 작업점검 구분장과 상세 머리글
+
+   그래서 히어로에는 «무엇이 결과를 끌어내렸나»와 «지금 당장 무엇부터 할 것인가»만 남긴다.
+   숫자 점수는 여전히 노출하지 않고, 배점이 큰 분야부터라는 «순서»로만 반영한다. */
 function summaryComment(s){
   var acc=s.accidents||[];
+  /* 종합점수 배점 × 미흡건수가 큰 분야부터 = 실제로 점수를 가장 많이 깎은 분야
+     (작업점검 35 / 사다리 15 / 공통·시설 15 / 소방 15 / TBM 10,
+      사고이력이 없는 매장은 사고 배점 10이 작업점검으로 넘어가 45) */
   var weights=[
     ["작업점검",acc.length?35:45],
     ["사다리",15],["공통·시설",15],["소방",15],["TBM",10]
@@ -323,45 +343,26 @@ function summaryComment(s){
     .sort(function(a,b){return (b.weight*b.count)-(a.weight*a.count)});
 
   var out=[];
-  /* 1문장: 어느 분야가 이 매장 종합결과를 끌어내렸는지 */
+  /* 1문장 — 무엇이 종합결과를 끌어내렸나. 상위 2개까지만 말한다(나머지는 아래 표에 있다). */
+  var total=(s.findings||[]).length;
   if(hit.length){
-    out.push("이번 점검에서 확인된 미흡은 총 "+(s.findings||[]).length+"건이며, "
-      +hit.slice(0,3).map(function(x){return x.name+" "+x.count+"건"}).join(", ")
-      +" 순으로 종합결과에 영향이 큽니다.");
+    out.push("확인된 미흡 "+total+"건 중 "
+      +hit.slice(0,2).map(function(x){return x.name+" "+x.count+"건"}).join("과 ")
+      +"이 종합결과에 가장 큰 영향을 줬습니다.");
   }else{
     out.push("이번 점검에서 확인된 미흡사항이 없습니다.");
   }
-  /* 2문장: 작업점검 위험등급 (배점이 가장 큰 분야이므로 반드시 언급) */
-  var high=[],mid=[];
-  (s.work||[]).forEach(function(w,i){
-    var g=workRiskGrade(s,w);
-    if(g[1]==="risk")high.push(w.name);
-    else if(g[1]==="warn")mid.push(w.name);
-  });
-  if(high.length)out.push("작업동선 중 위험등급 «상»은 "+high.join(", ")+"이며, 이 유형부터 조치해야 합니다.");
-  else if(mid.length)out.push("작업동선 중 위험등급 «중»은 "+mid.slice(0,3).join(", ")+(mid.length>3?" 등":"")+"입니다.");
-  /* 3문장: 사고이력·사다리 고위험 보유 같은 상시 노출요인 */
-  var open=acc.filter(function(a){return a.status==="미조치"});
-  var owned=highRiskOwned(s);
-  var third=[];
-  if(acc.length)third.push("과거 사고 "+acc.length+"건 중 "+(open.length?open.length+"건이 미조치":"전 건 조치완료"));
-  else third.push("등록된 과거 사고이력은 없습니다");
-  if(owned.length)third.push("고위험 사다리("+owned.join(", ")+") 보유로 떨어짐 위험에 상시 노출");
-  out.push(third.join("이고, ")+".");
-  /* 4문장: 측정값으로 드러난 구조적 문제 */
-  var gap=s.tbmStretchGap,lb=s.inboundLabor,fourth=[];
-  if(gap&&gap.gapMinutes>0)fourth.push("입고작업이 스트레칭(TBM)보다 "+gap.gapMinutes+"분 먼저 시작됩니다");
-  if(lb&&lb.level!=="good"){
-    var helpers=+((s.inbound||{}).helpers)||0;
-    fourth.push("입고 평균 투입인원이 "+lb.avgPeople+"명"
-      +(helpers>0?"(도우미 공백비율 "+lb.gapRatioPct+"%)":"(입고도우미 미운영)")
-      +"으로 중량물 취급 부담이 큽니다");
+  /* 2문장 — 지금 당장 할 것 하나. 전체 목록은 다음 장 «개선조치 계획»에 있다. */
+  var pr=buildPriorities(s);
+  var now=pr.filter(function(p){return p.status==="즉시조치"});
+  if(now.length){
+    out.push("즉시 조치가 필요한 항목은 "+now.length+"건이며, "
+      +plainText(now[0].title)+"부터 시작해야 합니다.");
+  }else if(pr.length){
+    out.push("즉시 조치가 필요한 항목은 없습니다. 확인된 미흡은 현장에서 조치 가능한 수준이므로 조치 후 차기 점검에서 재확인합니다.");
+  }else{
+    out.push("별도 조치가 필요한 항목이 없어 현재 관리상태를 유지하면 됩니다.");
   }
-  if(unsharedAccidentVoices(s).length)fourth.push("근로자가 사고사례 "+unsharedAccidentVoices(s).length+"건을 안내받지 못했다고 응답했습니다");
-  if(fourth.length)out.push(fourth.join(". ")+".");
-  /* 점검자 종합의견(managementNote)은 여기에 붙이지 않는다.
-     한 장에 전부 밀어 넣으니 요약 칸이 좁아진다는 지적이 있어서,
-     종합의견은 다음 장인 «개선조치 계획» 하단으로 옮겼다. */
   return out.join(" ");
 }
 /* 보유한 사다리 중 고위험 유형 */

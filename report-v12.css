@@ -506,8 +506,14 @@ body{margin:0;background:#eef1f5}
 .sr-report .sr-sum-row .sr-cnt{text-align:center;font-weight:500;font-size:15px}
 .sr-report .sr-sum-row.bad .sr-cnt{color:var(--sr-red)}
 .sr-report .sr-sum-row.good .sr-cnt{color:var(--sr-green)}
-.sr-report .sr-sum-row .sr-photo{height:100%;min-height:48px;font-size:9px}
-.sr-report .sr-sum-row .sr-photo:after{left:5px;bottom:5px;padding:2px 5px;font-size:7px}
+.sr-report .sr-sum-row .sr-photo{height:100%;min-height:48px;font-size:9px;padding:0}
+/* 요약표 썸네일만 object-fit:cover.
+   항목 카드의 큰 사진은 증빙이라 contain(안 자름)이 맞지만, 이 칸은 116×48 정도의
+   «대표사진 표식»이다. contain으로 두면 사진 좌우에 회색 여백만 보여 비어 보인다. */
+.sr-report .sr-sum-row .sr-photo img{object-fit:cover;background:none}
+/* 라벨(분야명)은 숨긴다. 같은 행 왼쪽에 분야명이 이미 굵게 적혀 있어 중복이고,
+   이 크기에서는 라벨이 사진을 거의 다 덮는다. */
+.sr-report .sr-sum-row .sr-photo:after{display:none}
 /* 사진이 없는 행(양호·미보유)에는 점선 빈칸을 두지 않는다.
    점선 칸이 남아 있으면 «사진을 넣어야 하는데 비워둔 자리»로 보인다(사용자 지적). */
 .sr-report .sr-sum-nophoto{display:grid;place-items:center;height:100%;color:#c9ccd2;font-size:12px;letter-spacing:.1em}
