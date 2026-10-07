@@ -129,7 +129,10 @@
     if(!agg.types.length)h+='<p class="none">집계된 재해유형이 없습니다.</p>';
     agg.types.slice(0,5).forEach(function(t,i){
       var w=Math.max(6,Math.round(t.n/max*100));
-      h+='<div class="bar"><div class="l"><span>'+esc(t.name)+'</span><span>'+t.n+'건</span></div>'
+      /* ★ 클래스명을 'bar' 로 쓰면 안 된다 ★
+         style.css 에 작업점검 하단 진행바용 .bar{height:5px;overflow:hidden} 가 이미 있어서
+         막대 한 줄(글자+막대)이 5px 로 눌려 PDF에서 글자가 겹쳐 나왔다(2026-10-07). */
+      h+='<div class="tbar"><div class="l"><span>'+esc(t.name)+'</span><span>'+t.n+'건</span></div>'
         +'<div class="t"><i style="width:'+w+'%;background:'+barColor(i)+'"></i></div></div>';
     });
     return h+'</div>';
