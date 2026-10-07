@@ -11,5 +11,5 @@
  *       팀 내부용이라는 전제 하에 쓰는 값이며, 저장소는 Private으로 유지해야 한다.
  *       정식 보안이 필요해지면 구글 로그인(OAuth) 방식으로 교체할 예정.
  */
-window.API_URL = 'https://script.google.com/macros/s/AKfycbxBGZyZT5Yi5de0RuFMFXAX5UEJTJtaCcQ_iQva9nq1F8hLg-wAtngQkMEPPli5utP3YQ/exec';
+window.API_URL = 'https://script.google.com/macros/s/AKfycbzrDiemKDgZsdU3O636Mgs8vUbk6wL1WAGNO7lt_SSb4McNbQI3T4mGex09CUZ9w4Hfrw/exec';
 window.API_KEY = 'daiso-safety-2026';
