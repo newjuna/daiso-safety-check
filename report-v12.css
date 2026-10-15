@@ -572,15 +572,14 @@ body{margin:0;background:#eef1f5}
    요약 한 장에 눌러 담던 것을 독립 장으로 분리했다. 건수 제한 없이 전부 싣고,
    한 장에 PLAN_PER_PAGE(6)건씩 나눠 담는다. 행은 flex로 페이지 높이를 균등 분배한다. */
 .sr-report .sr-plan2{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-.sr-report .sr-plan2-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:40px 1fr 92px 108px;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--sr-line)}
+.sr-report .sr-plan2-row{flex:1 1 0;min-height:0;display:grid;grid-template-columns:40px 1fr 92px;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--sr-line)}
 .sr-report .sr-plan2-row:first-child{border-top:0}
 .sr-report .sr-plan2-row>i{font-style:normal;width:36px;height:36px;border-radius:9px;background:var(--sr-navy-soft);color:var(--sr-navy);display:grid;place-items:center;font-size:12.5px;font-weight:500}
 .sr-report .sr-plan2-text{min-width:0}
 .sr-report .sr-plan2-text b{display:block;font-size:13px;font-weight:500;line-height:1.45}
 .sr-report .sr-plan2-text small{display:block;margin-top:5px;font-size:10.5px;color:var(--sr-muted);line-height:1.6}
 .sr-report .sr-plan2-row .sr-status{font-size:10px;padding:4px 9px;text-align:center}
-/* 담당·기한은 매장과 협의해 적는 칸이므로 보고서에는 빈 서식으로만 둔다. */
-.sr-report .sr-plan2-blank{border-bottom:1px solid var(--sr-line);padding-bottom:3px;font-size:9px;color:#c3c6cb;letter-spacing:.06em;text-align:center}
+/* «담당 / 기한» 칸은 2026-10-07 사용자 요청으로 뺐다(현장에서 쓰지 않음). */
 .sr-report .sr-plan-empty{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:22px 24px;background:var(--sr-soft);border-radius:10px}
 .sr-report .sr-plan-empty b{font-size:15px;font-weight:500}
 .sr-report .sr-plan-empty span{font-size:12px;color:var(--sr-muted);line-height:1.7}

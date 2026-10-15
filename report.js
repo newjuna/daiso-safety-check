@@ -581,9 +581,7 @@ function sheetToc(s,chapters){
     +'<small class="sr-cover2-kicker">CONTENTS</small><h1>목 차</h1>'
     +'<div class="sr-toc-list">'+rows+'</div>'
     +'<div class="sr-toc-foot">'
-    +esc(s.store.name)+' · '+esc(dateDot(s.store.date))+' · 점검자 '+esc(s.store.inspector||"-")+'<br>'
-    +'모든 챕터는 생략 없이 표시됩니다. 미흡사항이 없는 챕터는 «양호»로만 표기되고 상세 페이지가 없습니다.<br>'
-    +'사다리·사고조사는 이상항목이 없어도 보유현황·이력요약을 항상 함께 확인합니다.'
+    +esc(s.store.name)+' · '+esc(dateDot(s.store.date))+' · 점검자 '+esc(s.store.inspector||"-")
     +'</div></div></div>';
   return sheet("목차",h);
 }
@@ -856,8 +854,7 @@ function planSheets(s){
       +'<b>별도 조치계획이 필요한 항목이 없습니다.</b>'
       +'<span>확인된 미흡사항과 미조치 사고가 없어 현재 관리상태를 유지하면 됩니다.</span></div></div>';
     if(note)h0+='<div class="sr-note info"><b>점검자 종합의견</b> — '+esc(note)+'</div>';
-    out.push(pageSheet("개선조치 계획","ACTION PLAN","개선조치 계획",h0,
-      "담당·기한은 매장과 협의해 확정합니다"));
+    out.push(pageSheet("개선조치 계획","ACTION PLAN","개선조치 계획",h0,""));
     return out;
   }
   /* 장을 나눌 때는 «앞 장을 꽉 채우고 마지막 장에 1건만 남기는» 방식을 쓰지 않는다.
@@ -869,21 +866,20 @@ function planSheets(s){
     var chunk=pr.slice(i,i+per);
     var last=(i+per>=pr.length);
     var range=pageCount>1?((i+1)+"–"+(i+chunk.length)+" / "+pr.length):(pr.length+"건");
-    var h='<div class="sr-sum-title">우선순위 조치사항 <em>'+esc(range)+' · 담당·기한은 매장 협의 후 확정</em></div>';
+    var h='<div class="sr-sum-title">우선순위 조치사항 <em>'+esc(range)+'</em></div>';
     h+='<div class="sr-plan-fill"><div class="sr-plan2">';
     chunk.forEach(function(p,j){
       h+='<div class="sr-plan2-row">'
         +'<i>'+pad2(i+j+1)+'</i>'
         +'<div class="sr-plan2-text"><b>'+p.title+'</b><small>'+p.detail+'</small></div>'
         +'<span class="sr-status '+p.cls+'">'+esc(p.status)+'</span>'
-        +'<span class="sr-plan2-blank">담당 / 기한</span>'
         +'</div>';
     });
     h+='</div></div>';
     /* 점검자 종합의견은 마지막 장 하단에 한 번만 (요약 히어로에서 옮겨온 문단) */
     if(last&&note)h+='<div class="sr-note info"><b>점검자 종합의견</b> — '+esc(note)+'</div>';
     out.push(pageSheet("개선조치 계획"+(pageCount>1?" "+(out.length+1):""),
-      "ACTION PLAN","개선조치 계획",h,"담당·기한은 매장과 협의해 확정합니다"));
+      "ACTION PLAN","개선조치 계획",h,""));
   }
   return out;
 }
