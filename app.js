@@ -19,7 +19,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
    ★ 파일을 고쳐 올릴 때마다 아래 두 줄을 같이 올린다. ★
      화면에 뜬 값이 올린 값과 다르면 = 아직 반영 안 됨(또는 브라우저 캐시) */
-const APP_VERSION='V11';
+const APP_VERSION='V12';
 const APP_UPDATED='26-10-07';
 /* index.html 의 <script src="app.js?v=86"> 에서 캐시 버전 숫자를 자동으로 읽는다.
    배지를 꾹 누르면(또는 PC에서 마우스를 올리면) 이 숫자가 보인다.
@@ -3109,7 +3109,7 @@ function loadReportCssOnce(){
   return new Promise((resolve,reject)=>{
     if(document.querySelector('link[data-report-css]'))return resolve();
     const el=document.createElement('link');
-    el.rel='stylesheet';el.href='report-v12.css?v=10';el.setAttribute('data-report-css','1');
+    el.rel='stylesheet';el.href='report-v12.css?v=11';el.setAttribute('data-report-css','1');
     el.onload=()=>resolve();
     el.onerror=()=>{
       /* 배포 누락·캐시 문제에 대비해 기존 이름을 한 번 더 시도한다.
